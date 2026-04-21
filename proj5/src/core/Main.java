@@ -17,7 +17,7 @@ public class Main {
     private static final long SEED = 0;
     private static final Random RANDOM = new Random(SEED);
     private static int spaceThreshold;
-    private HashMap<Integer, int[]> rooms;
+    private static HashMap<Integer, int[]> rooms;
     private WeightedQuickUnionUF roomConnections;
 
     /**
@@ -29,7 +29,19 @@ public class Main {
         while (spaceOccupied < spaceThreshold){
             int leftcornerX = RANDOM.nextInt(WIDTH);
             int leftcornerY = RANDOM.nextInt(HEIGHT);
-
+            int width = RANDOM.nextInt(4) + 5;
+            int height = RANDOM.nextInt(4) + 5;
+            if (roomIsValid(tiles,leftcornerX,leftcornerY,width,height)){
+                fillRoom(tiles,leftcornerX,leftcornerY,width,height);
+                spaceOccupied += width * height;
+                int[] roomAttributes = new int[4];
+                roomAttributes[0] = leftcornerX;
+                roomAttributes[1] = leftcornerY;
+                roomAttributes[2] = width;
+                roomAttributes[3] = height;
+                rooms.put(rooms.size(), roomAttributes);
+            }
+            System.out.println(TETile.toString(tiles));
         }
     }
 
@@ -37,8 +49,38 @@ public class Main {
      * ronak fill in the room w the tiles
      * @param tiles
      */
-    public static void fillRoom(TETile[][] tiles, int leftcornerX, int leftcornerY, int width, int height) {
+    private static void fillRoom(TETile[][] tiles, int leftcornerX, int leftcornerY, int width, int height) {
+        for (int i = leftcornerX; i < leftcornerX + width; i++) {
+            for (int j = leftcornerY; j < leftcornerY + height; j++) {
+                if (i == leftcornerX || j == leftcornerY || i == leftcornerX + width - 1 || j == leftcornerY + height - 1) {
+                    tiles[i][j] = Tileset.WALL;
+                } else {
+                    tiles[i][j] = Tileset.FLOOR;
+                }
+            }
+        }
 
+    }
+
+    /**
+     * check if potential room is valid
+     * @param tiles
+     */
+    private static boolean roomIsValid(TETile[][] tiles, int leftcornerX, int leftcornerY, int width, int height){
+        if (leftcornerX + width >= WIDTH){
+            return false;
+        }
+        if (leftcornerY + height >= HEIGHT){
+            return false;
+        }
+        for (int i = leftcornerX; i < leftcornerX + width + 1; i++) {
+            for (int j = leftcornerY; j < leftcornerY+height + 1; j++) {
+                if (tiles[i][j] != Tileset.NOTHING) {
+                    return false;
+                }
+            }
+            }
+        return true;
     }
     public static void connectRooms(TETile[][] tiles){
         return;
@@ -57,13 +99,22 @@ public class Main {
             default -> Tileset.NOTHING;
         };
     }
+    private static void fillWorldWithNothing(TETile[][] tiles) {
+        for (int i = 0; i < WIDTH; i++) {
+            for (int j = 0; j < HEIGHT; j++) {
+                tiles[i][j] = Tileset.NOTHING;
+            }
+        }
+    }
 
     public static void main(String[] args) {
         TERenderer ter = new TERenderer();
         ter.initialize(WIDTH, HEIGHT);
-        spaceThreshold = (int)(((double)(RANDOM.nextInt(30) + 50)/100) * (WIDTH * HEIGHT));
+        spaceThreshold = (int)(((double)(RANDOM.nextInt(50) + 10)/100) * (WIDTH * HEIGHT));
+        rooms = new HashMap<>();
         TETile[][] randomTiles = new TETile[WIDTH][HEIGHT];
-        fillWithRandomTiles(randomTiles);
+        fillWorldWithNothing(randomTiles);
+        generateRooms(randomTiles);
 
         StdDraw.clear(new Color(0, 0, 0));
         ter.drawTiles(randomTiles);
