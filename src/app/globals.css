@@ -1,0 +1,204 @@
+@import "tailwindcss";
+
+/* ──────────────────────────────────────────────────────────────
+   FindMaxxing design tokens
+   Warm paper ground, ink text, "flare" coral for places/primary,
+   "pulse" violet for events, sun yellow for ratings.
+   ────────────────────────────────────────────────────────────── */
+@theme {
+  --font-sans: var(--font-figtree), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: var(--font-bricolage), var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
+
+  --color-paper: #f6f4ee;
+  --color-paper-2: #eeebe3;
+  --color-surface: #ffffff;
+  --color-surface-2: #f4f2ec;
+  --color-ink: #17181d;
+  --color-ink-2: #45464d;
+  --color-muted: #7b7c85;
+  --color-line: #e6e2d9;
+  --color-line-2: #d4cfc4;
+
+  --color-flare: #ff4d2e;
+  --color-flare-600: #e63d1f;
+  --color-flare-100: #ffe9e3;
+  --color-flare-50: #fff4f0;
+
+  --color-pulse: #6b4cff;
+  --color-pulse-600: #5a3de6;
+  --color-pulse-100: #ebe6ff;
+  --color-pulse-50: #f4f1ff;
+
+  --color-moss: #1f8a5b;
+  --color-moss-100: #dff3e8;
+  --color-sun: #ffb400;
+  --color-sun-100: #fff3d1;
+  --color-danger: #d62e2e;
+  --color-danger-100: #fde3e3;
+
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1.5rem;
+  --radius-3xl: 2rem;
+
+  --shadow-card: 0 1px 2px rgba(23, 24, 29, 0.05), 0 8px 24px -12px rgba(23, 24, 29, 0.18);
+  --shadow-float: 0 4px 12px -2px rgba(23, 24, 29, 0.12), 0 20px 40px -16px rgba(23, 24, 29, 0.28);
+  --shadow-pin: 0 2px 6px rgba(23, 24, 29, 0.28);
+
+  --animate-rise: rise 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-fade: fade 200ms ease-out both;
+  --animate-pop: pop 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-shimmer: shimmer 1.4s linear infinite;
+  --animate-pulse-ring: pulse-ring 1.8s ease-out infinite;
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes pop {
+    from { opacity: 0; transform: scale(0.92); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes shimmer {
+    from { background-position: -200% 0; }
+    to { background-position: 200% 0; }
+  }
+  @keyframes pulse-ring {
+    0% { transform: scale(0.6); opacity: 0.8; }
+    100% { transform: scale(2.2); opacity: 0; }
+  }
+}
+
+:root {
+  color-scheme: light;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --nav-height: 4.25rem;
+}
+
+html {
+  height: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100%;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+
+@layer base {
+  h1, h2, h3, .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.015em;
+  }
+  ::selection {
+    background: var(--color-flare-100);
+    color: var(--color-ink);
+  }
+  input, textarea, select, button {
+    font: inherit;
+  }
+  input::placeholder, textarea::placeholder {
+    color: var(--color-muted);
+  }
+  *:focus-visible {
+    outline: 2px solid var(--color-flare);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-2xl);
+    box-shadow: var(--shadow-card);
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    height: 2.25rem;
+    padding: 0 0.875rem;
+    border-radius: 999px;
+    border: 1px solid var(--color-line);
+    background: var(--color-surface);
+    color: var(--color-ink-2);
+    font-size: 0.875rem;
+    font-weight: 600;
+    white-space: nowrap;
+    transition: background 120ms, color 120ms, border-color 120ms, transform 120ms;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .chip:active { transform: scale(0.97); }
+  .chip[data-active="true"] {
+    background: var(--color-ink);
+    border-color: var(--color-ink);
+    color: white;
+  }
+  .skeleton {
+    background: linear-gradient(90deg, var(--color-paper-2) 25%, #faf9f5 50%, var(--color-paper-2) 75%);
+    background-size: 200% 100%;
+    animation: var(--animate-shimmer);
+    border-radius: 0.75rem;
+  }
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar { display: none; }
+  .safe-bottom { padding-bottom: var(--safe-bottom); }
+  .pb-nav { padding-bottom: calc(var(--nav-height) + var(--safe-bottom) + 1rem); }
+  .field {
+    width: 100%;
+    background: var(--color-surface);
+    border: 1px solid var(--color-line-2);
+    border-radius: 0.875rem;
+    padding: 0.8rem 0.95rem;
+    font-size: 1rem;
+    line-height: 1.35;
+    color: var(--color-ink);
+    transition: border-color 120ms, box-shadow 120ms;
+  }
+  .field:focus {
+    outline: none;
+    border-color: var(--color-ink);
+    box-shadow: 0 0 0 3px rgba(23, 24, 29, 0.08);
+  }
+  .field[aria-invalid="true"] {
+    border-color: var(--color-danger);
+  }
+  .paper-grid {
+    background-color: var(--color-paper);
+    background-image:
+      linear-gradient(rgba(23, 24, 29, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(23, 24, 29, 0.05) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+}
+
+/* Map library chrome overrides */
+.maplibregl-ctrl-attrib, .mapboxgl-ctrl-attrib {
+  font-size: 10px !important;
+  background: rgba(255,255,255,0.7) !important;
+}
+.maplibregl-ctrl-bottom-right, .mapboxgl-ctrl-bottom-right {
+  bottom: calc(var(--nav-height) + var(--safe-bottom) + 12rem) !important;
+}
+@media (min-width: 768px) {
+  .maplibregl-ctrl-bottom-right, .mapboxgl-ctrl-bottom-right {
+    bottom: 1rem !important;
+  }
+}
+.maplibregl-ctrl-group, .mapboxgl-ctrl-group {
+  border-radius: 12px !important;
+  box-shadow: var(--shadow-card) !important;
+  border: 1px solid var(--color-line) !important;
+}
+.maplibregl-marker, .mapboxgl-marker { cursor: pointer; }
