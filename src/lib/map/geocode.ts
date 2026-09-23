@@ -29,6 +29,28 @@ export function buildAddressQuery(parts: (string | null | undefined)[]): string 
     .join(", ");
 }
 
+/** Keeps a partial address useful without duplicating a street name. */
+export function composeAddress(values: { city: string; streetName: string; exactAddress: string }, includeCity = false): string {
+  const exact = values.exactAddress.trim();
+  const street = values.streetName.trim();
+  const city = values.city.trim();
+  // Accept either a full address or just a house/building number in the exact
+  // field. If it is only a number, combine it with the separately entered street.
+  const normalize = (value: string) => value.toLowerCase().replace(/\bstreet\b/g, "st").replace(/\bavenue\b/g, "ave").replace(/\broad\b/g, "rd").replace(/\bdrive\b/g, "dr");
+  const streetLine = exact && street && !normalize(exact).includes(normalize(street))
+    ? `${exact} ${street}`
+    : exact || street;
+  return [streetLine, includeCity ? city : ""].filter(Boolean).join(", ");
+}
+
+/** Builds a lookup query from the progressive address fields. */
+export function composeGeocodeQuery(
+  values: { city: string; streetName: string; exactAddress: string; neighborhood?: string },
+  extra?: string,
+): string {
+  return buildAddressQuery([composeAddress(values), values.neighborhood, values.city, extra]);
+}
+
 /** Converts a Nominatim `boundingbox` ([south, north, west, east] strings). */
 export function bboxFromNominatim(v: unknown): GeocodeResult["bbox"] {
   if (!Array.isArray(v) || v.length !== 4) return null;

@@ -89,6 +89,10 @@ export interface DataRepository {
     activity(userId: string, viewerId?: string | null): Promise<UserActivity>;
     /** Lightweight people discovery: profiles sharing interests, excluding self + followed. */
     suggest(userId: string | null, limit?: number): Promise<Profile[]>;
+    /** Case-insensitive match on username, display name or home city. Empty query returns []. */
+    search(query: string, limit?: number): Promise<Profile[]>;
+    /** Everyone who lists the interest, newest members first. */
+    listByInterest(interestSlug: string, limit?: number): Promise<Profile[]>;
   };
   reports: {
     create(input: NewReportInput, reporterId: string): Promise<void>;

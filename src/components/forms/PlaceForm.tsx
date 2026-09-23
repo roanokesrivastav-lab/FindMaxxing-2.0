@@ -4,13 +4,13 @@ import { createPlaceAction, updatePlaceAction } from "@/server/actions/places";
 import type { Place } from "@/lib/data/types";
 import { Button } from "@/components/ui/Button";
 import { FormField, Input, Textarea } from "@/components/ui/Field";
+import { AddressFields, composeGeocodeQuery } from "@/components/shared/AddressFields";
 import { CategoryPicker } from "@/components/shared/CategoryPicker";
 import { TagPicker } from "@/components/shared/TagPicker";
 import { MultiPhotoInput } from "@/components/shared/MultiPhotoInput";
 import { VisibilityPicker } from "@/components/shared/VisibilityPicker";
 import { LocationPicker } from "@/components/map/LocationPicker";
 import { useFormSubmit } from "@/lib/forms/useFormSubmit";
-import { buildAddressQuery } from "@/lib/map/geocode";
 import { PLACE_CATEGORIES } from "@/lib/data/taxonomy";
 import { Lightbulb } from "lucide-react";
 
@@ -23,8 +23,10 @@ export function PlaceForm({ defaultCity, initial, edit = false }: { defaultCity:
   // Tracked only to feed the address lookup; the inputs stay uncontrolled so a
   // failed submit leaves whatever the user typed untouched.
   const [address, setAddress] = useState(initial?.address ?? "");
+  const [streetName, setStreetName] = useState("");
   const [neighborhood, setNeighborhood] = useState(initial?.neighborhood ?? "");
   const [city, setCity] = useState(initial?.city ?? defaultCity);
+  const [addressTouched, setAddressTouched] = useState(false);
 
   return (
     <form ref={formRef} onSubmit={onSubmit} className="flex flex-col gap-6">
@@ -47,23 +49,23 @@ export function PlaceForm({ defaultCity, initial, edit = false }: { defaultCity:
         {errors.localTip ? <p className="mt-1.5 text-sm text-danger">{errors.localTip}</p> : null}
       </div>
 
+      <AddressFields
+        includeNeighborhood
+        values={{ city, streetName, exactAddress: address, neighborhood }}
+        errors={errors}
+        onChange={(field, next) => {
+          setAddressTouched(true);
+          if (field === "city") setCity(next);
+          else if (field === "streetName") setStreetName(next);
+          else if (field === "exactAddress") setAddress(next);
+          else if (field === "neighborhood") setNeighborhood(next);
+        }}
+      />
       <LocationPicker
         initial={initial ? { lat: initial.lat, lng: initial.lng } : null}
-        addressQuery={address.trim() || neighborhood.trim() ? buildAddressQuery([address, neighborhood, city]) : ""}
+        addressQuery={addressTouched ? composeGeocodeQuery({ city, streetName, exactAddress: address, neighborhood }) : ""}
         error={errors.lat ?? errors.lng ? "Drop a pin on the map" : undefined}
       />
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <FormField label="Address" htmlFor="address" hint="optional" error={errors.address}>
-          <Input id="address" name="address" defaultValue={value(initial?.address)} onChange={(e) => setAddress(e.target.value)} placeholder="Street or landmark" maxLength={160} />
-        </FormField>
-        <FormField label="Neighborhood" htmlFor="neighborhood" hint="optional" error={errors.neighborhood}>
-          <Input id="neighborhood" name="neighborhood" defaultValue={value(initial?.neighborhood)} onChange={(e) => setNeighborhood(e.target.value)} placeholder="e.g. Clintonville" maxLength={80} />
-        </FormField>
-      </div>
-      <FormField label="City" htmlFor="city" error={errors.city}>
-        <Input id="city" name="city" defaultValue={initial?.city ?? defaultCity} onChange={(e) => setCity(e.target.value)} required maxLength={80} error={errors.city} />
-      </FormField>
 
       <TagPicker name="tags" label="Who is this for?" initial={initial?.tags} error={errors.tags} />
       {/* Photos and trust tier are set at creation and then managed on the place

@@ -1,5 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { MAX_EVENT_HOURS, combineDateTime, eventSchema, fieldErrors, placeSchema, profileSchema, ratingSchema, signUpSchema } from "../src/lib/validation/schemas";
+import { MAX_EVENT_HOURS, combineDateTime, eventSchema, fieldErrors, placeSchema, profileSchema, ratingSchema, searchQuerySchema, signUpSchema } from "../src/lib/validation/schemas";
+
+describe("searchQuerySchema", () => {
+  it("trims and collapses whitespace", () => {
+    expect(searchQuerySchema.parse("  maya   reyes ")).toBe("maya reyes");
+    expect(searchQuerySchema.parse("")).toBe("");
+  });
+  it("never throws: over-long or non-string input becomes an empty query", () => {
+    expect(searchQuerySchema.parse("a".repeat(61))).toBe("");
+    expect(searchQuerySchema.parse(undefined)).toBe("");
+    expect(searchQuerySchema.parse(["x"])).toBe("");
+  });
+});
 
 describe("placeSchema", () => {
   it("accepts a valid place and normalizes tags", () => {
@@ -41,6 +53,7 @@ describe("eventSchema", () => {
       title: "Pickup",
       description: "Bring a ball and water.",
       locationName: "Field",
+      city: "Columbus",
       lat: 40,
       lng: -83,
       date,
@@ -64,6 +77,7 @@ describe("eventSchema", () => {
       title: "Old",
       description: "This already happened.",
       locationName: "Field",
+      city: "Columbus",
       lat: 40,
       lng: -83,
       date: "2020-01-01",

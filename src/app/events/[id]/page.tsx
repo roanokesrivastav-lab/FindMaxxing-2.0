@@ -15,14 +15,22 @@ import { NewBanner } from "@/components/shared/NewBanner";
 import { ShareButton } from "@/components/shared/ShareButton";
 import { eventHasEnded, formatEventDateLong, formatTimeRange, relativeDayLabel } from "@/lib/utils/format";
 import { OwnerActions } from "@/components/shared/OwnerActions";
+import { shareMetadata } from "@/lib/utils/share-metadata";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: PageProps<"/events/[id]">): Promise<Metadata> {
   const { id } = await params;
   const repo = await getRepository();
+  // No viewer on purpose: crawlers are anonymous, so only public events unfurl.
   const event = await repo.events.get(id);
-  return { title: event?.title ?? "Event" };
+  if (!event) return { title: "Event" };
+  return shareMetadata({
+    title: event.title,
+    description: `${formatEventDateLong(event.startsAt)} · ${formatTimeRange(event.startsAt, event.endsAt)} at ${event.locationName}. ${event.description}`,
+    path: `/events/${event.id}`,
+    type: "article",
+  });
 }
 
 export default async function EventPage({ params, searchParams }: PageProps<"/events/[id]">) {
@@ -110,9 +118,9 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
               {event.tags.map((t) => {
                 const i = getInterest(t);
                 return (
-                  <span key={t} className="chip h-8 text-xs">
+                  <Link key={t} href={`/tags/${t}`} className="chip h-8 text-xs" title={`Browse ${i.label}`}>
                     <span aria-hidden>{i.emoji}</span> {i.label}
-                  </span>
+                  </Link>
                 );
               })}
             </div>

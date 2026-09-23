@@ -11,7 +11,7 @@ export default async function NewEventPage({ searchParams }: PageProps<"/events/
   const [sp, viewer] = await Promise.all([searchParams, requireViewer("/events/new")]);
   const repo = await getRepository();
   const places = (await repo.places.list({ limit: 500, viewerId: viewer.id }))
-    .map((p) => ({ id: p.id, name: p.name, lat: p.lat, lng: p.lng, address: p.address, categorySlug: p.categorySlug }))
+    .map((p) => ({ id: p.id, name: p.name, lat: p.lat, lng: p.lng, address: p.address, categorySlug: p.categorySlug, city: p.city }))
     .sort((a, b) => a.name.localeCompare(b.name));
   const initialPlaceId = typeof sp.placeId === "string" && places.some((p) => p.id === sp.placeId) ? sp.placeId : null;
   return (
@@ -22,7 +22,7 @@ export default async function NewEventPage({ searchParams }: PageProps<"/events/
       backHref="/events"
       tone="pulse"
     >
-      <EventForm places={places} initialPlaceId={initialPlaceId} />
+      <EventForm places={places} initialPlaceId={initialPlaceId} defaultCity={viewer.profile.homeCity ?? ""} />
     </FormShell>
   );
 }

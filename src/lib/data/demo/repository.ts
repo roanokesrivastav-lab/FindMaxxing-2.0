@@ -654,6 +654,33 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           .slice(0, limit)
           .map(({ p }) => toProfile(state, p));
       },
+      async search(query, limit = 20) {
+        const q = query.trim().toLowerCase();
+        if (!q) return [];
+        const rank = (p: ProfileRow) => {
+          const username = p.username.toLowerCase();
+          const name = p.displayName.toLowerCase();
+          if (username === q || name === q) return 0;
+          if (username.startsWith(q) || name.startsWith(q)) return 1;
+          if (username.includes(q) || name.includes(q)) return 2;
+          if (p.homeCity?.toLowerCase().includes(q)) return 3;
+          return null;
+        };
+        return state.profiles
+          .map((p) => ({ p, rank: rank(p) }))
+          .filter((x): x is { p: ProfileRow; rank: number } => x.rank !== null)
+          .sort((a, b) => a.rank - b.rank || a.p.displayName.localeCompare(b.p.displayName))
+          .slice(0, limit)
+          .map(({ p }) => toProfile(state, p));
+      },
+      async listByInterest(interestSlug, limit = 50) {
+        const ids = new Set(state.profileInterests.filter((x) => x.interestSlug === interestSlug).map((x) => x.profileId));
+        return state.profiles
+          .filter((p) => ids.has(p.id))
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+          .slice(0, limit)
+          .map((p) => toProfile(state, p));
+      },
     },
 
     reports: {

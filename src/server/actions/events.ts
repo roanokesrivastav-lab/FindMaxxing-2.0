@@ -17,6 +17,7 @@ export async function createEventAction(_prev: ActionResult | null, formData: Fo
     placeId: str(formData, "placeId"),
     locationName: str(formData, "locationName"),
     address: str(formData, "address"),
+    city: str(formData, "city"),
     lat: str(formData, "lat"),
     lng: str(formData, "lng"),
     date: str(formData, "date"),
@@ -66,7 +67,7 @@ export async function updateEventAction(_prev: ActionResult | null, formData: Fo
   if (!id.success) return fail("Invalid event");
   const parsed = eventSchema.safeParse({
     title: str(formData, "title"), description: str(formData, "description"), placeId: str(formData, "placeId"),
-    locationName: str(formData, "locationName"), address: str(formData, "address"), lat: str(formData, "lat"), lng: str(formData, "lng"),
+    locationName: str(formData, "locationName"), address: str(formData, "address"), city: str(formData, "city"), lat: str(formData, "lat"), lng: str(formData, "lng"),
     date: str(formData, "date"), startTime: str(formData, "startTime"), endTime: str(formData, "endTime"), categorySlug: str(formData, "categorySlug"),
     capacity: str(formData, "capacity"), tags: strList(formData, "tags"), tzOffsetMinutes: str(formData, "tzOffsetMinutes") || "0",
   });

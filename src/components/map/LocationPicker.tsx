@@ -25,6 +25,7 @@ export function LocationPicker({
   label = "Where is it?",
   onChange,
   addressQuery,
+  preserveInitialPin = true,
 }: {
   initial?: LngLat | null;
   error?: string;
@@ -32,6 +33,8 @@ export function LocationPicker({
   onChange?: (v: LngLat) => void;
   /** Address text to look up, e.g. "1210 Oak St, Olde Towne East, Columbus". */
   addressQuery?: string;
+  /** Keep an existing/editing pin until the user accepts a geocoding suggestion. */
+  preserveInitialPin?: boolean;
 }) {
   const [point, setPoint] = useState<LngLat | null>(initial ?? null);
   const [view, setView] = useState<ViewState>({
@@ -39,14 +42,14 @@ export function LocationPicker({
     longitude: initial?.lng ?? DEFAULT_CENTER.lng,
     zoom: initial ? 15 : DEFAULT_ZOOM,
   });
-  const [geoStatus, setGeoStatus] = useState<"idle" | "requesting" | "denied">("idle");
+  const [geoStatus, setGeoStatus] = useState<"idle" | "requesting" | "denied" | "unsupported">("idle");
   const [userLocation, setUserLocation] = useState<LngLat | null>(null);
   const mapRef = useRef<MapCanvasHandle>(null);
 
   // True once the pin represents a deliberate choice: either the user placed it,
   // or the caller supplied one (editing a place, or an event at a known place).
   // From then on the address lookup suggests rather than moves anything.
-  const placedByUser = useRef(Boolean(initial));
+  const placedByUser = useRef(Boolean(initial) && preserveInitialPin);
   const [lookup, setLookup] = useState<"idle" | "searching" | "none">("idle");
   const [suggestion, setSuggestion] = useState<GeocodeResult | null>(null);
   const appliedQuery = useRef<string | null>(null);
@@ -131,21 +134,25 @@ export function LocationPicker({
 
   const useMyLocation = () => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setGeoStatus("denied");
+      setGeoStatus("unsupported");
       return;
     }
     setGeoStatus("requesting");
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const here = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        setUserLocation(here);
-        setByUser(here);
-        mapRef.current?.flyTo(here, 15);
-        setGeoStatus("idle");
-      },
-      () => setGeoStatus("denied"),
-      { timeout: 8000, maximumAge: 60_000 },
-    );
+    try {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const here = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          setUserLocation(here);
+          setByUser(here);
+          mapRef.current?.flyTo(here, 15);
+          setGeoStatus("idle");
+        },
+        (error) => setGeoStatus(error.code === error.POSITION_UNAVAILABLE ? "unsupported" : "denied"),
+        { enableHighAccuracy: false, timeout: 8000, maximumAge: 60_000 },
+      );
+    } catch {
+      setGeoStatus("unsupported");
+    }
   };
 
   const hint = point ? `${point.lat.toFixed(4)}, ${point.lng.toFixed(4)}` : "tap the map";
@@ -222,8 +229,10 @@ export function LocationPicker({
       <FieldError>
         {error ??
           (geoStatus === "denied"
-            ? "Location unavailable. Tap the map instead."
-            : lookup === "none"
+            ? "Location permission is off. Tap the map to place the pin yourself."
+            : geoStatus === "unsupported"
+              ? "Your browser cannot provide a location. Tap the map instead."
+              : lookup === "none"
               ? "Couldn't find that address. Tap the map to place the pin yourself."
               : undefined)}
       </FieldError>

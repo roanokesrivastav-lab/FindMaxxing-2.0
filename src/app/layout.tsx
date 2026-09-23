@@ -4,7 +4,7 @@ import "./globals.css";
 import { AppShell } from "@/components/layout/AppShell";
 import { getViewer } from "@/lib/auth/server";
 import { ToastProvider } from "@/components/ui/Toast";
-import { getDataMode } from "@/lib/config";
+import { getDataMode, getSiteUrl } from "@/lib/config";
 
 const figtree = Figtree({
   variable: "--font-figtree",
@@ -19,14 +19,20 @@ const bricolage = Bricolage_Grotesque({
   weight: ["500", "600", "700", "800"],
 });
 
+const DESCRIPTION =
+  "Local knowledge, mapped. Discover the places locals actually use, save them, add your own, and meet people doing what you love.";
+
 export const metadata: Metadata = {
+  // Lets page-level openGraph/twitter images and urls be relative.
+  metadataBase: new URL(getSiteUrl()),
   title: {
     default: "FindMaxxing",
     template: "%s · FindMaxxing",
   },
-  description:
-    "Local knowledge, mapped. Discover the places locals actually use, save them, add your own, and meet people doing what you love.",
+  description: DESCRIPTION,
   applicationName: "FindMaxxing",
+  openGraph: { type: "website", siteName: "FindMaxxing", title: "FindMaxxing", description: DESCRIPTION },
+  twitter: { card: "summary", title: "FindMaxxing", description: DESCRIPTION },
   appleWebApp: { capable: true, title: "FindMaxxing", statusBarStyle: "default" },
 };
 

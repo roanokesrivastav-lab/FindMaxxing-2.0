@@ -4,6 +4,7 @@ import { createEventAction, updateEventAction } from "@/server/actions/events";
 import type { Event } from "@/lib/data/types";
 import { Button } from "@/components/ui/Button";
 import { FormField, Input, Textarea, Select } from "@/components/ui/Field";
+import { AddressFields, composeGeocodeQuery } from "@/components/shared/AddressFields";
 import { CategoryPicker } from "@/components/shared/CategoryPicker";
 import { TagPicker } from "@/components/shared/TagPicker";
 import { LocationPicker } from "@/components/map/LocationPicker";
@@ -11,7 +12,6 @@ import { EVENT_CATEGORIES } from "@/lib/data/taxonomy";
 import { toDateInputValue, toTimeInputValue } from "@/lib/utils/format";
 import type { LngLat } from "@/lib/map/types";
 import { useFormSubmit } from "@/lib/forms/useFormSubmit";
-import { buildAddressQuery } from "@/lib/map/geocode";
 
 export interface PlaceOption {
   id: string;
@@ -20,9 +20,10 @@ export interface PlaceOption {
   lng: number;
   address: string | null;
   categorySlug: string;
+  city?: string;
 }
 
-export function EventForm({ places, initialPlaceId, initial, edit = false }: { places: PlaceOption[]; initialPlaceId?: string | null; initial?: Event; edit?: boolean }) {
+export function EventForm({ places, initialPlaceId, initial, defaultCity = "", edit = false }: { places: PlaceOption[]; initialPlaceId?: string | null; initial?: Event; defaultCity?: string; edit?: boolean }) {
   const [state, action, pending] = useActionState(edit ? updateEventAction : createEventAction, null);
   const errors = state && !state.ok ? (state.fieldErrors ?? {}) : {};
 
@@ -38,6 +39,9 @@ export function EventForm({ places, initialPlaceId, initial, edit = false }: { p
   const [locationName, setLocationName] = useState(initial?.locationName ?? linked?.name ?? "");
   const [point, setPoint] = useState<LngLat | null>(initial ? { lat: initial.lat, lng: initial.lng } : linked ? { lat: linked.lat, lng: linked.lng } : null);
   const [address, setAddress] = useState(initial?.address ?? linked?.address ?? "");
+  const [streetName, setStreetName] = useState("");
+  const [city, setCity] = useState(initial ? extractCity(initial.address) || linked?.city || defaultCity : linked?.city || defaultCity || "");
+  const [addressTouched, setAddressTouched] = useState(false);
 
   const selectPlace = (id: string) => {
     setPlaceId(id);
@@ -45,7 +49,16 @@ export function EventForm({ places, initialPlaceId, initial, edit = false }: { p
     if (next) {
       setLocationName(next.name);
       setAddress(next.address ?? "");
+      setCity(next.city ?? city);
+      setStreetName("");
+      setAddressTouched(false);
       setPoint({ lat: next.lat, lng: next.lng });
+    } else {
+      setLocationName("");
+      setAddress("");
+      setStreetName("");
+      setAddressTouched(false);
+      setPoint(null);
     }
   };
 
@@ -83,14 +96,23 @@ export function EventForm({ places, initialPlaceId, initial, edit = false }: { p
       <FormField label="Location name" htmlFor="locationName" error={errors.locationName}>
         <Input id="locationName" name="locationName" required maxLength={120} value={locationName} onChange={(e) => setLocationName(e.target.value)} placeholder="e.g. Tuttle Lot Fields, north pitch" error={errors.locationName} />
       </FormField>
-      <FormField label="Address" htmlFor="address" hint="optional" error={errors.address}>
-        <Input id="address" name="address" maxLength={160} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Street or landmark" />
-      </FormField>
+      <AddressFields
+        includeCityInAddress
+        values={{ city, streetName, exactAddress: address }}
+        errors={errors}
+        onChange={(field, next) => {
+          setAddressTouched(true);
+          if (field === "city") setCity(next);
+          else if (field === "streetName") setStreetName(next);
+          else if (field === "exactAddress") setAddress(next);
+        }}
+      />
       <LocationPicker
         key={placeId || "custom"}
         initial={point}
         onChange={setPoint}
-        addressQuery={address.trim() ? buildAddressQuery([address, locationName]) : ""}
+        addressQuery={addressTouched ? composeGeocodeQuery({ city, streetName, exactAddress: address }) : ""}
+        preserveInitialPin={edit}
         label="Meeting point"
         error={errors.lat ?? errors.lng ? "Drop a pin on the map" : undefined}
       />
@@ -104,4 +126,10 @@ export function EventForm({ places, initialPlaceId, initial, edit = false }: { p
       </div>
     </form>
   );
+}
+
+/** Existing events only have one address snapshot; use its final segment as a city hint. */
+function extractCity(address: string | null): string {
+  const parts = (address ?? "").split(",").map((part) => part.trim()).filter(Boolean);
+  return parts.length > 1 ? parts[parts.length - 1] : "";
 }

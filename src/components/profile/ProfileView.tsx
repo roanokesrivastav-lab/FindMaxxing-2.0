@@ -57,9 +57,14 @@ export function ProfileView({
             {profile.interests.map((slug) => {
               const i = getInterest(slug);
               return (
-                <span key={slug} className="rounded-full bg-surface-2 px-2.5 py-1 text-xs font-semibold text-ink-2">
+                <Link
+                  key={slug}
+                  href={`/tags/${slug}`}
+                  className="rounded-full bg-surface-2 px-2.5 py-1 text-xs font-semibold text-ink-2 hover:bg-line transition-colors"
+                  title={`Browse ${i.label}`}
+                >
                   {i.emoji} {i.label}
-                </span>
+                </Link>
               );
             })}
           </div>

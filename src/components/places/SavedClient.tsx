@@ -92,8 +92,10 @@ export function SavedClient({ places }: { places: Place[] }) {
       {sort === "nearest" && !geo.location ? (
         <p className="text-xs text-muted -mt-1">
           {geo.status === "denied"
-            ? "Location unavailable, so the order is unchanged."
-            : "Finding your location to sort by distance…"}
+            ? "Location permission is off, so the order is unchanged."
+            : geo.status === "unsupported"
+              ? "This browser cannot provide a location, so the order is unchanged."
+              : "Finding your location to sort by distance…"}
         </p>
       ) : null}
 

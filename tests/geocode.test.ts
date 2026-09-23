@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   bboxFromNominatim,
   buildAddressQuery,
+  composeAddress,
+  composeGeocodeQuery,
   mapMapbox,
   mapNominatim,
   shortLabel,
@@ -13,6 +15,14 @@ describe("buildAddressQuery", () => {
     expect(buildAddressQuery(["1210 Oak St", null, "Columbus"])).toBe("1210 Oak St, Columbus");
     expect(buildAddressQuery([" ", undefined, ""])).toBe("");
     expect(buildAddressQuery(["  Oak St  ", "Columbus"])).toBe("Oak St, Columbus");
+  });
+});
+
+describe("progressive address fields", () => {
+  it("keeps city and street useful when an exact address is omitted", () => {
+    expect(composeAddress({ city: "Columbus", streetName: "High Street", exactAddress: "" }, true)).toBe("High Street, Columbus");
+    expect(composeAddress({ city: "Columbus", streetName: "High Street", exactAddress: "900 N High St" }, true)).toBe("900 N High St, Columbus");
+    expect(composeGeocodeQuery({ city: "Columbus", streetName: "High Street", exactAddress: "", neighborhood: "Clintonville" })).toBe("High Street, Clintonville, Columbus");
   });
 });
 

@@ -22,14 +22,25 @@ import { PlacePhotos } from "@/components/places/PlacePhotos";
 import { PlaceReviews } from "@/components/places/PlaceReviews";
 import { PlaceOwnerControls } from "@/components/places/PlaceOwnerControls";
 import { VisibilityNotice } from "@/components/places/VisibilityNotice";
+import { shareMetadata } from "@/lib/utils/share-metadata";
+import { neighborhoodHref } from "@/lib/utils/neighborhoods";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: PageProps<"/places/[id]">): Promise<Metadata> {
   const { id } = await params;
   const repo = await getRepository();
+  // No viewer on purpose: crawlers are anonymous, so only public listings unfurl.
   const place = await repo.places.get(id);
-  return { title: place?.name ?? "Place" };
+  if (!place) return { title: "Place" };
+  const where = [place.neighborhood, place.city].filter(Boolean).join(", ");
+  return shareMetadata({
+    title: place.name,
+    description: place.localTip ? `${place.localTip} · ${where}` : `${place.description} · ${where}`,
+    path: `/places/${place.id}`,
+    image: place.photos[0]?.url ?? null,
+    type: "article",
+  });
 }
 
 export default async function PlacePage({ params, searchParams }: PageProps<"/places/[id]">) {
@@ -69,7 +80,11 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
         <div className="card p-5 flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <CategoryBadge slug={place.categorySlug} />
-            {place.neighborhood ? <span className="text-sm text-muted">{place.neighborhood}</span> : null}
+            {place.neighborhood ? (
+              <Link href={neighborhoodHref(place.neighborhood)} className="text-sm text-muted hover:text-flare-600 underline-offset-4 hover:underline" title={`Browse ${place.neighborhood}`}>
+                {place.neighborhood}
+              </Link>
+            ) : null}
           </div>
           <h1 className="text-3xl leading-tight font-bold">{place.name}</h1>
           <div className="flex items-center gap-3 text-sm text-ink-2 flex-wrap">
@@ -115,9 +130,9 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
               {place.tags.map((t) => {
                 const i = getInterest(t);
                 return (
-                  <span key={t} className="chip h-8 text-xs">
+                  <Link key={t} href={`/tags/${t}`} className="chip h-8 text-xs" title={`Browse ${i.label}`}>
                     <span aria-hidden>{i.emoji}</span> {i.label}
-                  </span>
+                  </Link>
                 );
               })}
             </div>

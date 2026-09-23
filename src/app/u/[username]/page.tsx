@@ -3,12 +3,26 @@ import type { Metadata } from "next";
 import { getRepository } from "@/lib/data";
 import { getViewer } from "@/lib/auth/server";
 import { ProfileView } from "@/components/profile/ProfileView";
+import { shareMetadata } from "@/lib/utils/share-metadata";
+import { getInterest } from "@/lib/data/taxonomy";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: PageProps<"/u/[username]">): Promise<Metadata> {
   const { username } = await params;
-  return { title: `@${username}` };
+  const repo = await getRepository();
+  const profile = await repo.profiles.getByUsername(username);
+  if (!profile) return { title: `@${username}` };
+  const into = profile.interests.slice(0, 4).map((slug) => getInterest(slug).label).join(", ");
+  const facts = [profile.homeCity ? `Local in ${profile.homeCity}` : null, into ? `Into ${into}` : null].filter(Boolean).join(" · ");
+  const description = profile.bio || facts || `@${profile.username} on FindMaxxing`;
+  return shareMetadata({
+    title: `${profile.displayName} (@${profile.username})`,
+    description,
+    path: `/u/${profile.username}`,
+    image: profile.avatarUrl,
+    type: "profile",
+  });
 }
 
 export default async function UserPage({ params }: PageProps<"/u/[username]">) {

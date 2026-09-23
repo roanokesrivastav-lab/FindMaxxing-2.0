@@ -1,6 +1,6 @@
 "use client";
 import { forwardRef, useImperativeHandle, useRef, type ComponentType, type RefAttributes } from "react";
-import type { MapProps, MapRef, MarkerProps, NavigationControlProps, GeolocateControlProps } from "react-map-gl/maplibre";
+import type { MapProps, MapRef, MarkerProps, NavigationControlProps } from "react-map-gl/maplibre";
 import type { MapMarker, ViewState, LngLat } from "@/lib/map/types";
 import { PlacePin, EventPin, UserDot, DraftPin } from "./Pin";
 
@@ -13,7 +13,6 @@ export interface MapLibComponents {
   Map: ComponentType<MapProps & RefAttributes<MapRef>>;
   Marker: ComponentType<MarkerProps>;
   NavigationControl: ComponentType<NavigationControlProps>;
-  GeolocateControl: ComponentType<GeolocateControlProps>;
 }
 
 export interface MapCanvasHandle {
@@ -65,7 +64,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
   },
   ref,
 ) {
-  const { Map, Marker, NavigationControl, GeolocateControl } = lib;
+  const { Map, Marker, NavigationControl } = lib;
   const mapRef = useRef<MapRef>(null);
 
   const paddingOptions = padding
@@ -107,7 +106,6 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
       {showControls ? (
         <>
           <NavigationControl position="bottom-right" showCompass={false} />
-          <GeolocateControl position="bottom-right" trackUserLocation={false} showUserLocation={false} />
         </>
       ) : null}
 

@@ -62,6 +62,11 @@ export const eventSchema = z
     placeId: z.string().uuid().optional().or(z.literal("")).transform((v) => (v ? v : null)),
     locationName: trimmed(2, 120, "Location name"),
     address: optionalText(160),
+    // Events retain this in their address snapshot rather than a separate DB
+    // column, but validating it keeps the progressive address flow consistent.
+    // Events retain this in their address snapshot rather than a separate DB
+    // column. Older callers may omit it; the current form requires it in the UI.
+    city: optionalText(80),
     lat: latSchema,
     lng: lngSchema,
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a date"),
@@ -194,6 +199,14 @@ export const signInSchema = z.object({
 });
 
 export const uuidSchema = z.string().uuid();
+
+/** Free-text search box input. Collapses whitespace; empty means "no search". */
+export const searchQuerySchema = z
+  .string()
+  .trim()
+  .max(60)
+  .transform((v) => v.replace(/\s+/g, " "))
+  .catch("");
 
 export function categoryExists(slug: string) {
   return slug in CATEGORY_MAP;

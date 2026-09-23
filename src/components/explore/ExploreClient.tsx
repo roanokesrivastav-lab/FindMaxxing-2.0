@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, List, LocateFixed, Map as MapIcon, Search, SlidersHorizontal, X } from "lucide-react";
+import { ChevronDown, List, LocateFixed, Map as MapIcon, PanelLeftClose, PanelLeftOpen, Search, SlidersHorizontal, X } from "lucide-react";
 import type { Event, Place } from "@/lib/data/types";
 import type { MapCanvasHandle } from "@/components/map/MapCanvas";
 import { MapView } from "@/components/map/MapView";
@@ -23,7 +23,7 @@ import { Sheet } from "@/components/ui/Sheet";
 import { usePersistentJson } from "@/lib/utils/usePersistentJson";
 
 const FOLD_STORAGE_KEY = "findmaxxing:explore-folds";
-const DEFAULT_FOLDS = { events: true, places: true };
+const DEFAULT_FOLDS = { events: true, places: true, panel: true };
 
 type Kind = "all" | "places" | "events";
 type Selected = { kind: "place"; item: Place } | { kind: "event"; item: Event } | null;
@@ -47,8 +47,11 @@ export function ExploreClient({ places, events, viewer }: { places: Place[]; eve
   const [folds, setFolds] = usePersistentJson(FOLD_STORAGE_KEY, DEFAULT_FOLDS);
   const eventsOpen = folds.events;
   const placesOpen = folds.places;
+  // Collapsing the whole panel hands the entire map over on desktop. Mobile
+  // already has the map/list toggle, so this control is desktop-only.
+  const panelOpen = folds.panel;
   const setFold = useCallback(
-    (section: "events" | "places", open: boolean) => setFolds({ ...folds, [section]: open }),
+    (section: "events" | "places" | "panel", open: boolean) => setFolds({ ...folds, [section]: open }),
     [folds, setFolds],
   );
   const [selected, setSelected] = useState<Selected>(null);
@@ -190,6 +193,12 @@ export function ExploreClient({ places, events, viewer }: { places: Place[]; eve
             </button>
           </div>
           <ChipRow>
+            <Link href="/new" className="chip shrink-0 snap-start" title="What locals added in the last 7 days">
+              ✨ New
+            </Link>
+            <Link href="/neighborhoods" className="chip shrink-0 snap-start md:hidden" title="Browse by neighborhood">
+              🗺️ Areas
+            </Link>
             <Chip active={kind === "events"} onClick={() => setKind(kind === "events" ? "all" : "events")} color="#6b4cff">
               📅 Events
             </Chip>
@@ -221,8 +230,9 @@ export function ExploreClient({ places, events, viewer }: { places: Place[]; eve
           <button
             type="button"
             onClick={geo.request}
-            className="md:hidden h-11 w-11 rounded-full bg-surface border border-line shadow-card inline-flex items-center justify-center"
+            className="h-11 w-11 rounded-full bg-surface border border-line shadow-card inline-flex items-center justify-center"
             aria-label="Use my location"
+            title={geo.status === "denied" ? "Location permission is off" : "Use my location"}
           >
             <LocateFixed size={18} className={geo.status === "requesting" ? "animate-pulse" : geo.location ? "text-[#3b6fd6]" : ""} />
           </button>
@@ -230,7 +240,7 @@ export function ExploreClient({ places, events, viewer }: { places: Place[]; eve
 
         {/* Selected pin preview */}
         {selected ? (
-          <div className="absolute inset-x-0 z-30 px-4 md:left-[420px] md:right-4" style={{ bottom: "calc(var(--nav-height) + var(--safe-bottom) + 5.25rem)" }}>
+          <div className={cn("absolute inset-x-0 z-30 px-4 md:right-4", panelOpen ? "md:left-[420px]" : "md:left-4")} style={{ bottom: "calc(var(--nav-height) + var(--safe-bottom) + 5.25rem)" }}>
             <div className="max-w-md mx-auto md:mx-0">
               <PreviewCard selected={selected} onClose={() => setSelected(null)} distanceMeters={geo.location ? distanceMeters(geo.location, selected.item) : null} />
             </div>
@@ -248,7 +258,8 @@ export function ExploreClient({ places, events, viewer }: { places: Place[]; eve
       {/* List panel: full-screen on mobile (list mode), side drawer on desktop */}
       <div
         className={cn(
-          "md:absolute md:left-4 md:top-[8.5rem] md:bottom-4 md:w-[380px] md:z-20 md:flex md:flex-col",
+          "md:absolute md:left-4 md:top-[8.5rem] md:bottom-4 md:w-[380px] md:z-20 md:flex-col",
+          panelOpen ? "md:flex" : "md:hidden",
           mode === "list" ? "flex flex-col flex-1 overflow-hidden pt-[9.75rem]" : "hidden",
         )}
       >
@@ -268,6 +279,15 @@ export function ExploreClient({ places, events, viewer }: { places: Place[]; eve
               ) : null}
               <button type="button" onClick={() => setMode("map")} className="md:hidden chip" aria-label="Show map">
                 <MapIcon size={15} /> Map
+              </button>
+              <button
+                type="button"
+                onClick={() => setFold("panel", false)}
+                className="hidden md:inline-flex h-8 w-8 items-center justify-center rounded-full text-muted hover:bg-surface-2 hover:text-ink transition-colors"
+                aria-label="Hide the list and show the whole map"
+                title="Hide list"
+              >
+                <PanelLeftClose size={17} />
               </button>
             </div>
           </div>
@@ -324,6 +344,18 @@ export function ExploreClient({ places, events, viewer }: { places: Place[]; eve
           </div>
         </div>
       </div>
+
+      {/* Brings the collapsed panel back. Sits where its header was. */}
+      {!panelOpen ? (
+        <button
+          type="button"
+          onClick={() => setFold("panel", true)}
+          className="hidden md:inline-flex absolute left-4 top-[8.5rem] z-20 items-center gap-2 rounded-full bg-surface border border-line shadow-card px-4 h-11 font-semibold text-sm hover:bg-surface-2 transition-colors animate-rise"
+        >
+          <PanelLeftOpen size={17} />
+          {totalResults ? `${totalResults} nearby` : "Nothing matches"}
+        </button>
+      ) : null}
 
       {/* Filters sheet */}
       <Sheet open={filtersOpen} onClose={() => setFiltersOpen(false)} title="Filters">

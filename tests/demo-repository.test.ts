@@ -398,4 +398,33 @@ describe("tier 2 — community layer", () => {
     // maya did not report her own content, so her owner-side inbox excludes what she filed.
     expect((await repo.reports.listAgainstMyContent(maya.id)).some((r) => r.targetId === lumen)).toBe(false);
   });
+
+  it("searches people by username, display name and city with exact matches first", async () => {
+    expect(await repo.profiles.search("")).toEqual([]);
+    expect(await repo.profiles.search("   ")).toEqual([]);
+
+    const byUsername = await repo.profiles.search("maya_r");
+    expect(byUsername[0]?.username).toBe("maya_r");
+
+    const byName = await repo.profiles.search("LENA");
+    expect(byName.map((p) => p.username)).toContain("lena");
+
+    const byCity = await repo.profiles.search("cleveland");
+    expect(byCity.map((p) => p.username)).toEqual(["nina"]);
+
+    // A username prefix ranks above a substring elsewhere in a name.
+    const prefix = await repo.profiles.search("the");
+    expect(prefix[0]?.username).toBe("theo");
+
+    expect(await repo.profiles.search("zzzz-nobody")).toEqual([]);
+    expect((await repo.profiles.search("a", 2)).length).toBeLessThanOrEqual(2);
+  });
+
+  it("lists people by interest", async () => {
+    const runners = await repo.profiles.listByInterest("running");
+    expect(runners.map((p) => p.username).sort()).toEqual(["maya_r", "priya"]);
+    expect(runners.every((p) => p.interests.includes("running"))).toBe(true);
+    expect(await repo.profiles.listByInterest("not-an-interest")).toEqual([]);
+    expect((await repo.profiles.listByInterest("social", 1)).length).toBe(1);
+  });
 });

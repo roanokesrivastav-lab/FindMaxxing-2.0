@@ -2,7 +2,7 @@
 import "maplibre-gl/dist/maplibre-gl.css";
 import { setWorkerUrl } from "maplibre-gl";
 import { forwardRef } from "react";
-import { Map, Marker, NavigationControl, GeolocateControl } from "react-map-gl/maplibre";
+import { Map, Marker, NavigationControl } from "react-map-gl/maplibre";
 import { MapCanvas, type MapCanvasHandle, type MapCanvasProps, type MapLibComponents } from "./MapCanvas";
 import { MAPLIBRE_FALLBACK_STYLE } from "@/lib/map/config";
 
@@ -14,7 +14,7 @@ if (typeof window !== "undefined") {
   setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
 }
 
-const lib: MapLibComponents = { Map, Marker, NavigationControl, GeolocateControl };
+const lib: MapLibComponents = { Map, Marker, NavigationControl };
 
 const MapLibreCanvas = forwardRef<MapCanvasHandle, Omit<MapCanvasProps, "lib" | "mapStyle">>(function MapLibreCanvas(props, ref) {
   return <MapCanvas ref={ref} lib={lib} mapStyle={MAPLIBRE_FALLBACK_STYLE} {...props} />;

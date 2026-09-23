@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Plus, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
-import { NAV_ITEMS } from "./nav-items";
+import { BROWSE_ITEMS, NAV_ITEMS } from "./nav-items";
 import { Logo } from "./Logo";
 import { Avatar } from "@/components/ui/Avatar";
 import { CreateMenu } from "./CreateMenu";
@@ -34,6 +34,27 @@ export function SideRail({ viewer, dataMode }: { viewer: ShellViewer | null; dat
               )}
             >
               <Icon size={20} strokeWidth={active ? 2.4 : 2} />
+              {item.label}
+            </Link>
+          );
+        })}
+      </nav>
+      <nav className="mt-5 flex flex-col gap-0.5" aria-label="Browse">
+        <p className="px-3 mb-1 text-[11px] font-bold uppercase tracking-[0.12em] text-muted">Browse</p>
+        {BROWSE_ITEMS.map((item) => {
+          const active = item.match(pathname);
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "flex items-center gap-3 rounded-xl px-3 h-10 text-sm font-semibold transition-colors",
+                active ? "bg-surface-2 text-ink" : "text-ink-2 hover:bg-surface-2",
+              )}
+            >
+              <Icon size={17} />
               {item.label}
             </Link>
           );

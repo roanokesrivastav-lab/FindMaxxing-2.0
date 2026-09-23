@@ -59,13 +59,22 @@ async function pinCoords(page) {
 
   check("no pin before an address is typed", (await pinCoords(page)) === null);
 
-  await page.fill("#address", "1210 Oak St");
   await page.fill("#city", "Columbus");
+  await page.waitForTimeout(4000);
+  const cityOnly = await pinCoords(page);
+  check("city alone moves the pin to the area", !!cityOnly && Math.abs(cityOnly.lat - 39.96) < 0.2, cityOnly ? `${cityOnly.lat}, ${cityOnly.lng}` : "no pin");
+
+  await page.fill("#streetName", "Oak St");
+  await page.waitForTimeout(4000);
+  const street = await pinCoords(page);
+  check("street name narrows the city pin", !!street && Math.abs(street.lat - 39.9627) < 0.02, street ? `${street.lat}, ${street.lng}` : "no pin");
+
+  await page.fill("#address", "1210 Oak St");
   await page.waitForTimeout(4000);
 
   const moved = await pinCoords(page);
   const near = moved && Math.abs(moved.lat - 39.9627) < 0.01 && Math.abs(moved.lng + 82.9681) < 0.01;
-  check("typing an address moves the pin to that address", !!near, moved ? `${moved.lat}, ${moved.lng}` : "no pin");
+  check("typing an exact address moves the pin close to that address", !!near, moved ? `${moved.lat}, ${moved.lng}` : "no pin");
   await page.screenshot({ path: `${out}/address-pin.png` });
 
   // A neighborhood-only query should land wide rather than on a house.
@@ -175,6 +184,48 @@ async function pinCoords(page) {
   await foldAfterNav.click();
   await page.waitForTimeout(500);
   check("unfolding brings the events back", (await page.locator('a[href^="/events/"]').count()) > 0);
+  await ctx.close();
+}
+
+// ── 4b. The whole panel collapses on desktop ────────────────────────────────
+{
+  const { ctx, page } = await newCtx();
+  await page.goto(base, { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(3500);
+
+  const listItem = page.locator('a[href^="/places/"]').first();
+  check("list panel is shown by default", await listItem.isVisible());
+
+  await page.getByRole("button", { name: /Hide the list/ }).click();
+  await page.waitForTimeout(900);
+  check("hiding the panel clears the map", !(await listItem.isVisible().catch(() => false)));
+
+  const restore = page.getByRole("button", { name: /nearby|Nothing matches/ });
+  check("a control to bring the list back is offered", await restore.isVisible());
+  await page.screenshot({ path: `${out}/panel-collapsed.png` });
+
+  await page.goto(`${base}/events`, { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(1200);
+  await page.goto(base, { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(3500);
+  check(
+    "the collapsed panel stays collapsed across navigation",
+    !(await page.locator('a[href^="/places/"]').first().isVisible().catch(() => false)),
+  );
+
+  await page.getByRole("button", { name: /nearby|Nothing matches/ }).click();
+  await page.waitForTimeout(900);
+  check("restoring brings the list back", await page.locator('a[href^="/places/"]').first().isVisible());
+  await ctx.close();
+}
+
+// Mobile keeps its own map/list toggle and gains no desktop-only control.
+{
+  const { ctx, page } = await newCtx(390, 844);
+  await page.goto(base, { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(3500);
+  check("mobile has no desktop hide control", !(await page.getByRole("button", { name: /Hide the list/ }).isVisible().catch(() => false)));
+  check("mobile keeps its map/list toggle", await page.getByRole("button", { name: /^List$/ }).isVisible());
   await ctx.close();
 }
 

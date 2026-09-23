@@ -668,6 +668,45 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
           .slice(0, limit)
           .map(({ p }) => p);
       },
+      async search(query, limit = 20) {
+        // Strip PostgREST filter syntax and LIKE wildcards so the user's text
+        // can only ever be a literal substring match.
+        const q = query.trim().toLowerCase().replace(/[,()%_\\"]/g, "");
+        if (!q) return [];
+        const rows = unwrap(
+          await supabase
+            .from("profiles")
+            .select(PROFILE_SELECT)
+            .or(`username.ilike.%${q}%,display_name.ilike.%${q}%,home_city.ilike.%${q}%`)
+            .limit(Math.max(limit * 3, limit)),
+        ) as ProfileRow[];
+        const rank = (p: Profile) => {
+          const username = p.username.toLowerCase();
+          const name = p.displayName.toLowerCase();
+          if (username === q || name === q) return 0;
+          if (username.startsWith(q) || name.startsWith(q)) return 1;
+          if (username.includes(q) || name.includes(q)) return 2;
+          return 3;
+        };
+        return rows
+          .map(mapProfile)
+          .sort((a, b) => rank(a) - rank(b) || a.displayName.localeCompare(b.displayName))
+          .slice(0, limit);
+      },
+      async listByInterest(interestSlug, limit = 50) {
+        const links = unwrap(
+          await supabase.from("profile_interests").select("profile_id").eq("interest_slug", interestSlug).limit(limit),
+        ) as { profile_id: string }[];
+        if (!links.length) return [];
+        const rows = unwrap(
+          await supabase
+            .from("profiles")
+            .select(PROFILE_SELECT)
+            .in("id", links.map((l) => l.profile_id))
+            .order("created_at", { ascending: false }),
+        ) as ProfileRow[];
+        return rows.map(mapProfile);
+      },
     },
 
     reports: {

@@ -18,14 +18,20 @@ export function useGeolocation(auto = false) {
       return;
     }
     setStatus("requesting");
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        setStatus("granted");
-      },
-      () => setStatus("denied"),
-      { enableHighAccuracy: false, timeout: 8000, maximumAge: 60_000 },
-    );
+    try {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+          setStatus("granted");
+        },
+        (error) => setStatus(error.code === error.POSITION_UNAVAILABLE ? "unsupported" : "denied"),
+        { enableHighAccuracy: false, timeout: 8000, maximumAge: 60_000 },
+      );
+    } catch {
+      // Some browsers throw synchronously when location is blocked by the
+      // document's permissions policy instead of calling the error callback.
+      setStatus("unsupported");
+    }
   }, []);
 
   useEffect(() => {
