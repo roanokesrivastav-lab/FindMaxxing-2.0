@@ -1,11 +1,11 @@
 "use client";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, List, LocateFixed, Map as MapIcon, PanelLeftClose, PanelLeftOpen, Search, SlidersHorizontal, X } from "lucide-react";
-import type { Event, Place } from "@/lib/data/types";
+import { ChevronDown, List, Loader2, LocateFixed, Map as MapIcon, PanelLeftClose, PanelLeftOpen, RotateCw, Search, SlidersHorizontal, X } from "lucide-react";
+import type { Event, GeoBounds, Place } from "@/lib/data/types";
 import type { MapCanvasHandle } from "@/components/map/MapCanvas";
 import { MapView } from "@/components/map/MapView";
-import { CATEGORIES, INTERESTS, getInterest, searchTerms } from "@/lib/data/taxonomy";
+import { CATEGORIES, INTERESTS, getInterest } from "@/lib/data/taxonomy";
 import { eventMarker, placeMarker } from "@/lib/map/markers";
 import type { MapMarker, ViewState } from "@/lib/map/types";
 import { DEFAULT_CENTER, DEFAULT_ZOOM } from "@/lib/config";
@@ -14,7 +14,10 @@ import { Chip, ChipRow } from "@/components/ui/Chip";
 import { PlaceCard } from "@/components/places/PlaceCard";
 import { EventCard } from "@/components/events/EventCard";
 import { PreviewCard } from "./PreviewCard";
-import { distanceMeters } from "@/lib/utils/geo";
+import { boundsFromPoints, distanceMeters } from "@/lib/utils/geo";
+import { sameBounds } from "@/lib/map/bounds";
+import { useDiscovery } from "./useDiscovery";
+import type { DiscoveryRequest, DiscoveryResults } from "./discoveryRequest";
 import { cn } from "@/lib/utils/cn";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Logo } from "@/components/layout/Logo";
@@ -25,7 +28,9 @@ import { usePersistentJson } from "@/lib/utils/usePersistentJson";
 const FOLD_STORAGE_KEY = "findmaxxing:explore-folds";
 const DEFAULT_FOLDS = { events: true, places: true, panel: true };
 
-type Kind = "all" | "places" | "events";
+type Kind = DiscoveryRequest["kind"];
+/** Events shown in the mixed list before handing off to /events. */
+const EVENTS_PREVIEW = 4;
 type Selected = { kind: "place"; item: Place } | { kind: "event"; item: Event } | null;
 
 export interface ExploreViewer {
@@ -34,7 +39,15 @@ export interface ExploreViewer {
   interests: string[];
 }
 
-export function ExploreClient({ places, events, viewer }: { places: Place[]; events: Event[]; viewer: ExploreViewer | null }) {
+export function ExploreClient({
+  initial,
+  initialRequest,
+  viewer,
+}: {
+  initial: DiscoveryResults;
+  initialRequest: DiscoveryRequest;
+  viewer: ExploreViewer | null;
+}) {
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const [kind, setKind] = useState<Kind>("all");
@@ -69,65 +82,75 @@ export function ExploreClient({ places, events, viewer }: { places: Place[]; eve
     }
   }, [geo.location]);
 
-  const origin = useMemo(
-    () => geo.location ?? { lat: view.latitude, lng: view.longitude },
-    [geo.location, view.latitude, view.longitude],
+  // The settled viewport. Browsing follows it; a text search covers everywhere
+  // until the viewer asks to search this area.
+  const [viewport, setViewport] = useState<GeoBounds | null>(null);
+  const [searchArea, setSearchArea] = useState<GeoBounds | null>(null);
+  const text = deferredQuery.trim();
+  const searching = text.length > 0;
+  const request = useMemo<DiscoveryRequest>(
+    () => ({
+      bounds: searching ? searchArea : (viewport ?? initialRequest.bounds),
+      text,
+      category,
+      tags: interests,
+      kind,
+    }),
+    [searching, searchArea, viewport, initialRequest.bounds, text, category, interests, kind],
   );
+  const discovery = useDiscovery(request, initial, initialRequest);
+  const { results } = discovery;
+  const places = results.places.items;
+  const events = results.events.items;
 
-  const q = deferredQuery.trim().toLowerCase();
-  const matchText = useCallback(
-    (text: (string | null | undefined)[]) => !q || text.some((t) => t && t.toLowerCase().includes(q)),
-    [q],
-  );
+  const markers = useMemo<MapMarker[]>(() => {
+    const list = [...(results.placeMarkers?.items ?? []).map(placeMarker), ...(results.eventMarkers?.items ?? []).map(eventMarker)];
+    // Keep the selected pin on the map across refreshes, even once it falls
+    // outside the new results.
+    if (selected && !list.some((m) => m.id === selected.item.id)) {
+      list.push(selected.kind === "place" ? placeMarker(selected.item) : eventMarker(selected.item));
+    }
+    return list;
+  }, [results.placeMarkers, results.eventMarkers, selected]);
 
-  const filteredPlaces = useMemo(
-    () =>
-      kind === "events"
-        ? []
-        : places.filter(
-            (p) =>
-              (!category || p.categorySlug === category) &&
-              (interests.length === 0 || interests.some((i) => p.tags.includes(i))) &&
-              matchText([p.name, p.description, p.localTip, p.neighborhood, ...searchTerms(p.categorySlug, p.tags)]),
-          ),
-    [places, kind, category, interests, matchText],
-  );
+  // A fresh search everywhere: bring its matches into view.
+  const fittedFor = useRef<unknown>(null);
+  useEffect(() => {
+    if (!searching || searchArea || discovery.stale || fittedFor.current === results.placeMarkers) return;
+    fittedFor.current = results.placeMarkers;
+    const points = [...(results.placeMarkers?.items ?? []), ...(results.eventMarkers?.items ?? [])];
+    const box = boundsFromPoints(points, 0.005);
+    if (box) mapRef.current?.fitBounds([[box.west, box.south], [box.east, box.north]], 80, 14);
+  }, [searching, searchArea, discovery.stale, results.placeMarkers, results.eventMarkers]);
 
-  const filteredEvents = useMemo(
-    () =>
-      kind === "places"
-        ? []
-        : events.filter(
-            (e) =>
-              (!category || e.categorySlug === category) &&
-              (interests.length === 0 || interests.some((i) => e.tags.includes(i))) &&
-              matchText([e.title, e.description, e.locationName, ...searchTerms(e.categorySlug, e.tags)]),
-          ),
-    [events, kind, category, interests, matchText],
-  );
-
-  const markers = useMemo<MapMarker[]>(
-    () => [...filteredPlaces.map(placeMarker), ...filteredEvents.map(eventMarker)],
-    [filteredPlaces, filteredEvents],
-  );
-
-  const sortedPlaces = useMemo(
-    () => [...filteredPlaces].sort((a, b) => distanceMeters(origin, a) - distanceMeters(origin, b)),
-    [filteredPlaces, origin],
-  );
+  const placeCount = results.placeMarkers?.items.length ?? 0;
+  const eventCount = results.eventMarkers?.items.length ?? 0;
+  const truncated = !!(results.placeMarkers?.truncated || results.eventMarkers?.truncated);
+  const scope = searching && !searchArea ? "everywhere" : "nearby";
+  const canSearchArea = searching && !!viewport && !sameBounds(searchArea, viewport);
 
   const activeFilterCount = (category ? 1 : 0) + interests.length + (kind !== "all" ? 1 : 0);
-  const totalResults = filteredPlaces.length + filteredEvents.length;
+  const totalResults = placeCount + eventCount;
 
-  const onMarkerClick = (m: MapMarker) => {
-    if (m.kind === "place") {
-      const item = places.find((p) => p.id === m.id);
-      if (item) setSelected({ kind: "place", item });
-    } else {
-      const item = events.find((e) => e.id === m.id);
-      if (item) setSelected({ kind: "event", item });
-    }
+  // Pins are compact records; the preview needs the full one. Use it if a list
+  // page already has it, otherwise fetch it. Only the latest click wins.
+  const lastClick = useRef<string | null>(null);
+  const onMarkerClick = async (m: MapMarker) => {
+    lastClick.current = m.id;
     mapRef.current?.flyTo({ lat: m.lat, lng: m.lng }, Math.max(view.zoom, 14));
+    const loaded = m.kind === "place" ? places.find((p) => p.id === m.id) : events.find((e) => e.id === m.id);
+    if (loaded) {
+      setSelected(m.kind === "place" ? { kind: "place", item: loaded as Place } : { kind: "event", item: loaded as Event });
+      return;
+    }
+    try {
+      const res = await fetch(`/api/discover/item?kind=${m.kind}&id=${m.id}`);
+      if (!res.ok || lastClick.current !== m.id) return;
+      const item = await res.json();
+      setSelected(m.kind === "place" ? { kind: "place", item: item as Place } : { kind: "event", item: item as Event });
+    } catch {
+      // The pin stays highlighted-free; the viewer can tap again.
+    }
   };
 
   const clearFilters = () => {
@@ -164,13 +187,24 @@ export function ExploreClient({ places, events, viewer }: { places: Place[]; eve
               <input
                 type="search"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setSearchArea(null);
+                }}
                 placeholder="Pickup soccer, study spot, cheap tacos…"
                 className="flex-1 bg-transparent outline-none text-[15px] placeholder:text-muted min-w-0"
                 aria-label="Search places and events"
               />
               {query ? (
-                <button type="button" onClick={() => setQuery("")} aria-label="Clear search" className="text-muted">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery("");
+                    setSearchArea(null);
+                  }}
+                  aria-label="Clear search"
+                  className="text-muted"
+                >
                   <X size={16} />
                 </button>
               ) : null}
@@ -217,6 +251,7 @@ export function ExploreClient({ places, events, viewer }: { places: Place[]; eve
           ref={mapRef}
           viewState={view}
           onViewStateChange={setView}
+          onBoundsChange={setViewport}
           markers={markers}
           activeMarkerId={selected?.item.id ?? null}
           onMarkerClick={onMarkerClick}
@@ -238,6 +273,41 @@ export function ExploreClient({ places, events, viewer }: { places: Place[]; eve
           </button>
         </div>
 
+        {/* Query status: loading, errors, dense areas, search scope */}
+        <div
+          className={cn(
+            "absolute inset-x-0 top-[10.25rem] md:top-[9rem] z-20 flex justify-center px-4 pointer-events-none",
+            // Center over the visible map, not behind the desktop list panel.
+            panelOpen && "md:left-[400px]",
+          )}
+        >
+          <div className="pointer-events-auto flex flex-wrap justify-center gap-2" aria-live="polite">
+            {discovery.status === "loading" ? (
+              <span className="chip bg-surface shadow-card">
+                <Loader2 size={14} className="animate-spin" /> Updating
+              </span>
+            ) : null}
+            {discovery.status === "error" ? (
+              <button type="button" onClick={discovery.retry} className="chip bg-surface shadow-card text-flare-600">
+                <RotateCw size={14} /> Couldn&apos;t load results. Retry
+              </button>
+            ) : null}
+            {canSearchArea ? (
+              <button type="button" onClick={() => setSearchArea(viewport)} className="chip shadow-card" data-active="true">
+                <Search size={14} /> Search this area
+              </button>
+            ) : null}
+            {searching && searchArea ? (
+              <button type="button" onClick={() => setSearchArea(null)} className="chip bg-surface shadow-card">
+                Search everywhere
+              </button>
+            ) : null}
+            {truncated && discovery.status !== "loading" ? (
+              <span className="chip bg-surface shadow-card">Showing the top {placeCount + eventCount} here. Zoom in for more</span>
+            ) : null}
+          </div>
+        </div>
+
         {/* Selected pin preview */}
         {selected ? (
           <div className={cn("absolute inset-x-0 z-30 px-4 md:right-4", panelOpen ? "md:left-[420px]" : "md:left-4")} style={{ bottom: "calc(var(--nav-height) + var(--safe-bottom) + 5.25rem)" }}>
@@ -250,7 +320,7 @@ export function ExploreClient({ places, events, viewer }: { places: Place[]; eve
         {/* Map-mode bottom summary (mobile) */}
         <div className="md:hidden absolute inset-x-0 z-20 px-4" style={{ bottom: "calc(var(--nav-height) + var(--safe-bottom) + 0.75rem)" }}>
           <div className="mx-auto max-w-md">
-            <ResultsSummary total={totalResults} places={filteredPlaces.length} events={filteredEvents.length} onList={() => setMode("list")} activeFilters={activeFilterCount} onClear={clearFilters} />
+            <ResultsSummary total={totalResults} truncated={truncated} scope={scope} places={placeCount} events={eventCount} onList={() => setMode("list")} activeFilters={activeFilterCount} onClear={clearFilters} />
           </div>
         </div>
       </div>
@@ -266,9 +336,9 @@ export function ExploreClient({ places, events, viewer }: { places: Place[]; eve
         <div className="md:card md:overflow-hidden flex-1 flex flex-col min-h-0 bg-paper md:bg-surface">
           <div className="flex items-center justify-between px-4 py-3 border-b border-line">
             <div>
-              <p className="font-bold">{totalResults ? `${totalResults} nearby` : "Nothing matches"}</p>
+              <p className="font-bold">{resultsLabel(totalResults, truncated, scope)}</p>
               <p className="text-xs text-muted">
-                {filteredPlaces.length} places · {filteredEvents.length} events
+                {countLabel(placeCount, truncated, "place")} · {countLabel(eventCount, truncated, "event")}
               </p>
             </div>
             <div className="flex gap-2">
@@ -292,11 +362,20 @@ export function ExploreClient({ places, events, viewer }: { places: Place[]; eve
             </div>
           </div>
           <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-3 pb-nav md:pb-4">
-            {totalResults === 0 ? (
+            {totalResults === 0 && discovery.status === "loading" ? (
+              <p className="text-sm text-muted text-center py-6">Searching…</p>
+            ) : null}
+            {totalResults === 0 && discovery.status !== "loading" ? (
               <EmptyState
                 emoji="🧭"
                 title="Nothing here yet"
-                body={q ? `No matches for “${query}”. Try fewer words or another filter.` : "Try a different category, or be the first to add something."}
+                body={
+                  searching
+                    ? searchArea
+                      ? `No matches for “${text}” in this area. Try searching everywhere.`
+                      : `No matches for “${text}”. Try fewer words or another filter.`
+                    : "Try moving the map, another category, or be the first to add something."
+                }
                 action={
                   <Link href="/places/new" className="chip" data-active="true">
                     + Add a place
@@ -304,41 +383,49 @@ export function ExploreClient({ places, events, viewer }: { places: Place[]; eve
                 }
               />
             ) : null}
-            {filteredEvents.length ? (
+            {events.length ? (
               <section className="flex flex-col gap-2">
                 <FoldHeader
                   label="Events"
-                  count={filteredEvents.length}
+                  count={eventCount}
                   open={eventsOpen}
                   onToggle={() => setFold("events", !eventsOpen)}
                 />
                 {eventsOpen ? (
                   <>
-                    {filteredEvents.slice(0, kind === "events" ? 100 : 4).map((e) => (
+                    {(kind === "events" ? events : events.slice(0, EVENTS_PREVIEW)).map((e) => (
                       <EventCard key={e.id} event={e} compact onHover={() => setSelected({ kind: "event", item: e })} />
                     ))}
-                    {kind === "all" && filteredEvents.length > 4 ? (
+                    {kind === "all" && eventCount > EVENTS_PREVIEW ? (
                       <Link href="/events" className="text-sm font-semibold text-pulse text-center py-1">
-                        See all {filteredEvents.length} events →
+                        See all events →
                       </Link>
+                    ) : null}
+                    {kind === "events" && results.events.nextCursor ? (
+                      <LoadMore loading={discovery.loadingMore === "events"} onClick={() => discovery.loadMore("events")} label="More events" />
                     ) : null}
                   </>
                 ) : null}
               </section>
             ) : null}
-            {sortedPlaces.length ? (
+            {places.length ? (
               <section className="flex flex-col gap-2">
                 <FoldHeader
                   label="Places"
-                  count={sortedPlaces.length}
+                  count={placeCount}
                   open={placesOpen}
                   onToggle={() => setFold("places", !placesOpen)}
                 />
-                {placesOpen
-                  ? sortedPlaces.map((p) => (
+                {placesOpen ? (
+                  <>
+                    {places.map((p) => (
                       <PlaceCard key={p.id} place={p} compact distanceMeters={geo.location ? distanceMeters(geo.location, p) : null} onHover={() => setSelected({ kind: "place", item: p })} />
-                    ))
-                  : null}
+                    ))}
+                    {results.places.nextCursor ? (
+                      <LoadMore loading={discovery.loadingMore === "places"} onClick={() => discovery.loadMore("places")} label="More places" />
+                    ) : null}
+                  </>
+                ) : null}
               </section>
             ) : null}
           </div>
@@ -353,7 +440,7 @@ export function ExploreClient({ places, events, viewer }: { places: Place[]; eve
           className="hidden md:inline-flex absolute left-4 top-[8.5rem] z-20 items-center gap-2 rounded-full bg-surface border border-line shadow-card px-4 h-11 font-semibold text-sm hover:bg-surface-2 transition-colors animate-rise"
         >
           <PanelLeftOpen size={17} />
-          {totalResults ? `${totalResults} nearby` : "Nothing matches"}
+          {resultsLabel(totalResults, truncated, scope)}
         </button>
       ) : null}
 
@@ -434,8 +521,27 @@ function FoldHeader({
   );
 }
 
+function resultsLabel(total: number, truncated: boolean, scope: "nearby" | "everywhere") {
+  if (!total) return "Nothing matches";
+  return `${total}${truncated ? "+" : ""} ${scope === "everywhere" ? (total === 1 ? "match" : "matches") : "nearby"}`;
+}
+
+function countLabel(n: number, truncated: boolean, noun: string) {
+  return `${n}${truncated && n ? "+" : ""} ${noun}${n === 1 ? "" : "s"}`;
+}
+
+function LoadMore({ loading, onClick, label }: { loading: boolean; onClick: () => void; label: string }) {
+  return (
+    <button type="button" onClick={onClick} disabled={loading} className="chip justify-center self-center">
+      {loading ? <Loader2 size={14} className="animate-spin" /> : null} {loading ? "Loading" : label}
+    </button>
+  );
+}
+
 function ResultsSummary({
   total,
+  truncated,
+  scope,
   places,
   events,
   onList,
@@ -443,6 +549,8 @@ function ResultsSummary({
   onClear,
 }: {
   total: number;
+  truncated: boolean;
+  scope: "nearby" | "everywhere";
   places: number;
   events: number;
   onList: () => void;
@@ -452,9 +560,9 @@ function ResultsSummary({
   return (
     <div className="card flex items-center gap-3 px-4 py-2.5">
       <div className="flex-1 min-w-0">
-        <p className="font-bold text-sm">{total ? `${total} nearby` : "Nothing matches"}</p>
+        <p className="font-bold text-sm">{resultsLabel(total, truncated, scope)}</p>
         <p className="text-xs text-muted truncate">
-          {places} places · {events} events
+          {countLabel(places, truncated, "place")} · {countLabel(events, truncated, "event")}
           {activeFilters ? (
             <>
               {" · "}

@@ -4,8 +4,9 @@ import path from "node:path";
 import { getDataMode } from "@/lib/config";
 
 /**
- * Serves images uploaded in demo mode from .data/uploads.
- * In Supabase mode uploads go to Storage and this route is unused.
+ * Serves public demo-mode uploads (avatars) from .data/uploads.
+ * Place photos are private and go through /api/photos/[id], which checks
+ * place visibility. In Supabase mode uploads go to Storage and this route is unused.
  */
 const MIME: Record<string, string> = { jpg: "image/jpeg", png: "image/png", webp: "image/webp" };
 
@@ -13,7 +14,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/uploads/[name]"
   if (getDataMode() !== "demo") return new NextResponse("Not found", { status: 404 });
   const { name } = await ctx.params;
   // Strict allowlist: generated names only (no path traversal possible).
-  if (!/^[a-z]+-[0-9a-f]{8}-[0-9a-f-]{36}\.(jpg|png|webp)$/.test(name)) {
+  if (!/^avatars-[0-9a-f]{8}-[0-9a-f-]{36}\.(jpg|png|webp)$/.test(name)) {
     return new NextResponse("Not found", { status: 404 });
   }
   try {

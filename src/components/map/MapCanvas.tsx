@@ -2,6 +2,8 @@
 import { forwardRef, useImperativeHandle, useRef, type ComponentType, type RefAttributes } from "react";
 import type { MapProps, MapRef, MarkerProps, NavigationControlProps } from "react-map-gl/maplibre";
 import type { MapMarker, ViewState, LngLat } from "@/lib/map/types";
+import type { GeoBounds } from "@/lib/data/types";
+import { normalizeViewportBounds } from "@/lib/map/bounds";
 import { PlacePin, EventPin, UserDot, DraftPin } from "./Pin";
 
 /**
@@ -27,6 +29,8 @@ export interface MapCanvasProps {
   viewState: ViewState;
   onViewStateChange: (v: ViewState) => void;
   onMoveEnd?: (v: ViewState) => void;
+  /** The visible area, once the map loads and each time movement settles. */
+  onBoundsChange?: (bounds: GeoBounds) => void;
   markers: MapMarker[];
   activeMarkerId?: string | null;
   onMarkerClick?: (marker: MapMarker) => void;
@@ -49,6 +53,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     viewState,
     onViewStateChange,
     onMoveEnd,
+    onBoundsChange,
     markers,
     activeMarkerId,
     onMarkerClick,
@@ -66,6 +71,12 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
 ) {
   const { Map, Marker, NavigationControl } = lib;
   const mapRef = useRef<MapRef>(null);
+
+  const reportBounds = (map: { getBounds: () => { getNorth(): number; getSouth(): number; getEast(): number; getWest(): number } }) => {
+    if (!onBoundsChange) return;
+    const b = map.getBounds();
+    onBoundsChange(normalizeViewportBounds({ north: b.getNorth(), south: b.getSouth(), east: b.getEast(), west: b.getWest() }));
+  };
 
   const paddingOptions = padding
     ? { top: padding.top ?? 0, bottom: padding.bottom ?? 0, left: padding.left ?? 0, right: padding.right ?? 0 }
@@ -89,9 +100,15 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
       {...(mapboxAccessToken ? { mapboxAccessToken } : {})}
       {...viewState}
       onMove={(e) => onViewStateChange({ latitude: e.viewState.latitude, longitude: e.viewState.longitude, zoom: e.viewState.zoom })}
-      onMoveEnd={(e) => onMoveEnd?.({ latitude: e.viewState.latitude, longitude: e.viewState.longitude, zoom: e.viewState.zoom })}
+      onMoveEnd={(e) => {
+        onMoveEnd?.({ latitude: e.viewState.latitude, longitude: e.viewState.longitude, zoom: e.viewState.zoom });
+        reportBounds(e.target);
+      }}
       onClick={(e) => onMapClick?.({ lng: e.lngLat.lng, lat: e.lngLat.lat })}
-      onLoad={() => onLoad?.()}
+      onLoad={(e) => {
+        onLoad?.();
+        reportBounds(e.target);
+      }}
       onError={(e) => onError?.(e?.error?.message ?? "Map failed to load")}
       style={{ width: "100%", height: "100%" }}
       attributionControl={{ compact: true }}

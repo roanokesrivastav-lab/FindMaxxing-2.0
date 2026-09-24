@@ -3,6 +3,13 @@ import type {
   Event,
   EventDetail,
   EventListOptions,
+  EventMapRecord,
+  EventSearchOptions,
+  MapQueryOptions,
+  MapResult,
+  Page,
+  PlaceMapRecord,
+  PlaceSearchOptions,
   NewEventInput,
   NewPlaceInput,
   UpdateEventInput,
@@ -13,6 +20,7 @@ import type {
   PlaceDetail,
   PlaceListOptions,
   PlaceRating,
+  PlacePhotoDelivery,
   ReportEntry,
   StoredImage,
   Visibility,
@@ -35,12 +43,27 @@ import type {
 export interface DataRepository {
   places: {
     list(opts?: PlaceListOptions): Promise<Place[]>;
+    /**
+     * Discovery list: every visible published place matching the filters,
+     * newest first (created_at desc, id desc), in cursor pages.
+     */
+    search(opts?: PlaceSearchOptions): Promise<Page<Place>>;
+    /**
+     * Map read model: compact records for the same filters, most notable first
+     * (rating count, save count, id), capped with a truncation flag.
+     */
+    mapMarkers(opts?: MapQueryOptions): Promise<MapResult<PlaceMapRecord>>;
     get(id: string, viewerId?: string | null): Promise<PlaceDetail | null>;
     create(input: NewPlaceInput, creatorId: string): Promise<Place>;
     update(id: string, input: UpdatePlaceInput, creatorId: string): Promise<Place>;
     delete(id: string, creatorId: string): Promise<void>;
     addPhotos(placeId: string, images: StoredImage[], uploaderId: string): Promise<void>;
     removePhoto(placeId: string, photoId: string, uploaderId: string): Promise<{ storagePath: string | null }>;
+    /**
+     * The storage object behind a photo, only when the viewer may see its place.
+     * Null for hidden, missing or externally hosted photos.
+     */
+    getPhotoObject(photoId: string, viewerId: string | null): Promise<{ storagePath: string } | null>;
     /** Owner-only. Accepts published/hidden; moderation statuses are refused. */
     setStatus(placeId: string, status: OwnerPlaceStatus, ownerId: string): Promise<void>;
     /** Owner-only. Moves a place between trust tiers. */
@@ -62,6 +85,10 @@ export interface DataRepository {
   };
   events: {
     list(opts?: EventListOptions): Promise<Event[]>;
+    /** Discovery list: visible published events, soonest first (starts_at, id), in cursor pages. */
+    search(opts?: EventSearchOptions): Promise<Page<Event>>;
+    /** Map read model: compact records, soonest first, capped with a truncation flag. */
+    mapMarkers(opts?: MapQueryOptions): Promise<MapResult<EventMapRecord>>;
     get(id: string, viewerId?: string | null): Promise<EventDetail | null>;
     create(input: NewEventInput, creatorId: string): Promise<Event>;
     update(id: string, input: UpdateEventInput, creatorId: string): Promise<Event>;
@@ -102,8 +129,13 @@ export interface DataRepository {
     listAgainstMyContent(userId: string): Promise<ReportEntry[]>;
   };
   storage: {
-    /** Stores an image and returns a public URL. */
+    /**
+     * Stores an image. Avatars get a public URL; place photos are private and
+     * get a storage reference, delivered later through /api/photos/[id].
+     */
     uploadImage(file: File, folder: "places" | "avatars", ownerId: string): Promise<{ url: string; storagePath: string | null }>;
+    /** Delivers a place photo object. Callers must authorize with places.getPhotoObject first. */
+    deliverPlacePhoto(storagePath: string): Promise<PlacePhotoDelivery | null>;
     removeImage(folder: "places" | "avatars", storagePath: string): Promise<void>;
   };
 }

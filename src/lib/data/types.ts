@@ -46,6 +46,10 @@ export interface ProfileStats {
 
 export interface Photo {
   id: string;
+  /**
+   * Where the browser loads the image. Storage-backed photos resolve to the
+   * authorized /api/photos/[id] route, never to a raw object URL.
+   */
   url: string;
   /** Nullable for legacy rows or externally hosted images. */
   storagePath: string | null;
@@ -179,9 +183,13 @@ export interface NewEventInput {
 export type UpdateEventInput = NewEventInput;
 
 export interface StoredImage {
+  /** Public URL for avatars; a non-public storage reference for place photos. */
   url: string;
   storagePath: string | null;
 }
+
+/** How a private place photo is handed to the browser once authorized. */
+export type PlacePhotoDelivery = { kind: "bytes"; body: Uint8Array<ArrayBuffer>; contentType: string };
 
 export interface UpdateProfileInput {
   username: string;
@@ -221,6 +229,88 @@ export interface EventListOptions {
 export interface PlaceListOptions {
   viewerId?: string | null;
   limit?: number;
+}
+
+// ----------------------------------------------------------------------------
+// Discovery queries
+//
+// Two read models over the same filters: cursor-paged lists of full records,
+// and capped sets of compact map records. Paging pins would make dense areas
+// look empty, so the map model is capped and flagged instead.
+// ----------------------------------------------------------------------------
+
+/** Degrees. A box with west > east crosses the antimeridian. */
+export interface GeoBounds {
+  north: number;
+  south: number;
+  east: number;
+  west: number;
+}
+
+export interface DiscoveryFilters {
+  bounds?: GeoBounds | null;
+  /** Literal substring; also matches category and interest labels and keywords. */
+  text?: string | null;
+  category?: string | null;
+  /** Matches records carrying any of these interest slugs. */
+  tags?: string[];
+}
+
+export interface PageRequest {
+  /** Clamped to [1, MAX_PAGE_SIZE]; defaults to DEFAULT_PAGE_SIZE. */
+  limit?: number;
+  /** Opaque token from a previous page's nextCursor. */
+  cursor?: string | null;
+}
+
+export interface Page<T> {
+  items: T[];
+  /** Null on the last page. */
+  nextCursor: string | null;
+}
+
+export interface PlaceSearchOptions extends DiscoveryFilters, PageRequest {
+  viewerId?: string | null;
+}
+
+export interface EventSearchOptions extends DiscoveryFilters, PageRequest {
+  viewerId?: string | null;
+  includePast?: boolean;
+}
+
+export interface MapQueryOptions extends DiscoveryFilters {
+  viewerId?: string | null;
+  /** Clamped to [1, MAX_MAP_MARKERS]; defaults to DEFAULT_MAP_MARKERS. */
+  limit?: number;
+  /** Events only. */
+  includePast?: boolean;
+}
+
+/** Just enough to draw and label a pin. Full details load on selection. */
+export interface PlaceMapRecord {
+  id: string;
+  name: string;
+  categorySlug: string;
+  lat: number;
+  lng: number;
+  ratingAvg: number;
+  ratingCount: number;
+}
+
+export interface EventMapRecord {
+  id: string;
+  title: string;
+  categorySlug: string;
+  lat: number;
+  lng: number;
+  startsAt: string;
+}
+
+export interface MapResult<T> {
+  items: T[];
+  /** True when more records matched than the limit allowed. */
+  truncated: boolean;
+  limit: number;
 }
 
 /** A profile in a follower/following list, with the viewer's own follow state. */

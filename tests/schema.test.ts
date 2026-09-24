@@ -4,49 +4,18 @@
  * exercises the triggers and constraints the app relies on.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
-import { PGlite } from "@electric-sql/pglite";
-import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
-import { buildSeedSql } from "../scripts/generate-seed-sql";
-import { SEED_USERS, stableId } from "../src/lib/seed/seed-data";
-
-const SUPABASE_STUBS = `
-  create role anon nologin;
-  create role authenticated nologin;
-  create schema auth;
-  create table auth.users (
-    id uuid primary key,
-    instance_id uuid, aud text, role text, email text unique,
-    encrypted_password text, email_confirmed_at timestamptz,
-    raw_app_meta_data jsonb, raw_user_meta_data jsonb,
-    created_at timestamptz, updated_at timestamptz
-  );
-  create or replace function auth.uid() returns uuid language sql stable as $$
-    select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
-  $$;
-  grant usage on schema auth to authenticated;
-  grant execute on function auth.uid() to authenticated;
-  create schema storage;
-  create table storage.buckets (id text primary key, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]);
-  create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text, name text, owner uuid);
-  create or replace function storage.foldername(name text) returns text[] language sql immutable as $$
-    select (string_to_array(name, '/'))[1:array_length(string_to_array(name, '/'), 1) - 1]
-  $$;
-`;
+import type { PGlite } from "@electric-sql/pglite";
+import { createSeededDb } from "./helpers/pglite";
+import { SEED_PLACES, SEED_USERS, stableId } from "../src/lib/seed/seed-data";
+import { createIsolatedStore } from "../src/lib/data/demo/store";
+import { createDemoRepository } from "../src/lib/data/demo/repository";
 
 let db: PGlite;
 
 beforeAll(async () => {
-  db = new PGlite({ extensions: { pgcrypto } });
-  await db.exec("create extension if not exists pgcrypto;");
-  await db.exec(SUPABASE_STUBS);
-  // Apply every migration in filename order so later ones are covered too.
-  const migrationsDir = path.join(__dirname, "../supabase/migrations");
-  for (const file of readdirSync(migrationsDir).filter((f) => f.endsWith(".sql")).sort()) {
-    await db.exec(readFileSync(path.join(migrationsDir, file), "utf8"));
-  }
-  await db.exec(buildSeedSql());
+  db = await createSeededDb();
 }, 60_000);
 
 afterAll(async () => {
@@ -373,5 +342,187 @@ describe("tier 2 — locals tier, photo cap, and report views in SQL", () => {
 
     await db.query("delete from public.event_attendees where event_id = $1", [event.rows[0].id]);
     await db.query("delete from public.events where id = $1", [event.rows[0].id]);
+  });
+});
+
+describe("session 1 — private photos and save counts", () => {
+  const nina = SEED_USERS.find((u) => u.username === "nina")!;
+  const jules = SEED_USERS.find((u) => u.username === "jules")!;
+  const ridgeline = stableId("place:Ridgeline Loop");
+  const lumen = stableId("place:The Lumen Rooftop");
+
+  /** Runs a query as `anon` (userId null) or `authenticated` with a JWT subject. */
+  async function as<T>(userId: string | null, sql: string, params: unknown[] = []): Promise<T[]> {
+    const role = userId ? "authenticated" : "anon";
+    await db.exec(`grant usage on schema public to ${role}; grant usage on schema storage to ${role};`);
+    await db.exec(`grant select, insert, update, delete on all tables in schema public to ${role};`);
+    await db.exec(`grant select on storage.objects to ${role};`);
+    await db.exec(`set role ${role};`);
+    await db.query("select set_config('request.jwt.claim.sub', $1, false)", [userId ?? ""]);
+    try {
+      return (await db.query<T>(sql, params)).rows;
+    } finally {
+      await db.exec("reset role;");
+      await db.query("select set_config('request.jwt.claim.sub', '', false)");
+    }
+  }
+
+  beforeAll(async () => {
+    // Supabase enables RLS on storage.objects; the stub needs it to exercise the policies.
+    await db.exec("alter table storage.objects enable row level security;");
+  });
+
+  it("makes the place-photos bucket private and leaves avatars public", async () => {
+    const { rows } = await db.query<{ id: string; public: boolean }>("select id, public from storage.buckets order by id");
+    expect(rows).toEqual([
+      { id: "avatars", public: true },
+      { id: "place-photos", public: false },
+    ]);
+  });
+
+  describe("storage objects for a locals-only place", () => {
+    const objectPath = `${jules.id}/ridgeline-cover.jpg`;
+    const orphanPath = `${nina.id}/not-yet-attached.jpg`;
+
+    beforeAll(async () => {
+      await db.query("insert into storage.objects (bucket_id, name) values ('place-photos', $1), ('place-photos', $2), ('avatars', $3)", [
+        objectPath, orphanPath, `${nina.id}/avatar.jpg`,
+      ]);
+      await db.query(
+        "insert into public.place_photos (place_id, url, storage_path, uploader_id) values ($1, $2, $3, $4)",
+        [ridgeline, `storage:place-photos/${objectPath}`, objectPath, jules.id],
+      );
+    });
+
+    const readObject = (userId: string | null, name: string) =>
+      as<{ name: string }>(userId, "select name from storage.objects where bucket_id = 'place-photos' and name = $1", [name]);
+
+    it("denies the object to a non-local and to anonymous readers", async () => {
+      expect(await readObject(nina.id, objectPath)).toHaveLength(0);
+      expect(await readObject(null, objectPath)).toHaveLength(0);
+    });
+
+    it("allows the object to a local", async () => {
+      expect(await readObject(jules.id, objectPath)).toHaveLength(1);
+    });
+
+    it("lets an uploader read their own not-yet-attached object, and nobody else", async () => {
+      expect(await readObject(nina.id, orphanPath)).toHaveLength(1);
+      expect(await readObject(jules.id, orphanPath)).toHaveLength(0);
+      expect(await readObject(null, orphanPath)).toHaveLength(0);
+    });
+
+    it("ends the uploader exception once the object backs a photo row, even on a place they cannot view", async () => {
+      // Attach nina's orphan object to jules' private place (creator-only),
+      // where nina has no visibility.
+      await db.query(
+        "insert into public.place_photos (place_id, url, storage_path, uploader_id) values ($1, $2, $3, $4)",
+        [ridgeline, `storage:place-photos/${orphanPath}`, orphanPath, nina.id],
+      );
+      try {
+        expect(await readObject(nina.id, orphanPath)).toHaveLength(0);
+        expect(await readObject(jules.id, orphanPath)).toHaveLength(1); // place creator
+      } finally {
+        await db.query("delete from public.place_photos where storage_path = $1", [orphanPath]);
+      }
+      // Detached again: the orphaned object is the uploader's to clean up.
+      expect(await readObject(nina.id, orphanPath)).toHaveLength(1);
+    });
+
+    it("follows the place when its visibility changes", async () => {
+      await db.query("update public.places set visibility = 'public' where id = $1", [ridgeline]);
+      expect(await readObject(nina.id, objectPath)).toHaveLength(1);
+      expect(await readObject(null, objectPath)).toHaveLength(1);
+      await db.query("update public.places set visibility = 'locals' where id = $1", [ridgeline]);
+      expect(await readObject(nina.id, objectPath)).toHaveLength(0);
+    });
+
+    it("keeps avatars readable by anyone", async () => {
+      const rows = await as<{ name: string }>(null, "select name from storage.objects where bucket_id = 'avatars'");
+      expect(rows).toHaveLength(1);
+    });
+  });
+
+  it("backfills storage paths for legacy public-URL photo rows, and re-applies cleanly", async () => {
+    const legacyPath = `${jules.id}/legacy.jpg`;
+    const { rows } = await db.query<{ id: string }>(
+      "insert into public.place_photos (place_id, url, uploader_id) values ($1, $2, $3) returning id",
+      [lumen, `https://abc.supabase.co/storage/v1/object/public/place-photos/${legacyPath}`, jules.id],
+    );
+    await db.exec(readFileSync(path.join(__dirname, "../supabase/migrations/0005_private_photos_and_save_counts.sql"), "utf8"));
+    const photo = await db.query<{ storage_path: string }>("select storage_path from public.place_photos where id = $1", [rows[0].id]);
+    expect(photo.rows[0].storage_path).toBe(legacyPath);
+    await db.query("delete from public.place_photos where id = $1", [rows[0].id]);
+  });
+
+  describe("save counts", () => {
+    const saveCount = async (userId: string | null, placeId: string) =>
+      (await as<{ save_count: number }>(userId, "select save_count from public.places where id = $1", [placeId]))[0]?.save_count;
+
+    it("matches the true number of saves for every place", async () => {
+      const { rows } = await db.query<{ id: string; save_count: number; actual: number }>(
+        "select p.id, p.save_count, (select count(*)::int from public.saved_places s where s.place_id = p.id) as actual from public.places p",
+      );
+      expect(rows.some((r) => r.actual > 1)).toBe(true);
+      for (const r of rows) expect(r.save_count, r.id).toBe(r.actual);
+    });
+
+    it("shows the full total to someone who has not saved, without exposing savers", async () => {
+      // Seeded: maya, jules, sam_k and priya saved Ridgeline Loop.
+      expect(await saveCount(jules.id, ridgeline)).toBe(4);
+      const visibleSaves = await as<{ user_id: string }>(jules.id, "select user_id from public.saved_places where place_id = $1", [ridgeline]);
+      expect(visibleSaves.map((s) => s.user_id)).toEqual([jules.id]);
+      // The old count path, for the record: RLS limits it to the viewer's own row.
+      const [{ count }] = await as<{ count: number }>(jules.id, "select count(*)::int as count from public.saved_places where place_id = $1", [ridgeline]);
+      expect(count).toBe(1);
+    });
+
+    it("agrees with the demo repository for every seeded place", async () => {
+      const demo = createDemoRepository(createIsolatedStore());
+      const { rows } = await db.query<{ id: string; save_count: number; creator_id: string }>("select id, save_count, creator_id from public.places");
+      const sql = new Map(rows.map((r) => [r.id, r]));
+      for (const seeded of SEED_PLACES) {
+        const row = sql.get(seeded.id)!;
+        const detail = await demo.places.get(seeded.id, row.creator_id);
+        expect(detail?.saveCount, seeded.name).toBe(row.save_count);
+      }
+    });
+
+    it("hides the total along with a place the viewer cannot see", async () => {
+      expect(await saveCount(nina.id, ridgeline)).toBeUndefined();
+    });
+
+    it("increments on save and decrements on unsave", async () => {
+      const before = await saveCount(nina.id, lumen);
+      await as(nina.id, "insert into public.saved_places (user_id, place_id) values ($1, $2)", [nina.id, lumen]);
+      expect(await saveCount(nina.id, lumen)).toBe(before + 1);
+      await as(nina.id, "delete from public.saved_places where user_id = $1 and place_id = $2", [nina.id, lumen]);
+      expect(await saveCount(nina.id, lumen)).toBe(before);
+    });
+
+    it("ignores client-supplied aggregates on insert", async () => {
+      await as(
+        nina.id,
+        `insert into public.places (name, description, category_slug, lat, lng, city, creator_id, save_count, rating_count, rating_avg)
+         values ('Inflated', 'A place that claims to be popular.', 'food', 40, -83, 'Columbus', $1, 999, 50, 5)`,
+        [nina.id],
+      );
+      const [created] = await as<{ id: string; save_count: number; rating_count: number }>(
+        nina.id, "select id, save_count, rating_count from public.places where name = 'Inflated'",
+      );
+      expect(created).toMatchObject({ save_count: 0, rating_count: 0 });
+      await db.query("delete from public.places where id = $1", [created.id]);
+    });
+
+    it("does not bump updated_at for aggregate-only changes", async () => {
+      const read = async () => (await db.query<{ updated_at: string }>("select updated_at::text from public.places where id = $1", [lumen])).rows[0].updated_at;
+      await db.query("update public.places set updated_at = '2020-01-01' where id = $1", [lumen]);
+      const before = await read();
+      await db.query("insert into public.saved_places (user_id, place_id) values ($1, $2)", [nina.id, lumen]);
+      await db.query("delete from public.saved_places where user_id = $1 and place_id = $2", [nina.id, lumen]);
+      expect(await read()).toBe(before);
+      await db.query("update public.places set name = name || '' , description = description || ' ' where id = $1", [lumen]);
+      expect(await read()).not.toBe(before);
+    });
   });
 });

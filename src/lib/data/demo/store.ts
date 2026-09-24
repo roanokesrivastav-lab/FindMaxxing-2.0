@@ -6,7 +6,7 @@
  * survive dev-server restarts. It exists so the app is fully usable without
  * Supabase credentials; it is not intended for production.
  */
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, existsSync, copyFileSync } from "node:fs";
 import path from "node:path";
 import { scryptSync, randomBytes, timingSafeEqual } from "node:crypto";
 import {
@@ -24,6 +24,7 @@ import {
 } from "@/lib/seed/seed-data";
 import type { EventStatus, PlaceStatus, ReportReason, ReportTargetType, Visibility } from "../types";
 import { newId } from "@/lib/utils/ids";
+import { placePhotoReference } from "../photos";
 
 export interface AuthUserRow {
   id: string;
@@ -124,9 +125,69 @@ export interface DemoState {
   reports: ReportRow[];
 }
 
-const STATE_VERSION = 1;
+export const STATE_VERSION = 2;
 const DATA_DIR = path.join(process.cwd(), ".data");
 const STATE_FILE = path.join(DATA_DIR, "demo-store.json");
+
+// ----------------------------------------------------------------------------
+// Persisted-state migrations
+//
+// The file on disk is user data: sign-ups, places, saves. A version bump must
+// carry it forward, never silently reseed. Each entry upgrades from version N
+// to N + 1 in place; add one whenever DemoState changes shape or meaning.
+// ----------------------------------------------------------------------------
+type LooseState = Record<string, unknown> & { version?: unknown };
+
+const COLLECTIONS = [
+  "authUsers", "profiles", "profileInterests", "places", "placeTags", "placePhotos",
+  "placeRatings", "savedPlaces", "events", "eventTags", "eventAttendees", "follows", "reports",
+] as const;
+
+const LEGACY_PLACE_UPLOAD = /^\/api\/uploads\/(places-[^/]+)$/;
+
+const MIGRATIONS: Record<number, (state: LooseState) => void> = {
+  // v1 → v2: place photos became private.
+  //   * Collections added after v1 shipped (e.g. reports) may be missing.
+  //   * Photos stored as public /api/uploads URLs get their storage path
+  //     recovered and a non-public reference, so they are served only through
+  //     the visibility-checked /api/photos/[id] route.
+  //   * Places written before trust tiers get the default visibility.
+  1(state) {
+    for (const key of COLLECTIONS) if (!Array.isArray(state[key])) state[key] = [];
+    for (const photo of state.placePhotos as Partial<PlacePhotoRow>[]) {
+      const legacy = typeof photo.url === "string" ? LEGACY_PLACE_UPLOAD.exec(photo.url) : null;
+      if (legacy && !photo.storagePath) photo.storagePath = legacy[1];
+      photo.storagePath ??= null;
+      photo.uploaderId ??= null;
+      if (photo.storagePath && typeof photo.url === "string" && photo.url.startsWith("/api/uploads/")) {
+        photo.url = placePhotoReference(photo.storagePath);
+      }
+    }
+    for (const place of state.places as Partial<PlaceRow>[]) place.visibility ??= "public";
+    for (const rating of state.placeRatings as Partial<PlaceRatingRow>[]) rating.note ??= null;
+  },
+};
+
+export type MigrationResult =
+  | { ok: true; state: DemoState; migratedFrom: number | null }
+  | { ok: false; reason: "invalid" | "newer" };
+
+/** Upgrades a parsed store file to STATE_VERSION. Pure: no disk access. */
+export function migrateDemoState(raw: unknown): MigrationResult {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ok: false, reason: "invalid" };
+  const state = raw as LooseState;
+  const from = state.version;
+  if (typeof from !== "number" || !Number.isInteger(from) || from < 1) return { ok: false, reason: "invalid" };
+  if (from > STATE_VERSION) return { ok: false, reason: "newer" };
+  for (let v = from; v < STATE_VERSION; v++) {
+    const step = MIGRATIONS[v];
+    if (!step) return { ok: false, reason: "invalid" };
+    step(state);
+    state.version = v + 1;
+  }
+  for (const key of COLLECTIONS) if (!Array.isArray(state[key])) return { ok: false, reason: "invalid" };
+  return { ok: true, state: state as unknown as DemoState, migratedFrom: from === STATE_VERSION ? null : from };
+}
 
 export function hashPassword(password: string): string {
   const salt = randomBytes(16).toString("hex");
@@ -313,19 +374,71 @@ declare global {
   var __findmaxxingDemoStore: StoreHandle | undefined;
 }
 
-function loadFromDisk(): DemoState | null {
-  try {
-    if (!existsSync(STATE_FILE)) return null;
-    const parsed = JSON.parse(readFileSync(STATE_FILE, "utf8")) as DemoState;
-    if (parsed.version !== STATE_VERSION) return null;
-    return parsed;
-  } catch {
-    return null;
+/** Keeps a copy of the store file before anything replaces or rewrites it. */
+function backupStateFile(file: string, label: string): string {
+  const backup = file.replace(/\.json$/, `.${label}-${Date.now()}.bak.json`);
+  copyFileSync(file, backup);
+  return backup;
+}
+
+/**
+ * Raised by loadStateFile when the store file exists but cannot be used —
+ * invalid JSON, an unknown shape, or a file from a newer STATE_VERSION. The
+ * file is user data (sign-ups, places, saves), so startup fails rather than
+ * reseeding over it; the original is left untouched for manual recovery.
+ */
+export class StoreLoadError extends Error {
+  constructor(
+    message: string,
+    public readonly reason: "invalid" | "newer",
+  ) {
+    super(message);
+    this.name = "StoreLoadError";
   }
 }
 
+/**
+ * Reads the persisted store, migrating it forward if needed.
+ *
+ * Returns null only when no store file exists (first run — seed as usual).
+ * When a file exists but cannot be used, the original stays in place (a dated
+ * backup copy is kept alongside for inspection) and a StoreLoadError is
+ * thrown, so a reseed can never overwrite the user's data.
+ */
+export function loadStateFile(file: string): { state: DemoState; migratedFrom: number | null } | null {
+  if (!existsSync(file)) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(file, "utf8"));
+  } catch {
+    const backup = backupStateFile(file, "unreadable");
+    throw new StoreLoadError(
+      `[demo-store] ${file} is not valid JSON; original kept in place, copy at ${backup}. ` +
+        "Restore or delete the file, then restart.",
+      "invalid",
+    );
+  }
+  const result = migrateDemoState(parsed);
+  if (!result.ok) {
+    const backup = backupStateFile(file, result.reason);
+    throw new StoreLoadError(
+      `[demo-store] ${file} could not be loaded (${result.reason}); original kept in place, copy at ${backup}. ` +
+        "Restore or delete the file, then restart.",
+      result.reason,
+    );
+  }
+  if (result.migratedFrom !== null) {
+    const backup = backupStateFile(file, `v${result.migratedFrom}`);
+    console.info(`[demo-store] migrated ${file} from v${result.migratedFrom} to v${STATE_VERSION}; previous copy at ${backup}`);
+  }
+  return { state: result.state, migratedFrom: result.migratedFrom };
+}
+
 function createHandle(initial?: DemoState): StoreHandle {
-  const state = initial ?? loadFromDisk() ?? buildSeedState();
+  // A missing file seeds; an unusable one throws and takes startup down —
+  // it is user data, never silently replaced (see loadStateFile).
+  const loaded = initial ? null : loadStateFile(STATE_FILE);
+  const state = initial ?? loaded?.state ?? buildSeedState();
   let timer: NodeJS.Timeout | null = null;
   const handle: StoreHandle = {
     state,
@@ -342,7 +455,8 @@ function createHandle(initial?: DemoState): StoreHandle {
       }, 150);
     },
   };
-  if (!initial && !existsSync(STATE_FILE)) handle.persist();
+  // Write a fresh seed, or persist a migrated file.
+  if (!initial && (!loaded || loaded.migratedFrom !== null)) handle.persist();
   return handle;
 }
 

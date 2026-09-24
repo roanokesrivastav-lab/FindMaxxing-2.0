@@ -15,7 +15,22 @@ import {
   type PlaceRating,
   type ReportEntry,
   type ConnectionEntry,
+  type EventMapRecord,
+  type PlaceMapRecord,
 } from "../types";
+import {
+  DEFAULT_MAP_MARKERS,
+  DEFAULT_PAGE_SIZE,
+  MAX_MAP_MARKERS,
+  MAX_PAGE_SIZE,
+  UPCOMING_GRACE_MS,
+  clampLimit,
+  decodeCursor,
+  normalizeFilters,
+  toPage,
+  type NormalizedFilters,
+} from "../discovery";
+import { PLACE_PHOTO_BUCKET, placePhotoReference, placePhotoUrl } from "../photos";
 
 /**
  * Supabase implementation. Every query runs through the request-scoped client
@@ -53,6 +68,7 @@ interface PlaceRow {
   creator_id: string | null;
   rating_avg: number | string;
   rating_count: number;
+  save_count?: number;
   status: Place["status"];
   visibility: Place["visibility"];
   created_at: string;
@@ -118,7 +134,7 @@ function mapPlace(r: PlaceRow): Place {
     ratingAvg: Number(r.rating_avg),
     ratingCount: r.rating_count,
     tags: (r.place_tags ?? []).map((t) => t.interest_slug),
-    photos: [...(r.place_photos ?? [])].sort((a, b) => a.sort_order - b.sort_order).map((p) => ({ id: p.id, url: p.url, storagePath: p.storage_path, uploaderId: p.uploader_id })),
+    photos: [...(r.place_photos ?? [])].sort((a, b) => a.sort_order - b.sort_order).map((p) => ({ id: p.id, url: placePhotoUrl({ id: p.id, url: p.url, storagePath: p.storage_path }), storagePath: p.storage_path, uploaderId: p.uploader_id })),
     status: r.status,
     visibility: r.visibility,
     createdAt: r.created_at,
@@ -158,6 +174,9 @@ function translate(error: PostgrestError): DataError {
       return new DataError("Related record not found", "not_found");
     case "42501":
       return new DataError("You don't have permission to do that", "forbidden");
+    case "22007": // invalid_datetime_format
+    case "22008": // datetime_field_overflow
+      return new DataError("Invalid date or time", "invalid");
     case "P0001": // raise exception from our triggers
       if (/full/i.test(error.message)) return new DataError("This event is full", "full");
       if (/ended|past/i.test(error.message)) return new DataError("This event has already ended", "invalid");
@@ -216,7 +235,27 @@ async function readReports(supabase: SupabaseClient, view: "reports_i_filed" | "
   }));
 }
 
-const UPCOMING_GRACE_MS = 60 * 60_000;
+/** Arguments shared by public.discover_places and public.discover_events. */
+export function discoverArgs(f: NormalizedFilters) {
+  return {
+    p_north: f.bounds?.north ?? null,
+    p_south: f.bounds?.south ?? null,
+    p_east: f.bounds?.east ?? null,
+    p_west: f.bounds?.west ?? null,
+    p_text: f.search.text,
+    p_text_categories: f.search.categories,
+    p_text_tags: f.search.tags,
+    p_category: f.category,
+    p_tags: f.tags,
+  };
+}
+
+export function upcomingCutoff(includePast: boolean | undefined): string | null {
+  return includePast ? null : new Date(Date.now() - UPCOMING_GRACE_MS).toISOString();
+}
+
+const PLACE_MAP_SELECT = "id, name, category_slug, lat, lng, rating_avg, rating_count";
+const EVENT_MAP_SELECT = "id, title, category_slug, lat, lng, starts_at";
 
 export function createSupabaseRepository(supabase: SupabaseClient): DataRepository {
   const repo: DataRepository = {
@@ -232,11 +271,49 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
         ) as PlaceRow[];
         return rows.map(mapPlace);
       },
+      async search(opts = {}) {
+        const filters = normalizeFilters(opts);
+        const limit = clampLimit(opts.limit, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
+        const after = decodeCursor(opts.cursor);
+        // RLS applies inside the invoker-rights function; ordering and limit
+        // are applied by PostgREST around the inlined query.
+        const rows = unwrap(
+          await supabase
+            .rpc("discover_places", { ...discoverArgs(filters), p_after_created_at: after?.key ?? null, p_after_id: after?.id ?? null })
+            .select(PLACE_SELECT)
+            .order("created_at", { ascending: false })
+            .order("id", { ascending: false })
+            .limit(limit + 1),
+        ) as PlaceRow[];
+        return toPage(rows, limit, mapPlace, (r) => ({ key: r.created_at, id: r.id }));
+      },
+      async mapMarkers(opts = {}) {
+        const filters = normalizeFilters(opts);
+        const limit = clampLimit(opts.limit, DEFAULT_MAP_MARKERS, MAX_MAP_MARKERS);
+        const rows = unwrap(
+          await supabase
+            .rpc("discover_places", discoverArgs(filters))
+            .select(PLACE_MAP_SELECT)
+            .order("rating_count", { ascending: false })
+            .order("save_count", { ascending: false })
+            .order("id", { ascending: true })
+            .limit(limit + 1),
+        ) as { id: string; name: string; category_slug: string; lat: number; lng: number; rating_avg: number | string; rating_count: number }[];
+        return {
+          items: rows.slice(0, limit).map<PlaceMapRecord>((r) => ({
+            id: r.id, name: r.name, categorySlug: r.category_slug, lat: Number(r.lat), lng: Number(r.lng),
+            ratingAvg: Number(r.rating_avg), ratingCount: r.rating_count,
+          })),
+          truncated: rows.length > limit,
+          limit,
+        };
+      },
       async get(id, viewerId = null) {
         const row = unwrap(await supabase.from("places").select(PLACE_SELECT).eq("id", id).maybeSingle()) as PlaceRow | null;
         if (!row) return null;
-        const [saveCountRes, viewerSaveRes, viewerRatingRes] = await Promise.all([
-          supabase.from("saved_places").select("*", { count: "exact", head: true }).eq("place_id", id),
+        // saved_places RLS only exposes the viewer's own rows, so a count over it
+        // would be 0 or 1. The trigger-maintained column is the real total.
+        const [viewerSaveRes, viewerRatingRes] = await Promise.all([
           viewerId
             ? supabase.from("saved_places").select("place_id").eq("place_id", id).eq("user_id", viewerId).maybeSingle()
             : Promise.resolve({ data: null, error: null }),
@@ -246,7 +323,7 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
         ]);
         const detail: PlaceDetail = {
           ...mapPlace(row),
-          saveCount: saveCountRes.count ?? 0,
+          saveCount: row.save_count ?? 0,
           viewerSaved: !!viewerSaveRes.data,
           viewerRating: (viewerRatingRes.data as { score: number; note: string | null } | null)?.score ?? null,
           viewerRatingNote: (viewerRatingRes.data as { score: number; note: string | null } | null)?.note ?? null,
@@ -375,6 +452,13 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
         // Owner moderation removes the visible row; orphan cleanup is an admin job.
         return { storagePath: isUploader ? photo.storage_path : null };
       },
+      async getPhotoObject(photoId) {
+        // RLS on place_photos applies can_view_place(); an invisible row is simply absent.
+        const row = unwrap(
+          await supabase.from("place_photos").select("storage_path").eq("id", photoId).maybeSingle(),
+        ) as { storage_path: string | null } | null;
+        return row?.storage_path ? { storagePath: row.storage_path } : null;
+      },
       async listByCreator(userId) {
         const rows = unwrap(
           await supabase.from("places").select(PLACE_SELECT).eq("creator_id", userId).neq("status", "removed").order("created_at", { ascending: false }),
@@ -425,6 +509,44 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
           q = q.or(`ends_at.gte.${cutoff},and(ends_at.is.null,starts_at.gte.${cutoff})`);
         }
         return (unwrap(await q) as EventRow[]).map(mapEvent);
+      },
+      async search(opts = {}) {
+        const filters = normalizeFilters(opts);
+        const limit = clampLimit(opts.limit, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
+        const after = decodeCursor(opts.cursor);
+        const rows = unwrap(
+          await supabase
+            .rpc("discover_events", {
+              ...discoverArgs(filters),
+              p_ends_after: upcomingCutoff(opts.includePast),
+              p_after_starts_at: after?.key ?? null,
+              p_after_id: after?.id ?? null,
+            })
+            .select(EVENT_SELECT)
+            .order("starts_at", { ascending: true })
+            .order("id", { ascending: true })
+            .limit(limit + 1),
+        ) as EventRow[];
+        return toPage(rows, limit, mapEvent, (r) => ({ key: r.starts_at, id: r.id }));
+      },
+      async mapMarkers(opts = {}) {
+        const filters = normalizeFilters(opts);
+        const limit = clampLimit(opts.limit, DEFAULT_MAP_MARKERS, MAX_MAP_MARKERS);
+        const rows = unwrap(
+          await supabase
+            .rpc("discover_events", { ...discoverArgs(filters), p_ends_after: upcomingCutoff(opts.includePast) })
+            .select(EVENT_MAP_SELECT)
+            .order("starts_at", { ascending: true })
+            .order("id", { ascending: true })
+            .limit(limit + 1),
+        ) as { id: string; title: string; category_slug: string; lat: number; lng: number; starts_at: string }[];
+        return {
+          items: rows.slice(0, limit).map<EventMapRecord>((r) => ({
+            id: r.id, title: r.title, categorySlug: r.category_slug, lat: Number(r.lat), lng: Number(r.lng), startsAt: r.starts_at,
+          })),
+          truncated: rows.length > limit,
+          limit,
+        };
       },
       async get(id, viewerId = null) {
         const row = unwrap(
@@ -730,15 +852,30 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
 
     storage: {
       async uploadImage(file, folder, ownerId) {
-        const bucket = folder === "avatars" ? "avatars" : "place-photos";
+        const bucket = folder === "avatars" ? "avatars" : PLACE_PHOTO_BUCKET;
         const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
         const objectPath = `${ownerId}/${crypto.randomUUID()}.${ext}`;
         const { error } = await supabase.storage.from(bucket).upload(objectPath, file, { contentType: file.type, upsert: false });
         if (error) throw new DataError(`Upload failed: ${error.message}`, "unavailable");
-        return { url: supabase.storage.from(bucket).getPublicUrl(objectPath).data.publicUrl, storagePath: objectPath };
+        const url = folder === "avatars"
+          ? supabase.storage.from(bucket).getPublicUrl(objectPath).data.publicUrl
+          : placePhotoReference(objectPath);
+        return { url, storagePath: objectPath };
+      },
+      async deliverPlacePhoto(storagePath) {
+        // Bytes are delivered through the authorized route, so revocation is
+        // immediate: no reusable signed URL outlives a visibility change. The
+        // download itself runs under the viewer's session, so the
+        // storage.objects policy re-applies place visibility independently of
+        // the route's row lookup.
+        const { data, error } = await supabase.storage.from(PLACE_PHOTO_BUCKET).download(storagePath);
+        if (error || !data) return null;
+        const body = new Uint8Array(await data.arrayBuffer());
+        const contentType = data.type || "application/octet-stream";
+        return { kind: "bytes", body, contentType };
       },
       async removeImage(folder, storagePath) {
-        const bucket = folder === "avatars" ? "avatars" : "place-photos";
+        const bucket = folder === "avatars" ? "avatars" : PLACE_PHOTO_BUCKET;
         const { error } = await supabase.storage.from(bucket).remove([storagePath]);
         if (error) throw new DataError(`Image removal failed: ${error.message}`, "unavailable");
       },

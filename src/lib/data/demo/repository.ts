@@ -16,10 +16,29 @@ import {
 } from "../types";
 import { getDemoStore, isLocalOfCity, recomputeRating, type DemoState, type EventRow, type PlaceRow, type ProfileRow, type ReportRow, type StoreHandle } from "./store";
 import { newId } from "@/lib/utils/ids";
-import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
+import {
+  DEFAULT_MAP_MARKERS,
+  DEFAULT_PAGE_SIZE,
+  MAX_MAP_MARKERS,
+  MAX_PAGE_SIZE,
+  UPCOMING_GRACE_MS,
+  clampLimit,
+  compareTimestamps,
+  decodeCursor,
+  inBounds,
+  normalizeFilters,
+  textMatches,
+  toPage,
+  type NormalizedFilters,
+} from "../discovery";
+import { mkdirSync, writeFileSync, unlinkSync, readFileSync } from "node:fs";
+import { placePhotoReference, placePhotoUrl } from "../photos";
 import path from "node:path";
 
 const UPLOAD_DIR = path.join(process.cwd(), ".data", "uploads");
+const UPLOAD_MIME: Record<string, string> = { jpg: "image/jpeg", png: "image/png", webp: "image/webp" };
+/** Generated upload names only; anything else is refused before touching disk. */
+export const DEMO_UPLOAD_NAME = /^(places|avatars)-[0-9a-f]{8}-[0-9a-f-]{36}\.(jpg|png|webp)$/;
 
 function summary(p: ProfileRow): ProfileSummary {
   return { id: p.id, username: p.username, displayName: p.displayName, avatarUrl: p.avatarUrl };
@@ -62,7 +81,7 @@ function toPlace(state: DemoState, row: PlaceRow): Place {
     photos: state.placePhotos
       .filter((ph) => ph.placeId === row.id)
       .sort((a, b) => a.sortOrder - b.sortOrder)
-      .map((ph) => ({ id: ph.id, url: ph.url, storagePath: ph.storagePath, uploaderId: ph.uploaderId })),
+      .map((ph) => ({ id: ph.id, url: placePhotoUrl(ph), storagePath: ph.storagePath, uploaderId: ph.uploaderId })),
     status: row.status,
     visibility: row.visibility,
     createdAt: row.createdAt,
@@ -143,6 +162,46 @@ function canViewEvent(state: DemoState, event: EventRow, viewerId: string | null
   return !!place && canViewPlace(state, place, viewerId);
 }
 
+// ----------------------------------------------------------------------------
+// Discovery: mirrors public.discover_places / public.discover_events
+// ----------------------------------------------------------------------------
+function placeMatches(state: DemoState, p: PlaceRow, f: NormalizedFilters, viewerId: string | null): boolean {
+  if (p.status !== "published" || !canViewPlace(state, p, viewerId)) return false;
+  if (!inBounds(p, f.bounds)) return false;
+  if (f.category && p.categorySlug !== f.category) return false;
+  const tags = state.placeTags.filter((t) => t.placeId === p.id).map((t) => t.interestSlug);
+  if (f.tags.length && !tags.some((t) => f.tags.includes(t))) return false;
+  const { text, categories, tags: textTags } = f.search;
+  return (
+    !text ||
+    textMatches([p.name, p.description, p.localTip, p.neighborhood], text) ||
+    categories.includes(p.categorySlug) ||
+    tags.some((t) => textTags.includes(t))
+  );
+}
+
+function eventMatches(state: DemoState, e: EventRow, f: NormalizedFilters, viewerId: string | null, cutoff: number | null): boolean {
+  if (e.status !== "published" || !canViewEvent(state, e, viewerId)) return false;
+  if (cutoff !== null && eventEndOrStart(e) < cutoff) return false;
+  if (!inBounds(e, f.bounds)) return false;
+  if (f.category && e.categorySlug !== f.category) return false;
+  const tags = state.eventTags.filter((t) => t.eventId === e.id).map((t) => t.interestSlug);
+  if (f.tags.length && !tags.some((t) => f.tags.includes(t))) return false;
+  const { text, categories, tags: textTags } = f.search;
+  return (
+    !text ||
+    textMatches([e.title, e.description, e.locationName], text) ||
+    categories.includes(e.categorySlug) ||
+    tags.some((t) => textTags.includes(t))
+  );
+}
+
+const compareIds = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+/** created_at desc, id desc — the places list order. */
+const newestFirst = (a: PlaceRow, b: PlaceRow) => compareTimestamps(b.createdAt, a.createdAt) || compareIds(b.id, a.id);
+/** starts_at asc, id asc — the events list order. */
+const soonestFirst = (a: EventRow, b: EventRow) => compareTimestamps(a.startsAt, b.startsAt) || compareIds(a.id, b.id);
+
 function eventEndOrStart(e: EventRow) {
   return new Date(e.endsAt ?? e.startsAt).getTime();
 }
@@ -170,6 +229,34 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
           .slice(0, limit)
           .map((p) => toPlace(state, p));
+      },
+      async search(opts = {}) {
+        const f = normalizeFilters(opts);
+        const limit = clampLimit(opts.limit, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
+        const after = decodeCursor(opts.cursor);
+        const viewerId = opts.viewerId ?? null;
+        const rows = state.places
+          .filter((p) => placeMatches(state, p, f, viewerId))
+          .filter((p) => !after || compareTimestamps(p.createdAt, after.key) < 0 || (compareTimestamps(p.createdAt, after.key) === 0 && p.id < after.id))
+          .sort(newestFirst);
+        return toPage(rows, limit, (p) => toPlace(state, p), (p) => ({ key: p.createdAt, id: p.id }));
+      },
+      async mapMarkers(opts = {}) {
+        const f = normalizeFilters(opts);
+        const limit = clampLimit(opts.limit, DEFAULT_MAP_MARKERS, MAX_MAP_MARKERS);
+        const viewerId = opts.viewerId ?? null;
+        const saves = (id: string) => state.savedPlaces.filter((s) => s.placeId === id).length;
+        const rows = state.places
+          .filter((p) => placeMatches(state, p, f, viewerId))
+          .map((p) => ({ p, saves: saves(p.id) }))
+          .sort((a, b) => b.p.ratingCount - a.p.ratingCount || b.saves - a.saves || compareIds(a.p.id, b.p.id));
+        return {
+          items: rows.slice(0, limit).map(({ p }) => ({
+            id: p.id, name: p.name, categorySlug: p.categorySlug, lat: p.lat, lng: p.lng, ratingAvg: p.ratingAvg, ratingCount: p.ratingCount,
+          })),
+          truncated: rows.length > limit,
+          limit,
+        };
       },
       async get(id, viewerId = null) {
         const row = state.places.find((p) => p.id === id);
@@ -341,6 +428,13 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         persist();
         return { storagePath: photo.storagePath };
       },
+      async getPhotoObject(photoId, viewerId) {
+        const photo = state.placePhotos.find((p) => p.id === photoId);
+        if (!photo?.storagePath) return null;
+        const place = state.places.find((p) => p.id === photo.placeId);
+        if (!place || !canViewPlace(state, place, viewerId)) return null;
+        return { storagePath: photo.storagePath };
+      },
       async listByCreator(userId, viewerId = null) {
         return state.places
           .filter((p) => p.creatorId === userId && p.status !== "removed" && canViewPlace(state, p, viewerId))
@@ -411,6 +505,29 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           .sort(byStart)
           .slice(0, limit)
           .map((e) => toEvent(state, e));
+      },
+      async search(opts = {}) {
+        const f = normalizeFilters(opts);
+        const limit = clampLimit(opts.limit, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
+        const after = decodeCursor(opts.cursor);
+        const viewerId = opts.viewerId ?? null;
+        const cutoff = opts.includePast ? null : Date.now() - UPCOMING_GRACE_MS;
+        const rows = state.events
+          .filter((e) => eventMatches(state, e, f, viewerId, cutoff))
+          .filter((e) => !after || compareTimestamps(e.startsAt, after.key) > 0 || (compareTimestamps(e.startsAt, after.key) === 0 && e.id > after.id))
+          .sort(soonestFirst);
+        return toPage(rows, limit, (e) => toEvent(state, e), (e) => ({ key: e.startsAt, id: e.id }));
+      },
+      async mapMarkers(opts = {}) {
+        const f = normalizeFilters(opts);
+        const limit = clampLimit(opts.limit, DEFAULT_MAP_MARKERS, MAX_MAP_MARKERS);
+        const cutoff = opts.includePast ? null : Date.now() - UPCOMING_GRACE_MS;
+        const rows = state.events.filter((e) => eventMatches(state, e, f, opts.viewerId ?? null, cutoff)).sort(soonestFirst);
+        return {
+          items: rows.slice(0, limit).map((e) => ({ id: e.id, title: e.title, categorySlug: e.categorySlug, lat: e.lat, lng: e.lng, startsAt: e.startsAt })),
+          truncated: rows.length > limit,
+          limit,
+        };
       },
       async get(id, viewerId = null) {
         const row = state.events.find((e) => e.id === id);
@@ -738,7 +855,20 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         const name = `${folder}-${ownerId.slice(0, 8)}-${newId()}.${ext}`;
         mkdirSync(UPLOAD_DIR, { recursive: true });
         writeFileSync(path.join(UPLOAD_DIR, name), Buffer.from(await file.arrayBuffer()));
-        return { url: `/api/uploads/${name}`, storagePath: name };
+        // Avatars are public profile data; place photos are served only through
+        // the authorized /api/photos/[id] route.
+        const url = folder === "avatars" ? `/api/uploads/${name}` : placePhotoReference(name);
+        return { url, storagePath: name };
+      },
+      async deliverPlacePhoto(storagePath) {
+        const name = path.basename(storagePath);
+        if (!DEMO_UPLOAD_NAME.test(name) || !name.startsWith("places-")) return null;
+        try {
+          const body = new Uint8Array(readFileSync(path.join(UPLOAD_DIR, name)));
+          return { kind: "bytes", body, contentType: UPLOAD_MIME[name.split(".").pop() ?? ""] ?? "application/octet-stream" };
+        } catch {
+          return null;
+        }
       },
       async removeImage(folder, storagePath) {
         const filename = path.basename(storagePath);

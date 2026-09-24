@@ -20,7 +20,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000. The app runs in **demo mode**: a file-backed local store (`.data/demo-store.json`, git-ignored) seeded with fictional Columbus, Ohio data. Sign in from `/auth/sign-in` by tapping a persona, or with any seeded email (e.g. `maya@example.com`) and the password `findmaxxing`. Sign-ups, saves, ratings, events and follows persist across restarts. Delete `.data/` to reset.
+Open http://localhost:3000. The app runs in **demo mode**: a file-backed local store (`.data/demo-store.json`, git-ignored) seeded with fictional Columbus, Ohio data. Sign in from `/auth/sign-in` by tapping a persona, or with any seeded email (e.g. `maya@example.com`) and the password `findmaxxing`. Sign-ups, saves, ratings, events and follows persist across restarts. When the store format changes, the file is migrated forward on startup and the previous copy is kept beside it as `demo-store.v<N>-<timestamp>.bak.json`; an unreadable or newer file is backed up rather than overwritten. Delete `.data/` to reset.
 
 ## Checks
 
@@ -36,6 +36,8 @@ npm run check       # all of the above
 flow in a headless browser and writes screenshots to `.data/smoke/`.
 `node scripts/smoke-tier2.mjs` does the same for the community layer and asserts its Tier 2 checks,
 including that a non-local genuinely cannot see a locals-only place.
+`npx tsx tests/helpers/measure-discovery.ts 50000` loads synthetic places into PGlite and prints
+query plans and timings for the discovery queries.
 
 ## Going live with Supabase + Mapbox
 
@@ -44,6 +46,8 @@ including that a non-local genuinely cannot see a locals-only place.
    - `supabase/migrations/0002_tier1_owner_controls.sql` — owner edit/delete rules
    - `supabase/migrations/0003_tier2_community_layer.sql` — trust tiers, photo cap, report views
    - `supabase/migrations/0004_audit_hardening.sql` — visibility inheritance, transactional writes, and concurrency guards
+   - `supabase/migrations/0005_private_photos_and_save_counts.sql` — private place-photo bucket with visibility-checked reads, and trigger-maintained save totals
+   - `supabase/migrations/0006_discovery_queries.sql` — bounded, RLS-scoped discovery functions and their indexes
    - `supabase/seed.sql` — optional fictional demo data (generated from `src/lib/seed/seed-data.ts` via `npm run seed:sql`; **do not use the demo users in production**)
 2. In Supabase Auth settings, add `http://localhost:3000/auth/callback` (and your production URL) to the redirect allow-list. Email confirmation is supported: the sign-up flow shows a "check your email" state and `/auth/callback` exchanges the code.
 3. Copy `.env.example` to `.env.local` and fill in:
@@ -106,6 +110,14 @@ you have contributed a published place in that city. The demo store mirrors the 
 `isLocalOfCity`, and both are covered by tests, so the two paths cannot drift. Locals-only places are
 filtered by the row-level policy itself, not by a query the client could forget.
 
+**Photos follow their place.** Place photos live in a private bucket. The browser only ever sees
+`/api/photos/[id]`, which checks visibility on every request (RLS in Supabase mode, `canViewPlace` in demo mode)
+and then streams the bytes itself — no reusable signed URL that could outlive a visibility change. Responses are
+`private, no-cache` with an ETag, so browsers revalidate before every reuse: a still-authorized viewer gets a 304
+without a Storage download, and a viewer who has lost access gets a 404 on the very next request. The Storage read policy applies the same
+`can_view_place()` rule, so a non-local cannot fetch a locals-only photo even with its object path, and an uploader's own objects are readable only while they are not yet attached to a photo row. Avatars
+stay public because they belong to the public profile.
+
 **Rating notes.** A rating is a number; the note attached to it is the local knowledge. Notes appear
 as a reviews list on the place page. Only ratings that carry a note show up there.
 
@@ -117,6 +129,41 @@ service-role work and is deliberately not built.
 
 Owners may set `published` and `hidden`. The `pending` and `removed` statuses stay reserved for
 moderation, and the `WITH CHECK` clause on the update policy is what makes that reservation real.
+
+## Discovery queries
+
+Discovery filters in SQL rather than in the browser, so a search covers every matching record, not
+just the newest few hundred. `public.discover_places` and `public.discover_events` take a bounding box
+(antimeridian-safe), text, category and any-of tags. They are invoker-rights `language sql` functions
+with no `SET` clause, so RLS applies to every row and Postgres inlines them, letting the caller's
+ORDER BY and LIMIT use the indexes. Search text is a literal substring (wildcards are escaped in SQL);
+taxonomy keywords such as "hoops" → pickup sports are expanded once in `src/lib/data/discovery.ts`
+and passed in, so demo and Supabase modes match the same records.
+
+The repository exposes two read models over the same filters:
+
+| | `search` (list) | `mapMarkers` (map) |
+| --- | --- | --- |
+| Records | full `Place` / `Event` | compact id, name, category, coordinates |
+| Order | places newest first; events soonest first; id breaks ties | places by rating count, then saves; events soonest first |
+| Size | pages of 30 (max 100), keyset `nextCursor` | capped at 300 (max 1000), `truncated` flag |
+
+Map pins are capped and flagged instead of paged, because a paged map would make dense areas look
+empty. Cursors are opaque and keep microsecond timestamps, so page boundaries never skip or repeat
+a row. HTTP access: `GET /api/discover/places`, `/api/discover/events` and `/api/discover/map`,
+with `bbox=west,south,east,north`, `q`, `category`, `tags=a,b`, `limit`, `cursor`, `includePast`
+and (map only) `kind=all|places|events`. Responses are `private, no-store` because what you see
+depends on who you are. `tests/discovery.test.ts` runs every filter for four viewers against both the SQL
+functions and the demo repository, and requires identical pages.
+
+**Explore** is built on these. With no search text, results follow the map: once panning or zooming
+settles, it queries the visible bounds (debounced, stale requests aborted, previous results kept on
+screen while the next load). With search text, it searches everywhere, fits the map to the matches, and
+offers "Search this area" to narrow to the viewport. When the pin cap truncates a dense area, the map says
+so and asks the viewer to zoom in; list sections page with "More places". The selected pin stays on
+the map across refreshes, and a pin whose details are not loaded fetches them from
+`GET /api/discover/item`. The server renders the first result set for the default viewport; the client
+re-queries with the real bounds once the map loads.
 
 ## Data model
 

@@ -208,6 +208,43 @@ export const searchQuerySchema = z
   .transform((v) => v.replace(/\s+/g, " "))
   .catch("");
 
+/**
+ * Query string for the discovery endpoints. `bbox` is west,south,east,north
+ * (the GeoJSON / map-library order); `tags` is a comma list of interest slugs.
+ * Unknown tags are dropped, like tagsSchema; an unknown category is an error,
+ * since silently ignoring it would widen the result set.
+ */
+export const discoveryQuerySchema = z.object({
+  bbox: z
+    .string()
+    .optional()
+    .transform((v, ctx) => {
+      if (!v) return null;
+      const parts = v.split(",").map(Number);
+      if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n))) {
+        ctx.addIssue({ code: "custom", message: "bbox must be west,south,east,north" });
+        return z.NEVER;
+      }
+      const [west, south, east, north] = parts;
+      return { west, south, east, north };
+    }),
+  q: z.string().trim().max(80).optional().transform((v) => v || null),
+  category: z
+    .string()
+    .optional()
+    .refine((v) => !v || v in CATEGORY_MAP, "Unknown category")
+    .transform((v) => v || null),
+  tags: z
+    .string()
+    .optional()
+    .transform((v) => Array.from(new Set((v ?? "").split(",").map((t) => t.trim().toLowerCase()).filter((t) => t in INTEREST_MAP))).slice(0, 8)),
+  limit: z.coerce.number().int().min(1).max(1000).optional(),
+  cursor: z.string().max(512).optional().transform((v) => v || null),
+  includePast: z.enum(["0", "1", "true", "false"]).optional().transform((v) => v === "1" || v === "true"),
+  kind: z.enum(["all", "places", "events"]).default("all"),
+});
+export type DiscoveryQuery = z.output<typeof discoveryQuerySchema>;
+
 export function categoryExists(slug: string) {
   return slug in CATEGORY_MAP;
 }
