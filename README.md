@@ -69,11 +69,17 @@ Setting both Supabase variables switches the whole app to Supabase mode. There i
 src/
   app/                       Routes (App Router)
     (explore)/               / — the map, with its own loading skeleton
-    places/[id], places/new  Place detail + Add Place
-    events, events/[id], events/new
-    saved, people, profile, profile/edit, u/[username]
+    new                      Create chooser: place or event
+    places/[id], places/new, places/[id]/edit
+    events, events/[id], events/new, events/[id]/edit
+    neighborhoods, neighborhoods/[name], tags, tags/[slug]
+    saved, people, profile, profile/edit, profile/reports
+    u/[username], u/[username]/[kind]
     auth/sign-in, auth/sign-up, auth/callback
-    api/uploads/[name]       Serves demo-mode image uploads
+    api/discover/*           Discovery endpoints: places, events, map, item
+    api/geocode              Server-side address lookup (Mapbox or Nominatim)
+    api/photos/[id]          Visibility-checked place photos
+    api/uploads/[name]       Serves demo-mode avatar uploads
   components/
     ui/                      Design-system primitives (Button, Chip, Sheet, Stars, Toast…)
     layout/                  AppShell, bottom tab bar, desktop rail, create menu
@@ -178,7 +184,7 @@ Integrity is enforced in the database, not just the UI:
 - one join per user per event (primary key), capacity and "not ended" enforced by a trigger that row-locks the event
 - no self-follows, no duplicate follows or saves, one open report per reporter per target
 - check constraints on coordinates, scores, lengths, statuses
-- `status` + `visibility` columns exist on places/events so moderation and trust tiers can be added later without a migration
+- `places.visibility` drives the trust tiers, and events inherit the visibility of their linked place; the `pending` and `removed` statuses are reserved so a moderation workflow can be added later without a migration
 
 ## Security notes
 
@@ -191,7 +197,7 @@ Integrity is enforced in the database, not just the UI:
 ## Decisions worth knowing
 
 - **Demo mode is a first-class repository, not a mock.** It mirrors the Postgres tables and rules (including capacity, duplicate-join, and rating aggregation), so the UI you develop against behaves like production.
-- **Filtering is client-side over a bounded server fetch** (500 places / 200 events). Chips and search feel instant; a bounding-box query is the obvious next step at scale.
+- **Filtering happens in the database, scoped to the map viewport.** Search text, category and tags go to the discovery functions along with the visible bounds, so results cover every matching record rather than a fixed recent slice. See [Discovery queries](#discovery-queries).
 - **The map provider is chosen at build time** from `NEXT_PUBLIC_MAPBOX_TOKEN`; only the selected library is bundled.
 - **Address lookup runs server-side** at `/api/geocode`, using Mapbox when a token is set and
   OpenStreetMap's Nominatim otherwise. Proxying it keeps the provider off the client, lets one
@@ -205,7 +211,7 @@ Integrity is enforced in the database, not just the UI:
   `src/lib/forms/useFormSubmit.ts`, which also focuses the first field the server rejected.
 - **Place "local tip" is a dedicated field.** It is the product's differentiator, so it gets its own prominent slot on cards and detail pages.
 - **Seed data is fictional** (names, tips, venues) and placed at real Columbus coordinates so the map looks alive. It is not a set of real recommendations. One seeded account (`nina@example.com`, home city Cleveland) is deliberately *not* a Columbus local, so the trust tier is visible in demo mode rather than only in tests.
-- **Images:** photos upload to Supabase Storage (public buckets, per-user folders) or to `.data/uploads` in demo mode. Places without photos get a generated category cover so nothing looks empty.
+- **Images:** uploads go to Supabase Storage in per-user folders, or to `.data/uploads` in demo mode. Place photos are private and are served only through `/api/photos/[id]` after a visibility check (see [The community layer](#the-community-layer)); avatars stay public. Places without photos get a generated category cover so nothing looks empty.
 
 ## Intentionally deferred
 
