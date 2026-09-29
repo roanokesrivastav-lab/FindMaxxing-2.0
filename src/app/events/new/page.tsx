@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { requireViewer } from "@/lib/auth/server";
 import { getRepository } from "@/lib/data";
+import { toPlaceOption } from "@/components/forms/PlacePicker";
 import { EventForm } from "@/components/forms/EventForm";
 import { FormShell } from "@/components/layout/FormShell";
 
@@ -10,10 +11,9 @@ export const dynamic = "force-dynamic";
 export default async function NewEventPage({ searchParams }: PageProps<"/events/new">) {
   const [sp, viewer] = await Promise.all([searchParams, requireViewer("/events/new")]);
   const repo = await getRepository();
-  const places = (await repo.places.list({ limit: 500, viewerId: viewer.id }))
-    .map((p) => ({ id: p.id, name: p.name, lat: p.lat, lng: p.lng, address: p.address, categorySlug: p.categorySlug, city: p.city }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-  const initialPlaceId = typeof sp.placeId === "string" && places.some((p) => p.id === sp.placeId) ? sp.placeId : null;
+  // Only the place linked from ?placeId= is resolved here; the picker searches for the rest.
+  const linked = typeof sp.placeId === "string" ? await repo.places.get(sp.placeId, viewer.id) : null;
+  const initialPlace = linked ? toPlaceOption(linked) : null;
   return (
     <FormShell
       title="Create an event"
@@ -22,7 +22,7 @@ export default async function NewEventPage({ searchParams }: PageProps<"/events/
       backHref="/events"
       tone="pulse"
     >
-      <EventForm places={places} initialPlaceId={initialPlaceId} defaultCity={viewer.profile.homeCity ?? ""} />
+      <EventForm initialPlace={initialPlace} defaultCity={viewer.profile.homeCity ?? ""} />
     </FormShell>
   );
 }

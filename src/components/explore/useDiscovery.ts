@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Event, EventMapRecord, MapResult, Page, Place, PlaceMapRecord } from "@/lib/data/types";
+import { getJson } from "@/components/shared/getJson";
 import {
   DISCOVERY_DEBOUNCE_MS,
   EVENT_PAGE,
@@ -14,15 +15,6 @@ import {
 export type { DiscoveryKind, DiscoveryRequest, DiscoveryResults } from "./discoveryRequest";
 export type DiscoveryStatus = "idle" | "loading" | "error";
 const EMPTY: Page<never> = { items: [], nextCursor: null };
-
-async function getJson<T>(url: string, signal: AbortSignal): Promise<T> {
-  const res = await fetch(url, { signal, headers: { Accept: "application/json" } });
-  if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(body?.error ?? `Request failed (${res.status})`);
-  }
-  return (await res.json()) as T;
-}
 
 /**
  * Server-side discovery for the explore screen. Queries once the map (or the

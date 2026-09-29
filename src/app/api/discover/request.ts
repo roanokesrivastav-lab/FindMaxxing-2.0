@@ -32,5 +32,12 @@ export async function handleDiscovery(
 }
 
 export function filtersOf(query: DiscoveryQuery) {
-  return { bounds: query.bbox, text: query.q, category: query.category, tags: query.tags };
+  return {
+    bounds: query.bbox,
+    text: query.q,
+    category: query.category,
+    tags: query.tags,
+    neighborhood: query.neighborhood,
+    createdAfter: query.createdAfter,
+  };
 }

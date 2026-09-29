@@ -11,17 +11,7 @@ export const dynamic = "force-dynamic";
 
 export default async function TagsIndexPage() {
   const [repo, viewer] = await Promise.all([getRepository(), getViewer()]);
-  const viewerId = viewer?.id ?? null;
-  const [places, events] = await Promise.all([repo.places.list({ limit: 500, viewerId }), repo.events.list({ limit: 300, viewerId })]);
-
-  const counts = new Map<string, { places: number; events: number }>();
-  const bump = (slug: string, key: "places" | "events") => {
-    const c = counts.get(slug) ?? { places: 0, events: 0 };
-    c[key] += 1;
-    counts.set(slug, c);
-  };
-  for (const p of places) for (const t of p.tags) bump(t, "places");
-  for (const e of events) for (const t of e.tags) bump(t, "events");
+  const counts = new Map(Object.entries(await repo.tags.counts({ viewerId: viewer?.id ?? null })));
 
   const mine = new Set(viewer?.profile.interests ?? []);
   const ordered = [...INTERESTS].sort((a, b) => {

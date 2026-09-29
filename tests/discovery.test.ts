@@ -22,6 +22,7 @@ import {
   inBounds,
   isValidTimestamp,
   normalizeFilters,
+  normalizeTimestamp,
   toPage,
 } from "../src/lib/data/discovery";
 import type { DataRepository } from "../src/lib/data/repository";
@@ -74,6 +75,7 @@ const CASTS: Record<string, string> = {
   p_category: "text", p_tags: "text[]",
   p_after_created_at: "timestamptz", p_after_id: "uuid",
   p_ends_after: "timestamptz", p_after_starts_at: "timestamptz",
+  p_neighborhood: "text", p_created_after: "timestamptz", p_starts_before: "timestamptz",
 };
 
 function call(fn: string, args: Record<string, unknown>) {
@@ -104,11 +106,34 @@ function sqlSide(db: PGlite) {
       const after = decodeCursor(opts.cursor);
       const { from, params } = call("discover_events", {
         ...discoverArgs(normalizeFilters(opts)), p_ends_after: upcomingCutoff(opts.includePast),
+        p_starts_before: normalizeTimestamp(opts.startsBefore, "startsBefore"),
         p_after_starts_at: after?.key ?? null, p_after_id: after?.id ?? null,
       });
       const rows = await queryAs<{ id: string; key: string }>(db, viewer,
         `select id, ${ISO("starts_at")} as key from ${from} order by starts_at, id limit ${limit + 1}`, params);
       return toPage(rows, limit, (r) => r.id, (r) => ({ key: r.key, id: r.id }));
+    },
+    async placeCount(viewer: string | null, opts: DiscoveryFilters): Promise<number> {
+      const { from, params } = call("discover_places", discoverArgs(normalizeFilters(opts)));
+      return (await queryAs<{ n: number }>(db, viewer, `select count(*)::int as n from ${from}`, params))[0].n;
+    },
+    async eventCount(viewer: string | null, opts: EventSearchOptions): Promise<number> {
+      const { from, params } = call("discover_events", {
+        ...discoverArgs(normalizeFilters(opts)),
+        p_ends_after: upcomingCutoff(opts.includePast),
+        p_starts_before: normalizeTimestamp(opts.startsBefore, "startsBefore"),
+      });
+      return (await queryAs<{ n: number }>(db, viewer, `select count(*)::int as n from ${from}`, params))[0].n;
+    },
+    async neighborhoods(viewer: string | null) {
+      const rows = await queryAs<{ key: string; name: string; city: string; place_count: number; top_categories: string[]; lat: number; lng: number }>(
+        db, viewer, "select * from public.discover_neighborhoods()");
+      return rows.map((r) => ({ key: r.key, name: r.name, city: r.city, placeCount: r.place_count, topCategories: r.top_categories, lat: Number(r.lat), lng: Number(r.lng) }));
+    },
+    async tagCounts(viewer: string | null) {
+      const rows = await queryAs<{ interest_slug: string; place_count: number; event_count: number }>(
+        db, viewer, "select * from public.discover_tag_counts(p_ends_after => $1::timestamptz)", [upcomingCutoff(false)]);
+      return Object.fromEntries(rows.map((r) => [r.interest_slug, { places: r.place_count, events: r.event_count }]));
     },
     async placeMap(viewer: string | null, opts: MapQueryOptions) {
       const limit = clampLimit(opts.limit, DEFAULT_MAP_MARKERS, MAX_MAP_MARKERS);
@@ -216,6 +241,84 @@ describe("SQL and demo agree", () => {
     });
   });
 
+  describe.each(VIEWERS)("new filters and aggregates as %s", (_label, viewer) => {
+    const middle = async (): Promise<{ createdAfter: string; startsBefore: string; neighborhood: string }> => {
+      const places = (await demo.places.search({ limit: MAX_PAGE_SIZE, viewerId: user("maya_r") })).items;
+      const events = (await demo.events.search({ limit: MAX_PAGE_SIZE, includePast: true, viewerId: user("maya_r") })).items;
+      const hood = (await demo.places.neighborhoods({ viewerId: user("maya_r") }))[0];
+      return {
+        createdAfter: places[Math.floor(places.length / 2)].createdAt,
+        startsBefore: events[Math.floor(events.length / 2)].startsAt,
+        neighborhood: hood.name,
+      };
+    };
+
+    it("neighborhood matches by normalized key, for places and their events", async () => {
+      const { neighborhood } = await middle();
+      const variants = [neighborhood, neighborhood.toUpperCase(), `  ${neighborhood.replace(/ /g, "   ")}  `];
+      const canonical = await demoPlaces(viewer, { neighborhood, limit: MAX_PAGE_SIZE });
+      const canonicalEvents = await demoEvents(viewer, { neighborhood, includePast: true, limit: MAX_PAGE_SIZE });
+      for (const v of variants) {
+        expect((await walk((c) => sql.placePage(viewer, { neighborhood: v, limit: 3, cursor: c }))), v).toEqual(canonical.items);
+        expect((await walk((c) => demoPlaces(viewer, { neighborhood: v, limit: 3, cursor: c }))), v).toEqual(canonical.items);
+        expect((await walk((c) => sql.eventPage(viewer, { neighborhood: v, includePast: true, limit: 2, cursor: c }))), v).toEqual(canonicalEvents.items);
+        expect((await walk((c) => demoEvents(viewer, { neighborhood: v, includePast: true, limit: 2, cursor: c }))), v).toEqual(canonicalEvents.items);
+      }
+      expect(await sql.placeCount(viewer, { neighborhood })).toBe(canonical.items.length);
+    });
+
+    it("createdAfter and startsBefore agree, boundary included", async () => {
+      const { createdAfter, startsBefore } = await middle();
+      const places = await demoPlaces(viewer, { createdAfter, limit: MAX_PAGE_SIZE });
+      expect(await walk((c) => sql.placePage(viewer, { createdAfter, limit: 3, cursor: c }))).toEqual(places.items);
+      expect(await walk((c) => demoPlaces(viewer, { createdAfter, limit: 3, cursor: c }))).toEqual(places.items);
+      const events = await demoEvents(viewer, { startsBefore, includePast: true, limit: MAX_PAGE_SIZE });
+      expect(await walk((c) => sql.eventPage(viewer, { startsBefore, includePast: true, limit: 2, cursor: c }))).toEqual(events.items);
+      expect(await walk((c) => demoEvents(viewer, { startsBefore, includePast: true, limit: 2, cursor: c }))).toEqual(events.items);
+      const created = await demoEvents(viewer, { createdAfter, includePast: true, limit: MAX_PAGE_SIZE });
+      expect(await sql.eventCount(viewer, { createdAfter, includePast: true })).toBe(created.items.length);
+    });
+
+    it.each(FILTERS)("count() matches the rows a walk returns: %s", async (_name, filters) => {
+      const places = await demoPlaces(viewer, { ...filters, limit: MAX_PAGE_SIZE });
+      expect(await demo.places.count({ ...filters, viewerId: viewer })).toBe(places.items.length);
+      expect(await sql.placeCount(viewer, filters)).toBe(places.items.length);
+      for (const includePast of [false, true]) {
+        const events = await demoEvents(viewer, { ...filters, includePast, limit: MAX_PAGE_SIZE });
+        expect(await demo.events.count({ ...filters, includePast, viewerId: viewer })).toBe(events.items.length);
+        expect(await sql.eventCount(viewer, { ...filters, includePast })).toBe(events.items.length);
+      }
+    });
+
+    it("neighborhoods() and tags.counts() agree, in order", async () => {
+      const fromSql = await sql.neighborhoods(viewer);
+      const fromDemo = await demo.places.neighborhoods({ viewerId: viewer });
+      expect(fromSql.length).toBeGreaterThan(0);
+      const exact = (g: (typeof fromSql)[number]) => ({ key: g.key, name: g.name, city: g.city, placeCount: g.placeCount, topCategories: g.topCategories });
+      expect(fromSql.map(exact)).toEqual(fromDemo.map(exact));
+      fromSql.forEach((g, i) => {
+        expect(g.lat).toBeCloseTo(fromDemo[i].lat, 6);
+        expect(g.lng).toBeCloseTo(fromDemo[i].lng, 6);
+      });
+      expect(await sql.tagCounts(viewer)).toEqual(await demo.tags.counts({ viewerId: viewer }));
+    });
+  });
+
+  it("keeps locals-only places out of counts and aggregates for visitors", async () => {
+    const total = async (viewer: string | null) => ({
+      sql: await sql.placeCount(viewer, {}),
+      demo: await demo.places.count({ viewerId: viewer }),
+      grouped: (await sql.neighborhoods(viewer)).reduce((n, g) => n + g.placeCount, 0),
+    });
+    const visitor = await total(user("nina"));
+    const local = await total(user("jules"));
+    expect(visitor.sql).toBe(visitor.demo);
+    expect(local.sql).toBe(local.demo);
+    expect(local.sql).toBeGreaterThan(visitor.sql);
+    expect(local.grouped).toBeGreaterThanOrEqual(visitor.grouped);
+    expect((await sql.eventCount(user("nina"), { includePast: true }))).toBeLessThan(await sql.eventCount(user("jules"), { includePast: true }));
+  });
+
   it("filters are meaningful: they narrow without emptying", async () => {
     const total = (await demoPlaces(null, { limit: MAX_PAGE_SIZE })).items.length;
     for (const [name, filters] of FILTERS.filter(([n]) => !/no filters|literal|no match/.test(n))) {
@@ -261,6 +364,64 @@ describe("SQL and demo agree", () => {
     await db.query("update public.places set status = 'hidden' where id = $1", [lumen]);
     expect((await sql.placePage(user(owner), { limit: MAX_PAGE_SIZE })).items).not.toContain(lumen);
     await db.query("update public.places set status = 'published' where id = $1", [lumen]);
+  });
+});
+
+describe("no record is silently dropped past the old 500-item limits", () => {
+  const BULK = 620;
+  const HOOD = "Bulk Hood";
+
+  it("pages every SQL row of a tag and a neighborhood, and the counts agree", async () => {
+    const before = await sql.tagCounts(null);
+    const inserted = await db.query<{ id: string }>(
+      `insert into public.places (name, description, category_slug, lat, lng, city, neighborhood, creator_id, visibility, status, created_at)
+       select 'Bulk ' || g, 'Generated place number ' || g || ' for paging.', 'food', 39.96, -83.0, 'Columbus', '  bulk   HOOD ', $1, 'public', 'published',
+              timestamptz '2030-01-01 00:00:00+00' + ((g / 7) || ' seconds')::interval
+       from generate_series(1, $2::int) g returning id`,
+      [user("maya_r"), BULK],
+    );
+    await db.query("insert into public.place_tags (place_id, interest_slug) select id, 'hiking' from public.places where name like 'Bulk %'");
+    const expected = new Set(inserted.rows.map((r) => r.id));
+    expect(expected.size).toBe(BULK);
+
+    // Seven rows share each timestamp, so this also exercises the tie-break across page edges.
+    const byHood = await walk((cursor) => sql.placePage(null, { neighborhood: HOOD, limit: MAX_PAGE_SIZE, cursor }));
+    expect(new Set(byHood)).toEqual(expected);
+    const byTag = await walk((cursor) => sql.placePage(null, { tags: ["hiking"], limit: MAX_PAGE_SIZE, cursor }));
+    expect(byTag.length).toBe(await sql.placeCount(null, { tags: ["hiking"] }));
+    for (const id of expected) expect(byTag).toContain(id);
+
+    expect(await sql.placeCount(null, { neighborhood: HOOD })).toBe(BULK);
+    const group = (await sql.neighborhoods(null)).find((g) => g.key === "bulk hood");
+    expect(group).toMatchObject({ placeCount: BULK });
+    const after = await sql.tagCounts(null);
+    expect(after.hiking.places - (before.hiking?.places ?? 0)).toBe(BULK);
+  }, 60_000);
+
+  it("pages every demo record of a tag and a neighborhood", async () => {
+    const store = createIsolatedStore();
+    const base = store.state.places[0];
+    const ids = Array.from({ length: BULK }, (_, i) => stableId(`bulk-demo:${i}`));
+    ids.forEach((id, i) => {
+      store.state.places.push({
+        ...base,
+        id,
+        name: `Bulk ${i}`,
+        neighborhood: "  Bulk   HOOD ",
+        visibility: "public",
+        status: "published",
+        createdAt: new Date(Date.UTC(2030, 0, 1) + Math.floor(i / 7) * 1000).toISOString(),
+      });
+      store.state.placeTags.push({ placeId: id, interestSlug: "hiking" });
+    });
+    const repo = createDemoRepository({ state: store.state, persist() {} });
+    const page = (filters: DiscoveryFilters) => (cursor: string | null) =>
+      repo.places.search({ ...filters, limit: MAX_PAGE_SIZE, cursor }).then((p) => ({ items: p.items.map((x) => x.id), nextCursor: p.nextCursor }));
+    expect(new Set(await walk(page({ neighborhood: "bulk hood" })))).toEqual(new Set(ids));
+    const byTag = await walk(page({ tags: ["hiking"] }));
+    for (const id of ids) expect(byTag).toContain(id);
+    expect(byTag.length).toBe(await repo.places.count({ tags: ["hiking"] }));
+    expect(await repo.places.count({ neighborhood: HOOD })).toBe(BULK);
   });
 });
 

@@ -5,10 +5,9 @@ import {
   MAX_PLACE_PHOTOS,
   type Event,
   type EventDetail,
-  type EventListOptions,
+  type NeighborhoodSummary,
   type Place,
   type PlaceDetail,
-  type PlaceListOptions,
   type Profile,
   type ProfileStats,
   type ProfileSummary,
@@ -27,6 +26,7 @@ import {
   clampLimit,
   decodeCursor,
   normalizeFilters,
+  normalizeTimestamp,
   toPage,
   type NormalizedFilters,
 } from "../discovery";
@@ -247,6 +247,8 @@ export function discoverArgs(f: NormalizedFilters) {
     p_text_tags: f.search.tags,
     p_category: f.category,
     p_tags: f.tags,
+    p_neighborhood: f.neighborhood,
+    p_created_after: f.createdAfter,
   };
 }
 
@@ -260,17 +262,6 @@ const EVENT_MAP_SELECT = "id, title, category_slug, lat, lng, starts_at";
 export function createSupabaseRepository(supabase: SupabaseClient): DataRepository {
   const repo: DataRepository = {
     places: {
-      async list(opts: PlaceListOptions = {}) {
-        const rows = unwrap(
-          await supabase
-            .from("places")
-            .select(PLACE_SELECT)
-            .eq("status", "published")
-            .order("created_at", { ascending: false })
-            .limit(opts.limit ?? 500),
-        ) as PlaceRow[];
-        return rows.map(mapPlace);
-      },
       async search(opts = {}) {
         const filters = normalizeFilters(opts);
         const limit = clampLimit(opts.limit, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
@@ -286,6 +277,31 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
             .limit(limit + 1),
         ) as PlaceRow[];
         return toPage(rows, limit, mapPlace, (r) => ({ key: r.created_at, id: r.id }));
+      },
+      async count(opts = {}) {
+        const { count, error } = await supabase.rpc("discover_places", discoverArgs(normalizeFilters(opts)), { count: "exact", head: true });
+        if (error) throw translate(error);
+        return count ?? 0;
+      },
+      async neighborhoods() {
+        const rows = unwrap(await supabase.rpc("discover_neighborhoods")) as {
+          key: string;
+          name: string;
+          city: string;
+          place_count: number;
+          top_categories: string[] | null;
+          lat: number;
+          lng: number;
+        }[];
+        return rows.map<NeighborhoodSummary>((r) => ({
+          key: r.key,
+          name: r.name,
+          city: r.city,
+          placeCount: r.place_count,
+          topCategories: r.top_categories ?? [],
+          lat: Number(r.lat),
+          lng: Number(r.lng),
+        }));
       },
       async mapMarkers(opts = {}) {
         const filters = normalizeFilters(opts);
@@ -502,14 +518,6 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
     },
 
     events: {
-      async list(opts: EventListOptions = {}) {
-        let q = supabase.from("events").select(EVENT_SELECT).eq("status", "published").order("starts_at", { ascending: true }).limit(opts.limit ?? 500);
-        if (!opts.includePast) {
-          const cutoff = new Date(Date.now() - UPCOMING_GRACE_MS).toISOString();
-          q = q.or(`ends_at.gte.${cutoff},and(ends_at.is.null,starts_at.gte.${cutoff})`);
-        }
-        return (unwrap(await q) as EventRow[]).map(mapEvent);
-      },
       async search(opts = {}) {
         const filters = normalizeFilters(opts);
         const limit = clampLimit(opts.limit, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
@@ -519,6 +527,7 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
             .rpc("discover_events", {
               ...discoverArgs(filters),
               p_ends_after: upcomingCutoff(opts.includePast),
+              p_starts_before: normalizeTimestamp(opts.startsBefore, "startsBefore"),
               p_after_starts_at: after?.key ?? null,
               p_after_id: after?.id ?? null,
             })
@@ -528,6 +537,19 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
             .limit(limit + 1),
         ) as EventRow[];
         return toPage(rows, limit, mapEvent, (r) => ({ key: r.starts_at, id: r.id }));
+      },
+      async count(opts = {}) {
+        const { count, error } = await supabase.rpc(
+          "discover_events",
+          {
+            ...discoverArgs(normalizeFilters(opts)),
+            p_ends_after: upcomingCutoff(opts.includePast),
+            p_starts_before: normalizeTimestamp(opts.startsBefore, "startsBefore"),
+          },
+          { count: "exact", head: true },
+        );
+        if (error) throw translate(error);
+        return count ?? 0;
       },
       async mapMarkers(opts = {}) {
         const filters = normalizeFilters(opts);
@@ -669,6 +691,17 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
             .order("starts_at", { ascending: true }),
         ) as EventRow[];
         return rows.map(mapEvent);
+      },
+    },
+
+    tags: {
+      async counts() {
+        const rows = unwrap(await supabase.rpc("discover_tag_counts", { p_ends_after: upcomingCutoff(false) })) as {
+          interest_slug: string;
+          place_count: number;
+          event_count: number;
+        }[];
+        return Object.fromEntries(rows.map((r) => [r.interest_slug, { places: r.place_count, events: r.event_count }]));
       },
     },
 

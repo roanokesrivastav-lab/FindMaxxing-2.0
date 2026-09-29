@@ -2,11 +2,12 @@ import type {
   ConnectionEntry,
   Event,
   EventDetail,
-  EventListOptions,
+  EventCountOptions,
   EventMapRecord,
   EventSearchOptions,
   MapQueryOptions,
   MapResult,
+  NeighborhoodSummary,
   Page,
   PlaceMapRecord,
   PlaceSearchOptions,
@@ -18,11 +19,12 @@ import type {
   OwnerPlaceStatus,
   Place,
   PlaceDetail,
-  PlaceListOptions,
+  PlaceCountOptions,
   PlaceRating,
   PlacePhotoDelivery,
   ReportEntry,
   StoredImage,
+  TagCounts,
   Visibility,
   Profile,
   ProfileStats,
@@ -42,12 +44,15 @@ import type {
  */
 export interface DataRepository {
   places: {
-    list(opts?: PlaceListOptions): Promise<Place[]>;
     /**
      * Discovery list: every visible published place matching the filters,
      * newest first (created_at desc, id desc), in cursor pages.
      */
     search(opts?: PlaceSearchOptions): Promise<Page<Place>>;
+    /** Total for the same filters, ignoring paging. */
+    count(opts?: PlaceCountOptions): Promise<number>;
+    /** Every neighborhood with visible places, biggest first, counted over all of them. */
+    neighborhoods(opts?: { viewerId?: string | null }): Promise<NeighborhoodSummary[]>;
     /**
      * Map read model: compact records for the same filters, most notable first
      * (rating count, save count, id), capped with a truncation flag.
@@ -84,9 +89,10 @@ export interface DataRepository {
     removeRating(userId: string, placeId: string): Promise<{ ratingAvg: number; ratingCount: number }>;
   };
   events: {
-    list(opts?: EventListOptions): Promise<Event[]>;
     /** Discovery list: visible published events, soonest first (starts_at, id), in cursor pages. */
     search(opts?: EventSearchOptions): Promise<Page<Event>>;
+    /** Total for the same filters, ignoring paging. */
+    count(opts?: EventCountOptions): Promise<number>;
     /** Map read model: compact records, soonest first, capped with a truncation flag. */
     mapMarkers(opts?: MapQueryOptions): Promise<MapResult<EventMapRecord>>;
     get(id: string, viewerId?: string | null): Promise<EventDetail | null>;
@@ -99,6 +105,10 @@ export interface DataRepository {
     listByCreator(userId: string, viewerId?: string | null): Promise<Event[]>;
     listJoined(userId: string, viewerId?: string | null): Promise<Event[]>;
     listForPlace(placeId: string): Promise<Event[]>;
+  };
+  tags: {
+    /** Visible places and upcoming events per interest slug, over the whole data set. */
+    counts(opts?: { viewerId?: string | null }): Promise<TagCounts>;
   };
   profiles: {
     getById(id: string): Promise<Profile | null>;

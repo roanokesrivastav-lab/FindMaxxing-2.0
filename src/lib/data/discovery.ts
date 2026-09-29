@@ -3,6 +3,7 @@
  * two cannot drift: limits, cursor encoding, filter validation, and how search
  * text expands into taxonomy matches.
  */
+import { neighborhoodKey } from "@/lib/utils/neighborhoods";
 import { CATEGORIES, INTERESTS } from "./taxonomy";
 import { DataError, type DiscoveryFilters, type GeoBounds, type Page } from "./types";
 
@@ -141,6 +142,16 @@ export interface NormalizedFilters {
   search: SearchText;
   category: string | null;
   tags: string[];
+  /** Comparison key (see neighborhoodKey), or null for no filter. */
+  neighborhood: string | null;
+  createdAfter: string | null;
+}
+
+/** Null for no value; throws DataError("invalid") for anything Postgres would refuse as a timestamptz. */
+export function normalizeTimestamp(value: string | null | undefined, label: string): string | null {
+  if (!value) return null;
+  if (!isValidTimestamp(value)) throw new DataError(`Invalid ${label}`, "invalid");
+  return value;
 }
 
 export function normalizeFilters(filters: DiscoveryFilters): NormalizedFilters {
@@ -149,6 +160,8 @@ export function normalizeFilters(filters: DiscoveryFilters): NormalizedFilters {
     search: expandSearchText(filters.text),
     category: filters.category || null,
     tags: Array.from(new Set(filters.tags ?? [])),
+    neighborhood: neighborhoodKey(filters.neighborhood ?? "") || null,
+    createdAfter: normalizeTimestamp(filters.createdAfter, "createdAfter"),
   };
 }
 

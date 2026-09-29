@@ -1,51 +1,74 @@
 "use client";
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import type { Event } from "@/lib/data/types";
+import type { Event, Page } from "@/lib/data/types";
 import { EVENT_CATEGORIES } from "@/lib/data/taxonomy";
 import { Chip, ChipRow } from "@/components/ui/Chip";
 import { EventCard } from "./EventCard";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { relativeDayLabel } from "@/lib/utils/format";
+import { LoadMoreButton, PagedError, usePagedList } from "@/components/shared/PagedList";
+import { eventHasEnded, relativeDayLabel } from "@/lib/utils/format";
 
 type When = "all" | "today" | "week" | "mine" | "past";
+type Feed = { when: "all" | "today" | "week"; startsBefore: string | null };
+
+const PAGE_SIZE = 30;
+const UPCOMING_GRACE_MS = 60 * 60_000;
+
+const upcomingCutoff = () => Date.now() - UPCOMING_GRACE_MS;
+
+/** The upcoming feed's upper bound for a range, in the viewer's local time. */
+function feedFor(when: "all" | "today" | "week"): Feed {
+  const now = new Date();
+  if (when === "today") return { when, startsBefore: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString() };
+  if (when === "week") return { when, startsBefore: new Date(now.getTime() + 7 * 86_400_000).toISOString() };
+  return { when, startsBefore: null };
+}
 
 export function EventsClient({
-  events,
-  attended,
-  joinedIds,
+  initial,
+  joined,
   signedIn,
 }: {
-  events: Event[];
-  /** Events the viewer joined that have already finished. */
-  attended: Event[];
-  joinedIds: string[];
+  /** First page of the unfiltered upcoming feed. */
+  initial: Page<Event>;
+  /** Every event the viewer joined, past and upcoming, by start time. */
+  joined: Event[];
   signedIn: boolean;
 }) {
   const [category, setCategory] = useState<string | null>(null);
   const [when, setWhen] = useState<When>("all");
-  const joined = useMemo(() => new Set(joinedIds), [joinedIds]);
+  // Kept while "Joined" / "Been to" are shown so switching back does not refetch.
+  const [feed, setFeed] = useState<Feed>({ when: "all", startsBefore: null });
 
-  const filtered = useMemo(() => {
-    const now = new Date();
-    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime();
-    const endOfWeek = now.getTime() + 7 * 86_400_000;
-    // "Been to" reads from a different list: the upcoming feed excludes the past.
-    const source = when === "past" ? [...attended].reverse() : events;
-    return source.filter((e) => {
-      if (category && e.categorySlug !== category) return false;
-      const t = new Date(e.startsAt).getTime();
-      if (when === "today") return t < endOfToday;
-      if (when === "week") return t < endOfWeek;
-      if (when === "mine") return joined.has(e.id);
-      return true;
-    });
-  }, [events, attended, category, when, joined]);
+  const query = useMemo(() => {
+    const q: Record<string, string> = {};
+    if (category) q.category = category;
+    if (feed.startsBefore) q.startsBefore = feed.startsBefore;
+    return q;
+  }, [category, feed.startsBefore]);
+  const list = usePagedList<Event>({ initial, endpoint: "events", query, pageSize: PAGE_SIZE });
+
+  // "Joined" and "Been to" come from the viewer's own (bounded) list, not the city feed.
+  const own = useMemo(() => {
+    if (when !== "mine" && when !== "past") return null;
+    const cutoff = upcomingCutoff();
+    const upcoming = (e: Event) => !eventHasEnded(e.startsAt, e.endsAt, cutoff);
+    const rows = when === "mine" ? joined.filter(upcoming) : joined.filter((e) => !upcoming(e)).reverse();
+    return rows.filter((e) => !category || e.categorySlug === category);
+  }, [when, joined, category]);
+
+  const shown = own ?? list.items;
+
+  function pick(next: When) {
+    setWhen(next);
+    if (next === "all" || next === "today" || next === "week") setFeed(feedFor(next));
+  }
 
   // Group by day label for scannability.
   const groups = useMemo(() => {
     const map = new Map<string, Event[]>();
-    for (const e of filtered) {
+    for (const e of shown) {
       const key = relativeDayLabel(e.startsAt);
       const label =
         when === "past"
@@ -56,7 +79,9 @@ export function EventsClient({
       map.set(label, [...(map.get(label) ?? []), e]);
     }
     return [...map.entries()];
-  }, [filtered, when]);
+  }, [shown, when]);
+
+  const feedShown = own === null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -70,7 +95,7 @@ export function EventsClient({
             ...(signedIn ? ([["past", "Been to"]] as [When, string][]) : []),
           ] as [When, string][]
         ).map(([k, label]) => (
-          <Chip key={k} active={when === k} onClick={() => setWhen(k)}>
+          <Chip key={k} active={when === k} onClick={() => pick(k)}>
             {label}
           </Chip>
         ))}
@@ -83,7 +108,9 @@ export function EventsClient({
         ))}
       </ChipRow>
 
-      {groups.length === 0 ? (
+      {feedShown && list.error && list.stale ? <PagedError message={list.error} onRetry={list.retry} /> : null}
+
+      {groups.length === 0 && !(feedShown && list.loading) ? (
         <EmptyState
           emoji={when === "past" ? "🕰️" : when === "mine" ? "🎟️" : "📅"}
           title={
@@ -107,17 +134,22 @@ export function EventsClient({
           }
         />
       ) : (
-        groups.map(([label, list]) => (
-          <section key={label}>
-            <h2 className="text-xs font-bold uppercase tracking-wider text-muted mb-2">{label}</h2>
-            <div className="flex flex-col gap-2">
-              {list.map((e) => (
-                <EventCard key={e.id} event={e} />
-              ))}
-            </div>
-          </section>
-        ))
+        <div className={feedShown && list.stale ? "flex flex-col gap-4 opacity-60 transition-opacity" : "flex flex-col gap-4"} aria-busy={feedShown && list.stale}>
+          {groups.map(([label, rows]) => (
+            <section key={label}>
+              <h2 className="text-xs font-bold uppercase tracking-wider text-muted mb-2">{label}</h2>
+              <div className="flex flex-col gap-2">
+                {rows.map((e) => (
+                  <EventCard key={e.id} event={e} />
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
       )}
+
+      {feedShown && !list.stale && list.error ? <PagedError message={list.error} onRetry={list.retry} /> : null}
+      {feedShown && !list.stale && list.nextCursor && !list.error ? <LoadMoreButton loading={list.loadingMore} onClick={list.loadMore} /> : null}
     </div>
   );
 }

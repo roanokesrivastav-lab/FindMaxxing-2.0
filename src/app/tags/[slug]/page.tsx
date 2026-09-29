@@ -7,14 +7,15 @@ import { INTERESTS, INTEREST_MAP } from "@/lib/data/taxonomy";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { BackButton } from "@/components/ui/BackButton";
-import { PlaceCard } from "@/components/places/PlaceCard";
-import { EventCard } from "@/components/events/EventCard";
+import { PagedList } from "@/components/shared/PagedList";
 import { PersonCard } from "@/components/profile/PersonCard";
 import { FollowButton } from "@/components/profile/FollowButton";
 import { pluralize } from "@/lib/utils/format";
 import { shareMetadata } from "@/lib/utils/share-metadata";
 
 export const dynamic = "force-dynamic";
+
+const PAGE_SIZE = 20;
 
 export async function generateMetadata({ params }: PageProps<"/tags/[slug]">): Promise<Metadata> {
   const { slug } = await params;
@@ -33,22 +34,27 @@ export default async function TagPage({ params }: PageProps<"/tags/[slug]">) {
   if (!interest) notFound();
 
   const viewerId = viewer?.id ?? null;
-  const [allPlaces, allEvents, people, following] = await Promise.all([
-    repo.places.list({ limit: 500, viewerId }),
-    repo.events.list({ limit: 300, viewerId }),
+  const filters = { tags: [interest.slug], viewerId };
+  const [placePage, eventPage, tagCounts, people, following] = await Promise.all([
+    repo.places.search({ ...filters, limit: PAGE_SIZE }),
+    repo.events.search({ ...filters, limit: PAGE_SIZE }),
+    repo.tags.counts({ viewerId }),
     repo.profiles.listByInterest(interest.slug, 30),
     viewer ? repo.profiles.listFollowing(viewer.id) : Promise.resolve([]),
   ]);
-  const places = allPlaces.filter((p) => p.tags.includes(interest.slug));
-  const events = allEvents.filter((e) => e.tags.includes(interest.slug));
+  const placeCount = tagCounts[interest.slug]?.places ?? 0;
+  const eventCount = tagCounts[interest.slug]?.events ?? 0;
+  const query = { tags: interest.slug };
   const followingIds = new Set(following.map((f) => f.id));
   const mine = new Set(viewer?.profile.interests ?? []);
   const isMine = mine.has(interest.slug);
-  const total = places.length + events.length + people.length;
+  const total = placeCount + eventCount + people.length;
 
-  // Interests that co-occur with this one on the same places/events, most common first.
+  // Interests that co-occur with this one, most common first. Counted over the
+  // first page of each list (the newest places, the soonest events), not every
+  // tagged record: an approximation that is plenty for six suggestion chips.
   const related = new Map<string, number>();
-  for (const item of [...places, ...events]) {
+  for (const item of [...placePage.items, ...eventPage.items]) {
     for (const t of item.tags) if (t !== interest.slug && INTEREST_MAP[t]) related.set(t, (related.get(t) ?? 0) + 1);
   }
   const relatedSlugs = [...related.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([s]) => s);
@@ -68,7 +74,7 @@ export default async function TagPage({ params }: PageProps<"/tags/[slug]">) {
         title={`${interest.emoji} ${interest.label}`}
         subtitle={
           total
-            ? [places.length ? pluralize(places.length, "place") : null, events.length ? pluralize(events.length, "event") : null, people.length ? pluralize(people.length, "person", "people") : null]
+            ? [placeCount ? pluralize(placeCount, "place") : null, eventCount ? pluralize(eventCount, "event") : null, people.length ? pluralize(people.length, "person", "people") : null]
                 .filter(Boolean)
                 .join(" · ")
             : "Nothing tagged with this yet."
@@ -111,25 +117,17 @@ export default async function TagPage({ params }: PageProps<"/tags/[slug]">) {
         />
       ) : null}
 
-      {events.length ? (
+      {eventCount ? (
         <section className="mb-8">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-muted mb-2">Events · {events.length}</h2>
-          <div className="flex flex-col gap-2">
-            {events.map((e) => (
-              <EventCard key={e.id} event={e} compact />
-            ))}
-          </div>
+          <h2 className="text-xs font-bold uppercase tracking-wider text-muted mb-2">Events · {eventCount}</h2>
+          <PagedList initial={eventPage} endpoint="events" query={query} pageSize={PAGE_SIZE} render="event-compact" />
         </section>
       ) : null}
 
-      {places.length ? (
+      {placeCount ? (
         <section className="mb-8">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-muted mb-2">Places · {places.length}</h2>
-          <div className="flex flex-col gap-2">
-            {places.map((p) => (
-              <PlaceCard key={p.id} place={p} compact />
-            ))}
-          </div>
+          <h2 className="text-xs font-bold uppercase tracking-wider text-muted mb-2">Places · {placeCount}</h2>
+          <PagedList initial={placePage} endpoint="places" query={query} pageSize={PAGE_SIZE} render="place-compact" />
         </section>
       ) : null}
 

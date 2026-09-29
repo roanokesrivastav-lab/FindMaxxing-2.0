@@ -220,17 +220,6 @@ export interface NewReportInput {
   details?: string | null;
 }
 
-export interface EventListOptions {
-  viewerId?: string | null;
-  includePast?: boolean;
-  limit?: number;
-}
-
-export interface PlaceListOptions {
-  viewerId?: string | null;
-  limit?: number;
-}
-
 // ----------------------------------------------------------------------------
 // Discovery queries
 //
@@ -254,6 +243,13 @@ export interface DiscoveryFilters {
   category?: string | null;
   /** Matches records carrying any of these interest slugs. */
   tags?: string[];
+  /**
+   * A neighborhood name, matched ignoring case and spacing. Events match
+   * through their linked place.
+   */
+  neighborhood?: string | null;
+  /** ISO timestamp: only records created at or after it. */
+  createdAfter?: string | null;
 }
 
 export interface PageRequest {
@@ -276,7 +272,30 @@ export interface PlaceSearchOptions extends DiscoveryFilters, PageRequest {
 export interface EventSearchOptions extends DiscoveryFilters, PageRequest {
   viewerId?: string | null;
   includePast?: boolean;
+  /** ISO timestamp: only events starting before it (Today, This week). */
+  startsBefore?: string | null;
 }
+
+/** The same filters a list takes, without paging. */
+export type PlaceCountOptions = DiscoveryFilters & { viewerId?: string | null };
+export type EventCountOptions = DiscoveryFilters & { viewerId?: string | null; includePast?: boolean; startsBefore?: string | null };
+
+/** One neighborhood over the places the viewer can see. */
+export interface NeighborhoodSummary {
+  /** Comparison key (see neighborhoodKey); the same for every spelling. */
+  key: string;
+  /** Display name: the alphabetically first spelling, trimmed. */
+  name: string;
+  city: string;
+  placeCount: number;
+  /** Category slugs by frequency, most common first. */
+  topCategories: string[];
+  /** Mean position of its places. */
+  lat: number;
+  lng: number;
+}
+
+export type TagCounts = Record<string, { places: number; events: number }>;
 
 export interface MapQueryOptions extends DiscoveryFilters {
   viewerId?: string | null;

@@ -5,21 +5,29 @@ import { getRepository } from "@/lib/data";
 import { getViewer } from "@/lib/auth/server";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { PlaceCard } from "@/components/places/PlaceCard";
-import { EventCard } from "@/components/events/EventCard";
+import { PagedList } from "@/components/shared/PagedList";
 import { pluralize } from "@/lib/utils/format";
-import { NEW_WINDOW_DAYS, addedLabel, newestWithin } from "@/lib/utils/recent";
+import { NEW_WINDOW_DAYS, newSince } from "@/lib/utils/recent";
 
 export const metadata: Metadata = { title: "New this week" };
 export const dynamic = "force-dynamic";
 
+const PAGE_SIZE = 20;
+
 export default async function NewThisWeekPage() {
   const [repo, viewer] = await Promise.all([getRepository(), getViewer()]);
   const viewerId = viewer?.id ?? null;
-  const [allPlaces, allEvents] = await Promise.all([repo.places.list({ limit: 500, viewerId }), repo.events.list({ limit: 300, viewerId })]);
-  const places = newestWithin(allPlaces);
-  const events = newestWithin(allEvents);
-  const total = places.length + events.length;
+  const createdAfter = newSince();
+  const filters = { createdAfter, viewerId };
+  const [places, events, placeCount, eventCount] = await Promise.all([
+    repo.places.search({ ...filters, limit: PAGE_SIZE }),
+    repo.events.search({ ...filters, limit: PAGE_SIZE }),
+    repo.places.count(filters),
+    repo.events.count(filters),
+  ]);
+  const total = placeCount + eventCount;
+  // The client pages with the same cutoff the server counted against.
+  const query = { createdAfter };
 
   return (
     <div className="max-w-2xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-nav md:pb-10">
@@ -30,7 +38,7 @@ export default async function NewThisWeekPage() {
           </span>
         }
         title="New this week"
-        subtitle={total ? `${pluralize(places.length, "place")} and ${pluralize(events.length, "event")} added in the last ${NEW_WINDOW_DAYS} days.` : `What locals added in the last ${NEW_WINDOW_DAYS} days.`}
+        subtitle={total ? `${pluralize(placeCount, "place")} and ${pluralize(eventCount, "event")} added in the last ${NEW_WINDOW_DAYS} days.` : `What locals added in the last ${NEW_WINDOW_DAYS} days.`}
         action={
           <Link href={viewer ? "/places/new" : "/auth/sign-in?next=/places/new"} className="chip shrink-0" data-active="true">
             + Add a place
@@ -51,51 +59,17 @@ export default async function NewThisWeekPage() {
         />
       ) : null}
 
-      {places.length ? (
+      {placeCount ? (
         <section className="mb-8">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-muted mb-2">New places · {places.length}</h2>
-          <div className="flex flex-col gap-2">
-            {places.map((p) => (
-              <div key={p.id} className="flex flex-col gap-1">
-                <PlaceCard place={p} compact />
-                <p className="text-[11px] text-muted pl-1">
-                  {addedLabel(p.createdAt)}
-                  {p.creator ? (
-                    <>
-                      {" · by "}
-                      <Link href={`/u/${p.creator.username}`} className="font-semibold hover:text-flare-600">
-                        {p.creator.displayName}
-                      </Link>
-                    </>
-                  ) : null}
-                </p>
-              </div>
-            ))}
-          </div>
+          <h2 className="text-xs font-bold uppercase tracking-wider text-muted mb-2">New places · {placeCount}</h2>
+          <PagedList initial={places} endpoint="places" query={query} pageSize={PAGE_SIZE} render="place-compact" showAdded />
         </section>
       ) : null}
 
-      {events.length ? (
+      {eventCount ? (
         <section>
-          <h2 className="text-xs font-bold uppercase tracking-wider text-muted mb-2">New events · {events.length}</h2>
-          <div className="flex flex-col gap-2">
-            {events.map((e) => (
-              <div key={e.id} className="flex flex-col gap-1">
-                <EventCard event={e} compact />
-                <p className="text-[11px] text-muted pl-1">
-                  {addedLabel(e.createdAt)}
-                  {e.creator ? (
-                    <>
-                      {" · hosted by "}
-                      <Link href={`/u/${e.creator.username}`} className="font-semibold hover:text-flare-600">
-                        {e.creator.displayName}
-                      </Link>
-                    </>
-                  ) : null}
-                </p>
-              </div>
-            ))}
-          </div>
+          <h2 className="text-xs font-bold uppercase tracking-wider text-muted mb-2">New events · {eventCount}</h2>
+          <PagedList initial={events} endpoint="events" query={query} pageSize={PAGE_SIZE} render="event-compact" showAdded />
         </section>
       ) : null}
     </div>

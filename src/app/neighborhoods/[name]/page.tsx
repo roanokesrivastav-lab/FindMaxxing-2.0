@@ -6,14 +6,15 @@ import { getViewer } from "@/lib/auth/server";
 import { getCategory } from "@/lib/data/taxonomy";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { BackButton } from "@/components/ui/BackButton";
-import { PlaceCard } from "@/components/places/PlaceCard";
-import { EventCard } from "@/components/events/EventCard";
+import { PagedList } from "@/components/shared/PagedList";
 import { MiniMap } from "@/components/map/MiniMap";
 import { pluralize } from "@/lib/utils/format";
 import { shareMetadata } from "@/lib/utils/share-metadata";
-import { findNeighborhood, groupByNeighborhood, neighborhoodHref } from "@/lib/utils/neighborhoods";
+import { findNeighborhood, neighborhoodHref } from "@/lib/utils/neighborhoods";
 
 export const dynamic = "force-dynamic";
+
+const PAGE_SIZE = 20;
 
 function decodeSegment(name: string): string {
   try {
@@ -27,28 +28,34 @@ export async function generateMetadata({ params }: PageProps<"/neighborhoods/[na
   const { name } = await params;
   const repo = await getRepository();
   // Anonymous on purpose: crawlers only ever see public places.
-  const group = findNeighborhood(groupByNeighborhood(await repo.places.list({ limit: 500 })), decodeSegment(name));
+  const group = findNeighborhood(await repo.places.neighborhoods(), decodeSegment(name));
   if (!group) return { title: "Neighborhood" };
+  // The newest page is enough to find a cover photo; not every place is loaded.
+  const first = await repo.places.search({ neighborhood: group.key, limit: PAGE_SIZE });
   return shareMetadata({
     title: group.name,
-    description: `${pluralize(group.places.length, "place")} locals actually use in ${group.name}, ${group.city}.`,
+    description: `${pluralize(group.placeCount, "place")} locals actually use in ${group.name}, ${group.city}.`,
     path: neighborhoodHref(group.name),
-    image: group.places.find((p) => p.photos.length)?.photos[0]?.url ?? null,
+    image: first.items.find((p) => p.photos.length)?.photos[0]?.url ?? null,
   });
 }
 
 export default async function NeighborhoodPage({ params }: PageProps<"/neighborhoods/[name]">) {
   const [{ name }, viewer, repo] = await Promise.all([params, getViewer(), getRepository()]);
   const viewerId = viewer?.id ?? null;
-  const [places, allEvents] = await Promise.all([repo.places.list({ limit: 500, viewerId }), repo.events.list({ limit: 300, viewerId })]);
-  const groups = groupByNeighborhood(places);
+  const groups = await repo.places.neighborhoods({ viewerId });
   const group = findNeighborhood(groups, decodeSegment(name));
   if (!group) notFound();
 
-  const placeIds = new Set(group.places.map((p) => p.id));
-  const events = allEvents.filter((e) => e.placeId && placeIds.has(e.placeId));
-  const others = groups.filter((g) => g.name !== group.name).slice(0, 8);
-  const sorted = [...group.places].sort((a, b) => b.ratingCount - a.ratingCount || b.ratingAvg - a.ratingAvg || a.name.localeCompare(b.name));
+  // Places are newest first (the shared discovery order), not most-rated first.
+  const filters = { neighborhood: group.key, viewerId };
+  const [placePage, eventPage, eventCount] = await Promise.all([
+    repo.places.search({ ...filters, limit: PAGE_SIZE }),
+    repo.events.search({ ...filters, limit: PAGE_SIZE }),
+    repo.events.count(filters),
+  ]);
+  const query = { neighborhood: group.key };
+  const others = groups.filter((g) => g.key !== group.key).slice(0, 8);
   const lead = group.topCategories[0] ? getCategory(group.topCategories[0]) : null;
 
   return (
@@ -63,7 +70,7 @@ export default async function NeighborhoodPage({ params }: PageProps<"/neighborh
           </Link>
         }
         title={group.name}
-        subtitle={[pluralize(group.places.length, "place"), events.length ? pluralize(events.length, "upcoming event") : null].filter(Boolean).join(" · ")}
+        subtitle={[pluralize(group.placeCount, "place"), eventCount ? pluralize(eventCount, "upcoming event") : null].filter(Boolean).join(" · ")}
         action={
           <Link href="/places/new" className="chip shrink-0" data-active="true">
             + Add here
@@ -89,24 +96,16 @@ export default async function NeighborhoodPage({ params }: PageProps<"/neighborh
         ) : null}
       </div>
 
-      {events.length ? (
+      {eventCount ? (
         <section className="mb-8">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-muted mb-2">Happening here · {events.length}</h2>
-          <div className="flex flex-col gap-2">
-            {events.map((e) => (
-              <EventCard key={e.id} event={e} compact />
-            ))}
-          </div>
+          <h2 className="text-xs font-bold uppercase tracking-wider text-muted mb-2">Happening here · {eventCount}</h2>
+          <PagedList initial={eventPage} endpoint="events" query={query} pageSize={PAGE_SIZE} render="event-compact" />
         </section>
       ) : null}
 
       <section className="mb-8">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-muted mb-2">Places · {sorted.length}</h2>
-        <div className="flex flex-col gap-2">
-          {sorted.map((p) => (
-            <PlaceCard key={p.id} place={p} compact />
-          ))}
-        </div>
+        <h2 className="text-xs font-bold uppercase tracking-wider text-muted mb-2">Places · {group.placeCount}</h2>
+        <PagedList initial={placePage} endpoint="places" query={query} pageSize={PAGE_SIZE} render="place-compact" />
       </section>
 
       {others.length ? (
@@ -114,8 +113,8 @@ export default async function NeighborhoodPage({ params }: PageProps<"/neighborh
           <h2 className="text-xs font-bold uppercase tracking-wider text-muted mb-2">Other neighborhoods</h2>
           <div className="flex gap-2 flex-wrap">
             {others.map((g) => (
-              <Link key={g.name} href={neighborhoodHref(g.name)} className="chip">
-                {g.name} <span className="text-muted tabular-nums">{g.places.length}</span>
+              <Link key={g.key} href={neighborhoodHref(g.name)} className="chip">
+                {g.name} <span className="text-muted tabular-nums">{g.placeCount}</span>
               </Link>
             ))}
           </div>

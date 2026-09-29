@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isValidTimestamp } from "@/lib/data/discovery";
 import { CATEGORY_MAP, EVENT_CATEGORIES, INTEREST_MAP, PLACE_CATEGORIES } from "@/lib/data/taxonomy";
 
 const placeCategorySlugs = PLACE_CATEGORIES.map((c) => c.slug) as [string, ...string[]];
@@ -214,6 +215,13 @@ export const searchQuerySchema = z
  * Unknown tags are dropped, like tagsSchema; an unknown category is an error,
  * since silently ignoring it would widen the result set.
  */
+const timestampParam = (name: string) =>
+  z
+    .string()
+    .optional()
+    .refine((v) => !v || isValidTimestamp(v), `${name} must be an ISO timestamp`)
+    .transform((v) => v || null);
+
 export const discoveryQuerySchema = z.object({
   bbox: z
     .string()
@@ -238,6 +246,9 @@ export const discoveryQuerySchema = z.object({
     .string()
     .optional()
     .transform((v) => Array.from(new Set((v ?? "").split(",").map((t) => t.trim().toLowerCase()).filter((t) => t in INTEREST_MAP))).slice(0, 8)),
+  neighborhood: z.string().trim().max(80).optional().transform((v) => v || null),
+  createdAfter: timestampParam("createdAfter"),
+  startsBefore: timestampParam("startsBefore"),
   limit: z.coerce.number().int().min(1).max(1000).optional(),
   cursor: z.string().max(512).optional().transform((v) => v || null),
   includePast: z.enum(["0", "1", "true", "false"]).optional().transform((v) => v === "1" || v === "true"),

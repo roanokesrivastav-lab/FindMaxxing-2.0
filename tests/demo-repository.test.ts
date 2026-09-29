@@ -8,6 +8,28 @@ const maya = SEED_USERS.find((u) => u.username === "maya_r")!;
 const lena = SEED_USERS.find((u) => u.username === "lena")!;
 const theo = SEED_USERS.find((u) => u.username === "theo")!;
 
+/** Every record the viewer can discover, following cursors to the end. */
+async function allPlaces(r: DataRepository, viewerId?: string) {
+  const items = [];
+  let cursor: string | null = null;
+  do {
+    const page: Awaited<ReturnType<DataRepository["places"]["search"]>> = await r.places.search({ viewerId, limit: 100, cursor });
+    items.push(...page.items);
+    cursor = page.nextCursor;
+  } while (cursor);
+  return items;
+}
+async function allEvents(r: DataRepository, viewerId?: string) {
+  const items = [];
+  let cursor: string | null = null;
+  do {
+    const page: Awaited<ReturnType<DataRepository["events"]["search"]>> = await r.events.search({ viewerId, limit: 100, cursor });
+    items.push(...page.items);
+    cursor = page.nextCursor;
+  } while (cursor);
+  return items;
+}
+
 let repo: DataRepository;
 beforeEach(() => {
   repo = createDemoRepository(createIsolatedStore());
@@ -15,7 +37,7 @@ beforeEach(() => {
 
 describe("demo repository", () => {
   it("lists seeded places with creators, tags and ratings", async () => {
-    const places = await repo.places.list();
+    const places = await allPlaces(repo);
     expect(places.length).toBeGreaterThan(20);
     const cannon = places.find((p) => p.id === stableId("place:Cannon & Crown"))!;
     expect(cannon.creator?.username).toBe("theo");
@@ -138,7 +160,7 @@ describe("demo repository", () => {
     expect(edited.attendeeCount).toBe(2);
     expect((await repo.events.get(event.id, theo.id))?.viewerJoined).toBe(true);
     await repo.events.cancel(event.id, maya.id);
-    expect((await repo.events.list()).some((e) => e.id === event.id)).toBe(false);
+    expect((await allEvents(repo)).some((e) => e.id === event.id)).toBe(false);
     expect((await repo.events.get(event.id, theo.id))?.status).toBe("cancelled");
     expect((await repo.events.listJoined(theo.id)).some((e) => e.id === event.id)).toBe(true);
     await expect(repo.events.join(lena.id, event.id)).rejects.toThrow(/not found/);
@@ -182,7 +204,7 @@ describe("demo repository", () => {
     store.state.places.find((p) => p.id === id)!.status = "hidden";
     expect(await r.places.get(id, maya.id)).toBeNull();
     expect(await r.places.get(id, theo.id)).not.toBeNull(); // creator
-    expect((await r.places.list()).some((p) => p.id === id)).toBe(false);
+    expect((await allPlaces(r)).some((p) => p.id === id)).toBe(false);
   });
 });
 
@@ -203,9 +225,9 @@ describe("tier 2 — community layer", () => {
     expect(await repo.places.get(ridgeline, nina.id)).toBeNull();
     expect(await repo.places.get(ridgeline, null)).toBeNull();
 
-    const forLocal = await repo.places.list({ viewerId: maya.id });
-    const forVisitor = await repo.places.list({ viewerId: nina.id });
-    const anonymous = await repo.places.list();
+    const forLocal = await allPlaces(repo, maya.id);
+    const forVisitor = await allPlaces(repo, nina.id);
+    const anonymous = await allPlaces(repo);
     expect(forLocal.some((p) => p.id === ridgeline)).toBe(true);
     expect(forVisitor.some((p) => p.id === ridgeline)).toBe(false);
     expect(anonymous.some((p) => p.id === ridgeline)).toBe(false);
@@ -213,8 +235,8 @@ describe("tier 2 — community layer", () => {
   });
 
   it("inherits a linked place's visibility for events and profile activity", async () => {
-    expect((await repo.events.list({ viewerId: nina.id })).some((event) => event.id === ridgelineEvent)).toBe(false);
-    expect((await repo.events.list({ viewerId: maya.id })).some((event) => event.id === ridgelineEvent)).toBe(true);
+    expect((await allEvents(repo, nina.id)).some((event) => event.id === ridgelineEvent)).toBe(false);
+    expect((await allEvents(repo, maya.id)).some((event) => event.id === ridgelineEvent)).toBe(true);
     expect(await repo.events.get(ridgelineEvent, nina.id)).toBeNull();
 
     const julesActivityForVisitor = await repo.profiles.activity(jules.id, nina.id);
@@ -343,7 +365,7 @@ describe("tier 2 — community layer", () => {
     const store = createIsolatedStore();
     const r = createDemoRepository(store);
     await r.places.setStatus(lumen, "hidden", SEED_USERS.find((u) => u.username === "lena")!.id);
-    expect((await r.places.list({ viewerId: maya.id })).some((p) => p.id === lumen)).toBe(false);
+    expect((await allPlaces(r, maya.id)).some((p) => p.id === lumen)).toBe(false);
     expect(await r.places.get(lumen, maya.id)).toBeNull();
     // The owner keeps access to their own hidden listing.
     expect(await r.places.get(lumen, SEED_USERS.find((u) => u.username === "lena")!.id)).not.toBeNull();

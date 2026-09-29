@@ -3,27 +3,18 @@ import { useActionState, useCallback, useMemo, useState } from "react";
 import { createEventAction, updateEventAction } from "@/server/actions/events";
 import type { Event } from "@/lib/data/types";
 import { Button } from "@/components/ui/Button";
-import { FormField, Input, Textarea, Select } from "@/components/ui/Field";
+import { FormField, Input, Textarea } from "@/components/ui/Field";
 import { AddressFields, composeGeocodeQuery } from "@/components/shared/AddressFields";
 import { CategoryPicker } from "@/components/shared/CategoryPicker";
 import { TagPicker } from "@/components/shared/TagPicker";
+import { PlacePicker, type PlaceOption } from "@/components/forms/PlacePicker";
 import { LocationPicker } from "@/components/map/LocationPicker";
 import { EVENT_CATEGORIES } from "@/lib/data/taxonomy";
 import { toDateInputValue, toTimeInputValue } from "@/lib/utils/format";
 import type { LngLat } from "@/lib/map/types";
 import { useFormSubmit } from "@/lib/forms/useFormSubmit";
 
-export interface PlaceOption {
-  id: string;
-  name: string;
-  lat: number;
-  lng: number;
-  address: string | null;
-  categorySlug: string;
-  city?: string;
-}
-
-export function EventForm({ places, initialPlaceId, initial, defaultCity = "", edit = false }: { places: PlaceOption[]; initialPlaceId?: string | null; initial?: Event; defaultCity?: string; edit?: boolean }) {
+export function EventForm({ initialPlace, initial, defaultCity = "", edit = false }: { initialPlace?: PlaceOption | null; initial?: Event; defaultCity?: string; edit?: boolean }) {
   const [state, action, pending] = useActionState(edit ? updateEventAction : createEventAction, null);
   const errors = state && !state.ok ? (state.fieldErrors ?? {}) : {};
 
@@ -33,9 +24,8 @@ export function EventForm({ places, initialPlaceId, initial, defaultCity = "", e
     formData.set("tzOffsetMinutes", String(new Date().getTimezoneOffset()));
   }, []);
   const { formRef, onSubmit } = useFormSubmit(action, state, { onBeforeSubmit: stampTimezone });
-  const startingPlaceId = initial?.placeId ?? initialPlaceId ?? "";
-  const [placeId, setPlaceId] = useState(startingPlaceId);
-  const linked = useMemo(() => places.find((p) => p.id === placeId) ?? null, [places, placeId]);
+  const [linked, setLinked] = useState<PlaceOption | null>(initialPlace ?? null);
+  const placeId = linked?.id ?? "";
   const [locationName, setLocationName] = useState(initial?.locationName ?? linked?.name ?? "");
   const [point, setPoint] = useState<LngLat | null>(initial ? { lat: initial.lat, lng: initial.lng } : linked ? { lat: linked.lat, lng: linked.lng } : null);
   const [address, setAddress] = useState(initial?.address ?? linked?.address ?? "");
@@ -43,9 +33,8 @@ export function EventForm({ places, initialPlaceId, initial, defaultCity = "", e
   const [city, setCity] = useState(initial ? extractCity(initial.address) || linked?.city || defaultCity : linked?.city || defaultCity || "");
   const [addressTouched, setAddressTouched] = useState(false);
 
-  const selectPlace = (id: string) => {
-    setPlaceId(id);
-    const next = places.find((p) => p.id === id);
+  const selectPlace = (next: PlaceOption | null) => {
+    setLinked(next);
     if (next) {
       setLocationName(next.name);
       setAddress(next.address ?? "");
@@ -88,10 +77,7 @@ export function EventForm({ places, initialPlaceId, initial, defaultCity = "", e
       </div>
 
       <FormField label="At a place on the map?" htmlFor="placeId" hint="optional" error={errors.placeId}>
-        <Select id="placeId" name="placeId" value={placeId} onChange={(e) => selectPlace(e.target.value)}>
-          <option value="">Somewhere else (set below)</option>
-          {places.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </Select>
+        <PlacePicker id="placeId" name="placeId" value={linked} onChange={selectPlace} />
       </FormField>
       <FormField label="Location name" htmlFor="locationName" error={errors.locationName}>
         <Input id="locationName" name="locationName" required maxLength={120} value={locationName} onChange={(e) => setLocationName(e.target.value)} placeholder="e.g. Tuttle Lot Fields, north pitch" error={errors.locationName} />

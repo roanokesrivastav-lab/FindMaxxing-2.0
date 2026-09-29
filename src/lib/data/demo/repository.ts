@@ -4,18 +4,18 @@ import {
   MAX_PLACE_PHOTOS,
   type Event,
   type EventDetail,
-  type EventListOptions,
   type Place,
   type PlaceDetail,
-  type PlaceListOptions,
   type Profile,
   type ProfileStats,
   type ProfileSummary,
   type ReportEntry,
+  type TagCounts,
   type UserActivity,
 } from "../types";
 import { getDemoStore, isLocalOfCity, recomputeRating, type DemoState, type EventRow, type PlaceRow, type ProfileRow, type ReportRow, type StoreHandle } from "./store";
 import { newId } from "@/lib/utils/ids";
+import { neighborhoodKey } from "@/lib/utils/neighborhoods";
 import {
   DEFAULT_MAP_MARKERS,
   DEFAULT_PAGE_SIZE,
@@ -27,6 +27,7 @@ import {
   decodeCursor,
   inBounds,
   normalizeFilters,
+  normalizeTimestamp,
   textMatches,
   toPage,
   type NormalizedFilters,
@@ -169,6 +170,8 @@ function placeMatches(state: DemoState, p: PlaceRow, f: NormalizedFilters, viewe
   if (p.status !== "published" || !canViewPlace(state, p, viewerId)) return false;
   if (!inBounds(p, f.bounds)) return false;
   if (f.category && p.categorySlug !== f.category) return false;
+  if (f.neighborhood && neighborhoodKey(p.neighborhood ?? "") !== f.neighborhood) return false;
+  if (f.createdAfter && compareTimestamps(p.createdAt, f.createdAfter) < 0) return false;
   const tags = state.placeTags.filter((t) => t.placeId === p.id).map((t) => t.interestSlug);
   if (f.tags.length && !tags.some((t) => f.tags.includes(t))) return false;
   const { text, categories, tags: textTags } = f.search;
@@ -180,11 +183,25 @@ function placeMatches(state: DemoState, p: PlaceRow, f: NormalizedFilters, viewe
   );
 }
 
-function eventMatches(state: DemoState, e: EventRow, f: NormalizedFilters, viewerId: string | null, cutoff: number | null): boolean {
+function eventMatches(
+  state: DemoState,
+  e: EventRow,
+  f: NormalizedFilters,
+  viewerId: string | null,
+  cutoff: number | null,
+  startsBefore: string | null = null,
+): boolean {
   if (e.status !== "published" || !canViewEvent(state, e, viewerId)) return false;
   if (cutoff !== null && eventEndOrStart(e) < cutoff) return false;
+  if (startsBefore && compareTimestamps(e.startsAt, startsBefore) >= 0) return false;
+  if (f.createdAfter && compareTimestamps(e.createdAt, f.createdAfter) < 0) return false;
   if (!inBounds(e, f.bounds)) return false;
   if (f.category && e.categorySlug !== f.category) return false;
+  if (f.neighborhood) {
+    // Through the linked place, which must be published and visible to the viewer.
+    const place = e.placeId ? state.places.find((p) => p.id === e.placeId) : null;
+    if (!place || place.status !== "published" || !canViewPlace(state, place, viewerId) || neighborhoodKey(place.neighborhood ?? "") !== f.neighborhood) return false;
+  }
   const tags = state.eventTags.filter((t) => t.eventId === e.id).map((t) => t.interestSlug);
   if (f.tags.length && !tags.some((t) => f.tags.includes(t))) return false;
   const { text, categories, tags: textTags } = f.search;
@@ -221,15 +238,6 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
 
   const repo: DataRepository = {
     places: {
-      async list(opts: PlaceListOptions = {}) {
-        const limit = opts.limit ?? 500;
-        const viewerId = opts.viewerId ?? null;
-        return state.places
-          .filter((p) => canViewPlace(state, p, viewerId))
-          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-          .slice(0, limit)
-          .map((p) => toPlace(state, p));
-      },
       async search(opts = {}) {
         const f = normalizeFilters(opts);
         const limit = clampLimit(opts.limit, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
@@ -240,6 +248,41 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           .filter((p) => !after || compareTimestamps(p.createdAt, after.key) < 0 || (compareTimestamps(p.createdAt, after.key) === 0 && p.id < after.id))
           .sort(newestFirst);
         return toPage(rows, limit, (p) => toPlace(state, p), (p) => ({ key: p.createdAt, id: p.id }));
+      },
+      async count(opts = {}) {
+        const f = normalizeFilters(opts);
+        const viewerId = opts.viewerId ?? null;
+        return state.places.filter((p) => placeMatches(state, p, f, viewerId)).length;
+      },
+      async neighborhoods(opts = {}) {
+        const viewerId = opts.viewerId ?? null;
+        const all = normalizeFilters({});
+        const groups = new Map<string, { name: string; city: string; count: number; cats: Map<string, number>; lat: number; lng: number }>();
+        for (const p of state.places) {
+          const key = neighborhoodKey(p.neighborhood ?? "");
+          if (!key || !placeMatches(state, p, all, viewerId)) continue;
+          const name = (p.neighborhood ?? "").trim();
+          const g = groups.get(key) ?? { name, city: p.city, count: 0, cats: new Map(), lat: 0, lng: 0 };
+          // Alphabetically first spelling and city, the same tie-break as the SQL min().
+          if (compareIds(name, g.name) < 0) g.name = name;
+          if (compareIds(p.city, g.city) < 0) g.city = p.city;
+          g.count += 1;
+          g.cats.set(p.categorySlug, (g.cats.get(p.categorySlug) ?? 0) + 1);
+          g.lat += p.lat;
+          g.lng += p.lng;
+          groups.set(key, g);
+        }
+        return [...groups.entries()]
+          .map(([key, g]) => ({
+            key,
+            name: g.name,
+            city: g.city,
+            placeCount: g.count,
+            topCategories: [...g.cats.entries()].sort((a, b) => b[1] - a[1] || compareIds(a[0], b[0])).map(([slug]) => slug),
+            lat: g.lat / g.count,
+            lng: g.lng / g.count,
+          }))
+          .sort((a, b) => b.placeCount - a.placeCount || compareIds(a.name, b.name) || compareIds(a.key, b.key));
       },
       async mapMarkers(opts = {}) {
         const f = normalizeFilters(opts);
@@ -495,28 +538,24 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
     },
 
     events: {
-      async list(opts: EventListOptions = {}) {
-        const now = Date.now();
-        const limit = opts.limit ?? 500;
-        const viewerId = opts.viewerId ?? null;
-        return state.events
-          .filter((event) => canViewEvent(state, event, viewerId) && event.status === "published")
-          .filter((e) => opts.includePast || eventEndOrStart(e) >= now - 60 * 60_000)
-          .sort(byStart)
-          .slice(0, limit)
-          .map((e) => toEvent(state, e));
-      },
       async search(opts = {}) {
         const f = normalizeFilters(opts);
         const limit = clampLimit(opts.limit, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
         const after = decodeCursor(opts.cursor);
         const viewerId = opts.viewerId ?? null;
         const cutoff = opts.includePast ? null : Date.now() - UPCOMING_GRACE_MS;
+        const startsBefore = normalizeTimestamp(opts.startsBefore, "startsBefore");
         const rows = state.events
-          .filter((e) => eventMatches(state, e, f, viewerId, cutoff))
+          .filter((e) => eventMatches(state, e, f, viewerId, cutoff, startsBefore))
           .filter((e) => !after || compareTimestamps(e.startsAt, after.key) > 0 || (compareTimestamps(e.startsAt, after.key) === 0 && e.id > after.id))
           .sort(soonestFirst);
         return toPage(rows, limit, (e) => toEvent(state, e), (e) => ({ key: e.startsAt, id: e.id }));
+      },
+      async count(opts = {}) {
+        const f = normalizeFilters(opts);
+        const cutoff = opts.includePast ? null : Date.now() - UPCOMING_GRACE_MS;
+        const startsBefore = normalizeTimestamp(opts.startsBefore, "startsBefore");
+        return state.events.filter((e) => eventMatches(state, e, f, opts.viewerId ?? null, cutoff, startsBefore)).length;
       },
       async mapMarkers(opts = {}) {
         const f = normalizeFilters(opts);
@@ -666,6 +705,24 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           .filter((e) => e.placeId === placeId && visibleEvent(e) && eventEndOrStart(e) >= now)
           .sort(byStart)
           .map((e) => toEvent(state, e));
+      },
+    },
+
+    tags: {
+      async counts(opts = {}) {
+        const viewerId = opts.viewerId ?? null;
+        const all = normalizeFilters({});
+        const cutoff = Date.now() - UPCOMING_GRACE_MS;
+        const visiblePlaces = new Set(state.places.filter((p) => placeMatches(state, p, all, viewerId)).map((p) => p.id));
+        const upcomingEvents = new Set(state.events.filter((e) => eventMatches(state, e, all, viewerId, cutoff)).map((e) => e.id));
+        const counts: TagCounts = {};
+        const bump = (slug: string, key: "places" | "events") => {
+          counts[slug] ??= { places: 0, events: 0 };
+          counts[slug][key] += 1;
+        };
+        for (const t of state.placeTags) if (visiblePlaces.has(t.placeId)) bump(t.interestSlug, "places");
+        for (const t of state.eventTags) if (upcomingEvents.has(t.eventId)) bump(t.interestSlug, "events");
+        return counts;
       },
     },
 

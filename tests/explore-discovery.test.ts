@@ -49,4 +49,19 @@ describe("discovery request", () => {
     expect(params).toEqual({ bbox: "0,0,1,1", q: "tacos", tags: "food,coffee", limit: "30" });
     expect(discoveryQuerySchema.safeParse(params).success).toBe(true);
   });
+
+  it("accepts createdAfter, startsBefore and neighborhood, and rejects malformed ones", () => {
+    const parsed = discoveryQuerySchema.safeParse({
+      neighborhood: " Short North ",
+      createdAfter: "2026-09-21T00:00:00.000Z",
+      startsBefore: "2026-10-01T04:00:00.000Z",
+    });
+    expect(parsed.success && parsed.data.neighborhood).toBe("Short North");
+    for (const key of ["createdAfter", "startsBefore"]) {
+      for (const bad of ["yesterday", "2026-02-30T00:00:00Z", "2026-13-01", "1e9", "2026-09-21T00:00:00Z'; drop table places; --"]) {
+        expect(discoveryQuerySchema.safeParse({ [key]: bad }).success, `${key}=${bad}`).toBe(false);
+      }
+    }
+    expect(discoveryQuerySchema.safeParse({ neighborhood: "x".repeat(81) }).success).toBe(false);
+  });
 });
