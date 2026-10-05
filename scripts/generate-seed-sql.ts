@@ -12,11 +12,13 @@ import {
   DEMO_PASSWORD,
   SEED_EVENTS,
   SEED_FOLLOWS,
+  SEED_MODERATORS,
   SEED_PLACES,
   SEED_RATINGS,
   SEED_REPORTS,
   SEED_SAVES,
   SEED_USERS,
+  seedAccountAgeDays,
   seedPlaceByName,
   seedUserByName,
 } from "../src/lib/seed/seed-data";
@@ -46,11 +48,17 @@ on conflict (id) do nothing;`);
   }
   out.push("");
   out.push("-- Profile details");
-  for (const u of SEED_USERS) {
-    out.push(`update public.profiles set bio = ${q(u.bio)}, home_city = ${q(u.homeCity)}, display_name = ${q(u.displayName)}, username = ${q(u.username)} where id = ${q(u.id)};`);
-    for (const i of u.interests) {
-      out.push(`insert into public.profile_interests (profile_id, interest_slug) values (${q(u.id)}, ${q(i)}) on conflict do nothing;`);
+  SEED_USERS.forEach((u, i) => {
+    // Backdated like the demo store, so seeded accounts are past the 7-day local rule.
+    out.push(`update public.profiles set bio = ${q(u.bio)}, home_city = ${q(u.homeCity)}, display_name = ${q(u.displayName)}, username = ${q(u.username)}, created_at = now() - interval '${seedAccountAgeDays(i)} days' where id = ${q(u.id)};`);
+    for (const interest of u.interests) {
+      out.push(`insert into public.profile_interests (profile_id, interest_slug) values (${q(u.id)}, ${q(interest)}) on conflict do nothing;`);
     }
+  });
+  out.push("");
+  out.push("-- Moderators (granted from SQL: no client can grant the role)");
+  for (const m of SEED_MODERATORS) {
+    out.push(`insert into public.moderators (user_id) values (${q(seedUserByName(m).id)}) on conflict do nothing;`);
   }
   out.push("");
   out.push("-- Places");

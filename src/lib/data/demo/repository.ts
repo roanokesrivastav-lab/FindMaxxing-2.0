@@ -13,8 +13,14 @@ import {
   type TagCounts,
   type UserActivity,
   type SavedList,
+  type ModerationQueueItem,
+  type ReportReason,
+  type RemovedContent,
 } from "../types";
-import { getDemoStore, isLocalOfCity, recomputeRating, type DemoState, type EventRow, type PlaceRow, type ProfileRow, type ReportRow, type SavedListRow, type StoreHandle } from "./store";
+import { getDemoStore, isLocalOfCity, isModeratorIn, recomputeRating, type DemoState, type EventRow, type PlaceRow, type ProfileRow, type ReportRow, type SavedListRow, type StoreHandle } from "./store";
+import { RATE_LIMITS, rateLimitError, windowStart, type RateLimitAction } from "@/lib/rateLimits";
+import { MAX_MODERATION_REASON, MODERATION_ACTIONS, REPORT_TARGET_TYPES, compareModerationReports, moderationError, normalizeReason } from "../moderation";
+import { homeCityCooldownMessage, nextHomeCityChange, sameCity } from "../localTier";
 import { LIST_LIMIT_ERROR, MAX_SAVED_LISTS, duplicateListName, listNameKey, normalizeListName } from "../savedLists";
 import { newId } from "@/lib/utils/ids";
 import { neighborhoodKey } from "@/lib/utils/neighborhoods";
@@ -58,6 +64,7 @@ function toProfile(state: DemoState, p: ProfileRow): Profile {
     ...summary(p),
     bio: p.bio,
     homeCity: p.homeCity,
+    homeCityChangedAt: p.homeCityChangedAt,
     interests: state.profileInterests.filter((x) => x.profileId === p.id).map((x) => x.interestSlug),
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
@@ -118,21 +125,23 @@ function toEvent(state: DemoState, row: EventRow): Event {
 }
 
 /**
- * Whether a viewer may see a place. Mirrors the "visible places" RLS policy:
- * creators always see their own; everyone else needs a published row that is
- * either public, or locals-only with the viewer qualifying as a local.
+ * Whether a viewer may see a place. Mirrors can_view_place(): creators see
+ * their own unless moderators removed it; everyone else needs a published row
+ * that is either public, or locals-only with the viewer qualifying as a local.
  */
 function canViewPlace(state: DemoState, p: PlaceRow, viewerId: string | null): boolean {
-  if (viewerId && p.creatorId === viewerId) return true;
+  if (viewerId && p.creatorId === viewerId && p.status !== "removed") return true;
   if (p.status !== "published") return false;
   if (p.visibility === "public") return true;
   if (p.visibility === "locals") return isLocalOfCity(state, viewerId, p.city);
   return false;
 }
 
-/** Public-only gate, for paths with no viewer context (counts, link targets). */
-/** Resolves a report row for display, without exposing who filed it. */
-function toReportEntry(state: DemoState, r: ReportRow): ReportEntry {
+/**
+ * Resolves a report row for display, without exposing who filed it. The
+ * owner-side view (reports_about_my_stuff) carries no resolution time.
+ */
+function toReportEntry(state: DemoState, r: ReportRow, withResolution = true): ReportEntry {
   const label =
     r.targetType === "place"
       ? (state.places.find((p) => p.id === r.targetId)?.name ?? null)
@@ -147,15 +156,19 @@ function toReportEntry(state: DemoState, r: ReportRow): ReportEntry {
     details: r.details,
     status: r.status,
     createdAt: r.createdAt,
+    resolvedAt: withResolution ? r.resolvedAt : null,
     targetLabel: label,
   };
 }
+
+/** Owners may edit only what they could set themselves: not removed or pending places. */
+const ownerEditable = (p: PlaceRow) => p.status === "published" || p.status === "hidden";
 
 const visiblePlace = (p: PlaceRow) => p.status === "published" && p.visibility === "public";
 const visibleEvent = (e: EventRow) => e.status === "published";
 
 function canViewEvent(state: DemoState, event: EventRow, viewerId: string | null): boolean {
-  if (viewerId && event.creatorId === viewerId) return true;
+  if (viewerId && event.creatorId === viewerId && event.status !== "removed") return true;
   if (event.status === "cancelled") {
     return !!viewerId && state.eventAttendees.some((a) => a.eventId === event.id && a.userId === viewerId);
   }
@@ -238,6 +251,26 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
     return p;
   };
 
+  /**
+   * Mirrors check_rate_limit(): refuses when the user has used up the current
+   * window, and returns the increment to apply once the write succeeds (the
+   * database's increment rolls back with a failed insert).
+   */
+  const rateLimit = (userId: string, action: RateLimitAction) => {
+    const now = Date.now();
+    const start = windowStart(action, now);
+    const rule = RATE_LIMITS[action];
+    state.rateLimits = state.rateLimits.filter((r) => !(r.userId === userId && r.action === action && r.windowStart < start));
+    const row = state.rateLimits.find((r) => r.userId === userId && r.action === action && r.windowStart === start);
+    if ((row?.count ?? 0) >= rule.max) {
+      throw rateLimitError(action, Math.max(1, Math.ceil((start + rule.windowSeconds * 1000 - now) / 1000)));
+    }
+    return () => {
+      if (row) row.count += 1;
+      else state.rateLimits.push({ userId, action, windowStart: start, count: 1 });
+    };
+  };
+
   /** Deletes list items, touching each affected list like the database trigger. */
   const removeListItems = (match: (item: DemoState["savedListItems"][number]) => boolean) => {
     const now = new Date().toISOString();
@@ -257,6 +290,29 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || compareIds(a.placeId, b.placeId))
       .map((i) => state.places.find((p) => p.id === i.placeId))
       .filter((p): p is PlaceRow => !!p && p.status === "published" && canViewPlace(state, p, list.ownerId));
+  const targetLabel = (type: ReportRow["targetType"], id: string): string | null =>
+    type === "place" ? (state.places.find((p) => p.id === id)?.name ?? null)
+      : type === "event" ? (state.events.find((e) => e.id === id)?.title ?? null)
+        : (state.profiles.find((p) => p.id === id)?.displayName ?? null);
+  const targetStatus = (type: ReportRow["targetType"], id: string): string | null =>
+    type === "place" ? (state.places.find((p) => p.id === id)?.status ?? null)
+      : type === "event" ? (state.events.find((e) => e.id === id)?.status ?? null)
+        : state.profiles.some((p) => p.id === id) ? (state.localRevocations.some((r) => r.userId === id) ? "revoked" : "active") : null;
+  /** Mirrors moderation_target(). */
+  const snapshotOf = (type: ReportRow["targetType"], id: string) => {
+    const ownerName = (ownerId: string | null) => (ownerId ? (state.profiles.find((p) => p.id === ownerId)?.username ?? null) : null);
+    if (type === "place") {
+      const p = state.places.find((x) => x.id === id);
+      return p ? { label: p.name, status: p.status, visibility: p.visibility, city: p.city, neighborhood: p.neighborhood, body: p.description, extra: p.localTip, ownerId: p.creatorId, ownerUsername: ownerName(p.creatorId), createdAt: p.createdAt } : null;
+    }
+    if (type === "event") {
+      const e = state.events.find((x) => x.id === id);
+      return e ? { label: e.title, status: e.status, visibility: null, city: null, neighborhood: null, body: e.description, extra: e.locationName, ownerId: e.creatorId, ownerUsername: ownerName(e.creatorId), createdAt: e.createdAt } : null;
+    }
+    const pr = state.profiles.find((x) => x.id === id);
+    return pr ? { label: pr.displayName, status: targetStatus("profile", id)!, visibility: null, city: pr.homeCity, neighborhood: null, body: pr.bio, extra: null, ownerId: pr.id, ownerUsername: pr.username, createdAt: pr.createdAt } : null;
+  };
+
   const toSavedList = (list: SavedListRow): SavedList => ({
     id: list.id,
     name: list.name,
@@ -353,6 +409,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         if ((input.photos?.length ?? 0) > MAX_PLACE_PHOTOS) {
           throw new DataError(`A place can have at most ${MAX_PLACE_PHOTOS} photos`, "invalid");
         }
+        const counted = rateLimit(creatorId, "places");
         const now = new Date().toISOString();
         const row: PlaceRow = {
           id: newId(),
@@ -386,6 +443,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
             createdAt: now,
           });
         });
+        counted();
         persist();
         return toPlace(state, row);
       },
@@ -393,6 +451,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         const place = state.places.find((p) => p.id === id);
         if (!place) throw new DataError("Place not found", "not_found");
         if (place.creatorId !== creatorId) throw new DataError("You don't have permission to edit this place", "forbidden");
+        if (!ownerEditable(place)) throw new DataError("You don't own this place", "forbidden");
         Object.assign(place, {
           name: input.name,
           description: input.description,
@@ -459,7 +518,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
       async setStatus(placeId, status, ownerId) {
         const place = state.places.find((p) => p.id === placeId);
         if (!place) throw new DataError("Place not found", "not_found");
-        if (place.creatorId !== ownerId) throw new DataError("You don't own this place", "forbidden");
+        if (place.creatorId !== ownerId || !ownerEditable(place)) throw new DataError("You don't own this place", "forbidden");
         if (status !== "published" && status !== "hidden") throw new DataError("Invalid status", "invalid");
         place.status = status;
         place.updatedAt = new Date().toISOString();
@@ -468,7 +527,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
       async setVisibility(placeId, visibility, ownerId) {
         const place = state.places.find((p) => p.id === placeId);
         if (!place) throw new DataError("Place not found", "not_found");
-        if (place.creatorId !== ownerId) throw new DataError("You don't own this place", "forbidden");
+        if (place.creatorId !== ownerId || !ownerEditable(place)) throw new DataError("You don't own this place", "forbidden");
         place.visibility = visibility;
         place.updatedAt = new Date().toISOString();
         persist();
@@ -545,6 +604,8 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         const place = state.places.find((p) => p.id === placeId);
         if (!place || !canViewPlace(state, place, userId)) throw new DataError("Place not found", "not_found");
         if (!Number.isInteger(score) || score < 1 || score > 5) throw new DataError("Rating must be 1–5");
+        // The upsert's insert fires the trigger even when it ends up updating.
+        const counted = rateLimit(userId, "ratings");
         const now = new Date().toISOString();
         const existing = state.placeRatings.find((r) => r.placeId === placeId && r.userId === userId);
         if (existing) {
@@ -555,6 +616,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           state.placeRatings.push({ id: newId(), placeId, userId, score, note, createdAt: now, updatedAt: now });
         }
         recomputeRating(state, placeId);
+        counted();
         persist();
         return { ratingAvg: place.ratingAvg, ratingCount: place.ratingCount };
       },
@@ -620,6 +682,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         if (input.placeId && !state.places.some((p) => p.id === input.placeId && canViewPlace(state, p, creatorId))) {
           throw new DataError("Linked place not found", "not_found");
         }
+        const counted = rateLimit(creatorId, "events");
         const now = new Date().toISOString();
         const row: EventRow = {
           id: newId(),
@@ -643,6 +706,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         for (const t of input.tags) state.eventTags.push({ eventId: row.id, interestSlug: t });
         // Creators attend their own events by default.
         state.eventAttendees.push({ eventId: row.id, userId: creatorId, createdAt: now });
+        counted();
         persist();
         return toEvent(state, row);
       },
@@ -770,10 +834,13 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         const mine = state.savedLists.filter((l) => l.ownerId === ownerId);
         // Same order as the database: the cap trigger runs before the unique index.
         if (mine.length >= MAX_SAVED_LISTS) throw new DataError(LIST_LIMIT_ERROR, "full");
+        // Then the rate limit (triggers fire in name order), then the unique index.
+        const counted = rateLimit(ownerId, "lists");
         if (mine.some((l) => listNameKey(l.name) === listNameKey(name))) throw duplicateListName(name);
         const now = new Date().toISOString();
         const row: SavedListRow = { id: newId(), ownerId, name, createdAt: now, updatedAt: now };
         state.savedLists.push(row);
+        counted();
         persist();
         return toSavedList(row);
       },
@@ -835,6 +902,12 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         const p = requireProfile(userId);
         const taken = state.profiles.some((x) => x.username === input.username && x.id !== userId);
         if (taken) throw new DataError("That username is taken", "conflict");
+        // Mirrors guard_profile_trust_columns(): one real change per 30 days.
+        if (!sameCity(input.homeCity, p.homeCity)) {
+          const next = nextHomeCityChange(p.homeCity, p.homeCityChangedAt);
+          if (next) throw new DataError(homeCityCooldownMessage(next), "rate_limited");
+          p.homeCityChangedAt = new Date().toISOString();
+        }
         p.username = input.username;
         p.displayName = input.displayName;
         p.bio = input.bio;
@@ -968,6 +1041,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           (r) => r.reporterId === reporterId && r.targetType === input.targetType && r.targetId === input.targetId && r.status === "open",
         );
         if (dup) return;
+        const counted = rateLimit(reporterId, "reports");
         state.reports.push({
           id: newId(),
           reporterId,
@@ -977,7 +1051,9 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           details: input.details ?? null,
           status: "open",
           createdAt: new Date().toISOString(),
+          resolvedAt: null,
         });
+        counted();
         persist();
       },
       async listFiledBy(userId) {
@@ -998,12 +1074,160 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
             return false;
           })
           .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-          .map((r) => toReportEntry(state, r));
+          .map((r) => toReportEntry(state, r, false));
+      },
+    },
+
+    moderation: {
+      async isModerator(userId) {
+        return isModeratorIn(state, userId);
+      },
+      async queue(viewerId, opts = {}) {
+        if (!isModeratorIn(state, viewerId)) return { items: [], nextCursor: null };
+        const limit = clampLimit(opts.limit, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
+        const after = decodeCursor(opts.cursor);
+        const groups = new Map<string, ReportRow[]>();
+        for (const r of state.reports) {
+          if (r.status !== "open") continue;
+          const key = `${r.targetType}:${r.targetId}`;
+          groups.set(key, [...(groups.get(key) ?? []), r]);
+        }
+        const items = [...groups.values()]
+          .map((rows): ModerationQueueItem => {
+            const times = rows.map((r) => r.createdAt).sort(compareTimestamps);
+            const { targetType, targetId } = rows[0];
+            return {
+              targetType,
+              targetId,
+              reportCount: rows.length,
+              firstReportedAt: times[0],
+              lastReportedAt: times.at(-1)!,
+              reasons: [...new Set(rows.map((r) => r.reason))].sort() as ReportReason[],
+              targetLabel: targetLabel(targetType, targetId),
+              targetStatus: targetStatus(targetType, targetId),
+            };
+          })
+          .filter((i) => !after || compareTimestamps(i.firstReportedAt, after.key) > 0 || (compareTimestamps(i.firstReportedAt, after.key) === 0 && i.targetId > after.id))
+          .sort((a, b) => compareTimestamps(a.firstReportedAt, b.firstReportedAt) || compareIds(a.targetId, b.targetId));
+        return toPage(items, limit, (i) => i, (i) => ({ key: i.firstReportedAt, id: i.targetId }));
+      },
+      async target(viewerId, targetType, targetId) {
+        if (!isModeratorIn(state, viewerId)) return null;
+        const reports = state.reports
+          .filter((r) => r.targetType === targetType && r.targetId === targetId)
+          .map((r) => ({
+            id: r.id,
+            reason: r.reason,
+            details: r.details,
+            status: r.status,
+            createdAt: r.createdAt,
+            resolvedAt: r.resolvedAt,
+            reporter: profileOf(state, r.reporterId),
+          }))
+          .sort(compareModerationReports);
+        const history = state.moderationActions
+          .filter((a) => a.targetType === targetType && a.targetId === targetId)
+          .sort((a, b) => compareTimestamps(b.createdAt, a.createdAt) || compareIds(b.id, a.id))
+          .map((a) => ({
+            id: a.id,
+            action: a.action,
+            reason: a.reason,
+            statusBefore: a.statusBefore,
+            statusAfter: a.statusAfter,
+            resolvedReports: a.resolvedReports,
+            createdAt: a.createdAt,
+            moderator: profileOf(state, a.moderatorId),
+          }));
+        return { targetType, targetId, snapshot: snapshotOf(targetType, targetId), reports, history };
+      },
+      async resolve(moderatorId, { targetType, targetId, action, reason }) {
+        if (!isModeratorIn(state, moderatorId)) throw new DataError("Moderators only", "forbidden");
+        if (!REPORT_TARGET_TYPES.includes(targetType)) throw moderationError("invalid_target");
+        if (!MODERATION_ACTIONS.includes(action)) throw moderationError("invalid_action");
+        const why = normalizeReason(reason);
+        if (why && why.length > MAX_MODERATION_REASON) throw moderationError("reason_too_long");
+        const content = targetType === "place"
+          ? state.places.find((p) => p.id === targetId)
+          : targetType === "event" ? state.events.find((e) => e.id === targetId) : null;
+        if (targetType === "profile" ? !state.profiles.some((p) => p.id === targetId) : !content) throw moderationError("not_found");
+        const before: string | null = content?.status ?? null;
+        let after = before;
+        let reportStatus: ReportRow["status"];
+        if (action === "remove") {
+          if (targetType === "profile") throw moderationError("cannot_remove_profile");
+          if (before === "removed") throw moderationError("already_removed");
+          if (!why) throw moderationError("reason_required");
+          after = "removed";
+          reportStatus = "reviewed";
+        } else if (action === "restore") {
+          if (before !== "removed") throw moderationError("not_removed");
+          after = "published";
+          reportStatus = "dismissed";
+        } else {
+          reportStatus = action === "dismiss" ? "dismissed" : "reviewed";
+        }
+        const open = state.reports.filter((r) => r.targetType === targetType && r.targetId === targetId && r.status === "open");
+        if ((action === "dismiss" || action === "review") && !open.length) throw moderationError("nothing_open");
+        const now = new Date().toISOString();
+        for (const r of open) {
+          r.status = reportStatus;
+          r.resolvedAt = now;
+        }
+        if (content && after !== before) {
+          content.status = after as typeof content.status;
+          content.updatedAt = now;
+        }
+        state.moderationActions.push({
+          id: newId(), moderatorId, action, targetType, targetId, reason: why,
+          statusBefore: before, statusAfter: after, resolvedReports: open.length, createdAt: now,
+        });
+        persist();
+        return { statusAfter: after, resolvedReports: open.length };
+      },
+      async setLocalStatus(moderatorId, userId, revoked, reason) {
+        if (!isModeratorIn(state, moderatorId)) throw new DataError("Moderators only", "forbidden");
+        const why = normalizeReason(reason);
+        if (!why) throw moderationError("reason_required");
+        if (why.length > MAX_MODERATION_REASON) throw moderationError("reason_too_long");
+        if (!state.profiles.some((p) => p.id === userId)) throw moderationError("not_found");
+        const wasRevoked = state.localRevocations.some((r) => r.userId === userId);
+        if (wasRevoked === revoked) throw moderationError("no_change");
+        const now = new Date().toISOString();
+        if (revoked) state.localRevocations.push({ userId, revokedBy: moderatorId, reason: why, revokedAt: now });
+        else state.localRevocations = state.localRevocations.filter((r) => r.userId !== userId);
+        state.moderationActions.push({
+          id: newId(), moderatorId, action: revoked ? "revoke_local" : "restore_local", targetType: "profile", targetId: userId,
+          reason: why, statusBefore: wasRevoked ? "revoked" : "eligible", statusAfter: revoked ? "revoked" : "eligible",
+          resolvedReports: 0, createdAt: now,
+        });
+        persist();
+      },
+      async localRevoked(userId) {
+        return state.localRevocations.some((r) => r.userId === userId);
+      },
+      async myRemovedContent(userId) {
+        const mine: Omit<RemovedContent, "reason" | "removedAt">[] = [
+          ...state.places.filter((p) => p.creatorId === userId && p.status === "removed").map((p) => ({ targetType: "place" as const, targetId: p.id, label: p.name })),
+          ...state.events.filter((e) => e.creatorId === userId && e.status === "removed").map((e) => ({ targetType: "event" as const, targetId: e.id, label: e.title })),
+        ];
+        return mine
+          .map((m) => {
+            const latest = state.moderationActions
+              .filter((a) => a.targetType === m.targetType && a.targetId === m.targetId && a.action === "remove")
+              .sort((a, b) => compareTimestamps(b.createdAt, a.createdAt) || compareIds(b.id, a.id))[0];
+            return { ...m, reason: latest?.reason ?? null, removedAt: latest?.createdAt ?? null };
+          })
+          .sort((a, b) =>
+            (a.removedAt === null ? 1 : 0) - (b.removedAt === null ? 1 : 0) ||
+            (a.removedAt && b.removedAt ? compareTimestamps(b.removedAt, a.removedAt) : 0) ||
+            compareIds(a.targetId, b.targetId));
       },
     },
 
     storage: {
       async uploadImage(image, folder, ownerId) {
+        // The storage insert policy counts the main object only, not its sizes.
+        const counted = rateLimit(ownerId, folder === "avatars" ? "avatars" : "photos");
         // Everything stored has been through the image pipeline, which emits WebP.
         const name = `${folder}-${ownerId.slice(0, 8)}-${newId()}.webp`;
         mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -1015,6 +1239,8 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         // Avatars are public profile data; place photos are served only through
         // the authorized /api/photos/[id] route.
         const url = folder === "avatars" ? `/api/uploads/${name}` : placePhotoReference(name);
+        counted();
+        persist();
         return { url, storagePath: name };
       },
       async deliverPlacePhoto(objectPath) {

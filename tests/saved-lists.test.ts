@@ -102,8 +102,9 @@ describe("saved lists in the database", () => {
       await as(theo, "delete from public.saved_lists where id = $1", [mayaList]);
       const { rows } = await db.query<{ name: string }>("select name from public.saved_lists where id = $1", [mayaList]);
       expect(rows).toEqual([{ name: "Private picks" }]);
-      // Even the owner cannot hand a list to someone else.
-      await expectDbError(as(maya, "update public.saved_lists set owner_id = $2 where id = $1", [mayaList, theo]), /row-level security|Only a list's name/);
+      // Even the owner cannot hand a list to someone else: only the name column
+      // is granted (the touch trigger backs that up for the service role).
+      await expectDbError(as(maya, "update public.saved_lists set owner_id = $2 where id = $1", [mayaList, theo]), /permission denied for table saved_lists/);
     });
 
     it("refuses putting anything in another user's list, even the intruder's own bookmark", async () => {
@@ -268,8 +269,10 @@ describe("saved lists in the database", () => {
 // ----------------------------------------------------------------------------
 describe("saved lists in demo mode", () => {
   let repo: DataRepository;
+  let store: ReturnType<typeof createIsolatedStore>;
   beforeEach(() => {
-    repo = createDemoRepository(createIsolatedStore());
+    store = createIsolatedStore();
+    repo = createDemoRepository(store);
   });
 
   const code = async (p: Promise<unknown>) => {
@@ -338,7 +341,13 @@ describe("saved lists in demo mode", () => {
     const other = await repo.savedLists.create(maya, "Tea");
     expect(await code(repo.savedLists.rename(maya, other.id, "coffee"))).toBe("conflict");
     expect(await code(repo.savedLists.rename(maya, other.id, "TEA"))).toBe("ok"); // its own name, recased
-    for (let i = (await repo.savedLists.list(maya)).length; i < MAX_SAVED_LISTS; i++) await repo.savedLists.create(maya, `List ${i}`);
+    // The cap is lifetime; the rate limit (30 a day) is not. Forget the daily
+    // counter as each list goes in, as if they were made over several days.
+    for (let i = (await repo.savedLists.list(maya)).length; i < MAX_SAVED_LISTS; i++) {
+      store.state.rateLimits = [];
+      await repo.savedLists.create(maya, `List ${i}`);
+    }
+    store.state.rateLimits = [];
     expect(await code(repo.savedLists.create(maya, "One too many"))).toBe("full");
   });
 

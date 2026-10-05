@@ -44,6 +44,7 @@ export function demoSignUp(input: {
     avatarUrl: null,
     bio: null,
     homeCity: null,
+    homeCityChangedAt: null,
     createdAt: now,
     updatedAt: now,
   });

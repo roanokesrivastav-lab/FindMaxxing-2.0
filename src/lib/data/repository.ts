@@ -24,6 +24,12 @@ import type {
   PlacePhotoDelivery,
   ImageUpload,
   ReportEntry,
+  ModerationAction,
+  ModerationQueueItem,
+  ModerationTargetDetail,
+  PageRequest,
+  RemovedContent,
+  ReportTargetType,
   SavedList,
   StoredImage,
   TagCounts,
@@ -162,6 +168,33 @@ export interface DataRepository {
     listFiledBy(userId: string): Promise<ReportEntry[]>;
     /** Reports against the user's own places and events. Never exposes who filed them. */
     listAgainstMyContent(userId: string): Promise<ReportEntry[]>;
+  };
+  /**
+   * Report review. Every method except myRemovedContent is for moderators:
+   * the queue and target reads come back empty (or null) for anyone else, and
+   * writes are refused as forbidden. Supabase enforces this in the database
+   * (is_moderator()); the viewer ids are what the demo store checks.
+   */
+  moderation: {
+    isModerator(userId: string | null): Promise<boolean>;
+    /** Open reports grouped by target, oldest report first, in cursor pages. */
+    queue(viewerId: string, opts?: PageRequest): Promise<Page<ModerationQueueItem>>;
+    /** The target as it is now, all its reports with their reporters, and its history. */
+    target(viewerId: string, targetType: ReportTargetType, targetId: string): Promise<ModerationTargetDetail | null>;
+    /**
+     * Resolves every open report on the target together, changing the
+     * content's status when the action calls for it, and records the action.
+     */
+    resolve(
+      moderatorId: string,
+      input: { targetType: ReportTargetType; targetId: string; action: ModerationAction; reason?: string | null },
+    ): Promise<{ statusAfter: string | null; resolvedReports: number }>;
+    /** Revokes or restores a user's local status. A reason is required either way. */
+    setLocalStatus(moderatorId: string, userId: string, revoked: boolean, reason: string): Promise<void>;
+    /** Whether a moderator has revoked this user's local status. */
+    localRevoked(userId: string): Promise<boolean>;
+    /** The viewer's own places and events that moderators removed, with the reason. */
+    myRemovedContent(userId: string): Promise<RemovedContent[]>;
   };
   storage: {
     /**

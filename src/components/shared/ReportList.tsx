@@ -54,6 +54,7 @@ export function ReportList({ entries, perspective }: { entries: ReportEntry[]; p
 
             <p className="mt-2 text-xs text-muted">
               {perspective === "owner" ? "Reported" : "You reported this"} on {DATE.format(new Date(entry.createdAt))}
+              {perspective === "reporter" && entry.resolvedAt ? ` · a moderator resolved it on ${DATE.format(new Date(entry.resolvedAt))}` : ""}
             </p>
           </li>
         );

@@ -17,7 +17,15 @@ import {
   type ConnectionEntry,
   type EventMapRecord,
   type PlaceMapRecord,
+  type ModerationLogEntry,
+  type ModerationQueueItem,
+  type ModerationReport,
+  type ModerationSnapshot,
+  type RemovedContent,
 } from "../types";
+import { parseRateLimitMessage } from "@/lib/rateLimits";
+import { compareModerationReports, parseModerationMessage } from "../moderation";
+import { homeCityCooldownMessage, nextHomeCityChange, sameCity } from "../localTier";
 import { LIST_LIMIT_ERROR, duplicateListName, normalizeListName } from "../savedLists";
 import {
   DEFAULT_MAP_MARKERS,
@@ -53,6 +61,7 @@ interface ProfileSummaryRow {
 interface ProfileRow extends ProfileSummaryRow {
   bio: string | null;
   home_city: string | null;
+  home_city_changed_at?: string | null;
   created_at: string;
   updated_at: string;
   profile_interests?: { interest_slug: string }[];
@@ -115,6 +124,7 @@ function mapProfile(r: ProfileRow): Profile {
     ...(mapSummary(r) as ProfileSummary),
     bio: r.bio,
     homeCity: r.home_city,
+    homeCityChangedAt: r.home_city_changed_at ?? null,
     interests: (r.profile_interests ?? []).map((i) => i.interest_slug),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -169,8 +179,12 @@ function mapEvent(r: EventRow): Event {
 }
 
 /** Translate Postgres errors into user-facing DataErrors. */
-function translate(error: PostgrestError): DataError {
+export function translate(error: PostgrestError): DataError {
   switch (error.code) {
+    case "FM429": // check_rate_limit()
+      return parseRateLimitMessage(error.message) ?? new DataError("Too many requests. Try again later.", "rate_limited");
+    case "P0002": // no_data_found, raised by our functions for a missing target
+      return parseModerationMessage(error.message) ?? new DataError("Not found", "not_found");
     case "23505":
       return new DataError("That already exists", "conflict");
     case "23503":
@@ -180,10 +194,15 @@ function translate(error: PostgrestError): DataError {
     case "22007": // invalid_datetime_format
     case "22008": // datetime_field_overflow
       return new DataError("Invalid date or time", "invalid");
-    case "P0001": // raise exception from our triggers
+    case "P0001": { // raise exception from our triggers
+      const moderation = parseModerationMessage(error.message);
+      if (moderation) return moderation;
+      const cooldown = /home_city_cooldown:(\S+)/.exec(error.message);
+      if (cooldown) return new DataError(homeCityCooldownMessage(cooldown[1]), "rate_limited");
       if (/full/i.test(error.message)) return new DataError("This event is full", "full");
       if (/ended|past/i.test(error.message)) return new DataError("This event has already ended", "invalid");
       return new DataError(error.message, "invalid");
+    }
     default:
       return new DataError(error.message || "Something went wrong", "unavailable");
   }
@@ -243,6 +262,8 @@ interface ReportViewRow {
   details: string | null;
   status: ReportEntry["status"];
   created_at: string;
+  /** Only reports_i_filed has it. */
+  resolved_at?: string | null;
 }
 
 /**
@@ -275,6 +296,7 @@ async function readReports(supabase: SupabaseClient, view: "reports_i_filed" | "
     details: r.details,
     status: r.status,
     createdAt: r.created_at,
+    resolvedAt: r.resolved_at ?? null,
     targetLabel: labels.get(r.target_id) ?? null,
   }));
 }
@@ -298,6 +320,67 @@ export function discoverArgs(f: NormalizedFilters) {
 
 export function upcomingCutoff(includePast: boolean | undefined): string | null {
   return includePast ? null : new Date(Date.now() - UPCOMING_GRACE_MS).toISOString();
+}
+
+interface QueueRow {
+  target_type: ModerationQueueItem["targetType"];
+  target_id: string;
+  report_count: number;
+  first_reported_at: string;
+  last_reported_at: string;
+  reasons: ModerationQueueItem["reasons"];
+  target_label: string | null;
+  target_status: string | null;
+}
+
+function mapQueueRow(r: QueueRow): ModerationQueueItem {
+  return {
+    targetType: r.target_type,
+    targetId: r.target_id,
+    reportCount: r.report_count,
+    firstReportedAt: r.first_reported_at,
+    lastReportedAt: r.last_reported_at,
+    reasons: r.reasons ?? [],
+    targetLabel: r.target_label,
+    targetStatus: r.target_status,
+  };
+}
+
+interface ReportRowWithReporter {
+  id: string;
+  reason: ModerationReport["reason"];
+  details: string | null;
+  status: ModerationReport["status"];
+  created_at: string;
+  resolved_at: string | null;
+  reporter: ProfileSummaryRow | null;
+}
+
+interface HistoryRow {
+  id: string;
+  action: ModerationLogEntry["action"];
+  reason: string | null;
+  status_before: string | null;
+  status_after: string | null;
+  resolved_reports: number;
+  created_at: string;
+  moderator: ProfileSummaryRow | null;
+}
+
+/** moderation_target() returns jsonb; fill in every key so the shape is exact. */
+function mapSnapshot(s: Partial<ModerationSnapshot>): ModerationSnapshot {
+  return {
+    label: s.label ?? "",
+    status: s.status ?? "",
+    visibility: s.visibility ?? null,
+    city: s.city ?? null,
+    neighborhood: s.neighborhood ?? null,
+    body: s.body ?? null,
+    extra: s.extra ?? null,
+    ownerId: s.ownerId ?? null,
+    ownerUsername: s.ownerUsername ?? null,
+    createdAt: s.createdAt ?? "",
+  };
 }
 
 const PLACE_MAP_SELECT = "id, name, category_slug, lat, lng, rating_avg, rating_count";
@@ -825,6 +908,13 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
         return row ? mapProfile(row) : null;
       },
       async update(userId, input) {
+        // The profiles trigger is the real limit; checking first gives the
+        // same message without a round trip that fails.
+        const current = await repo.profiles.getById(userId);
+        if (current && !sameCity(input.homeCity, current.homeCity)) {
+          const next = nextHomeCityChange(current.homeCity, current.homeCityChangedAt);
+          if (next) throw new DataError(homeCityCooldownMessage(next), "rate_limited");
+        }
         const patch: Record<string, unknown> = {
           username: input.username,
           display_name: input.displayName,
@@ -988,6 +1078,83 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
       },
       async listAgainstMyContent() {
         return readReports(supabase, "reports_about_my_stuff");
+      },
+    },
+
+    moderation: {
+      async isModerator(userId) {
+        if (!userId) return false;
+        const { data, error } = await supabase.rpc("is_moderator");
+        if (error) throw translate(error);
+        return data === true;
+      },
+      async queue(_viewerId, opts = {}) {
+        const limit = clampLimit(opts.limit, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
+        const after = decodeCursor(opts.cursor);
+        // Empty for non-moderators: the function checks is_moderator() itself.
+        const rows = unwrap(
+          await supabase.rpc("moderation_queue", { p_after_first: after?.key ?? null, p_after_id: after?.id ?? null, p_limit: limit + 1 }),
+        ) as QueueRow[];
+        return toPage(rows, limit, mapQueueRow, (r) => ({ key: r.first_reported_at, id: r.target_id }));
+      },
+      async target(_viewerId, targetType, targetId) {
+        const snapshot = unwrap(await supabase.rpc("moderation_target", { p_target_type: targetType, p_target_id: targetId })) as ModerationSnapshot | null;
+        // RLS lets only moderators read reports and history; a non-moderator gets null here and empty lists there.
+        if (!snapshot && !(await repo.moderation.isModerator(_viewerId))) return null;
+        const [reportRows, historyRows] = await Promise.all([
+          fetchAllRows((from, to) =>
+            supabase
+              .from("reports")
+              .select(`id, reason, details, status, created_at, resolved_at, reporter:profiles!reports_reporter_id_fkey(${PROFILE_SUMMARY})`)
+              .eq("target_type", targetType)
+              .eq("target_id", targetId)
+              .order("created_at", { ascending: false })
+              .order("id", { ascending: false })
+              .range(from, to),
+          ),
+          fetchAllRows((from, to) =>
+            supabase
+              .from("moderation_actions")
+              .select(`id, action, reason, status_before, status_after, resolved_reports, created_at, moderator:profiles!moderation_actions_moderator_id_fkey(${PROFILE_SUMMARY})`)
+              .eq("target_type", targetType)
+              .eq("target_id", targetId)
+              .order("created_at", { ascending: false })
+              .order("id", { ascending: false })
+              .range(from, to),
+          ),
+        ]);
+        const reports = (reportRows as unknown as ReportRowWithReporter[]).map<ModerationReport>((r) => ({
+          id: r.id, reason: r.reason, details: r.details, status: r.status, createdAt: r.created_at, resolvedAt: r.resolved_at, reporter: mapSummary(r.reporter),
+        })).sort(compareModerationReports);
+        const history = (historyRows as unknown as HistoryRow[]).map<ModerationLogEntry>((r) => ({
+          id: r.id, action: r.action, reason: r.reason, statusBefore: r.status_before, statusAfter: r.status_after,
+          resolvedReports: r.resolved_reports, createdAt: r.created_at, moderator: mapSummary(r.moderator),
+        }));
+        return { targetType, targetId, snapshot: snapshot ? mapSnapshot(snapshot) : null, reports, history };
+      },
+      async resolve(_moderatorId, input) {
+        const rows = unwrap(
+          await supabase.rpc("moderate_target", {
+            p_target_type: input.targetType,
+            p_target_id: input.targetId,
+            p_action: input.action,
+            p_reason: input.reason ?? null,
+          }),
+        ) as { status_after: string | null; resolved_reports: number }[];
+        return { statusAfter: rows[0]?.status_after ?? null, resolvedReports: rows[0]?.resolved_reports ?? 0 };
+      },
+      async setLocalStatus(_moderatorId, userId, revoked, reason) {
+        unwrap(await supabase.rpc("set_local_status", { p_user_id: userId, p_revoked: revoked, p_reason: reason }));
+      },
+      async localRevoked(userId) {
+        const rows = unwrap(await supabase.from("local_revocations").select("user_id").eq("user_id", userId)) as { user_id: string }[];
+        return rows.length > 0;
+      },
+      async myRemovedContent() {
+        const rows = unwrap(await supabase.rpc("my_removed_content")) as {
+          target_type: RemovedContent["targetType"]; target_id: string; label: string; reason: string | null; removed_at: string | null;
+        }[];
+        return rows.map((r) => ({ targetType: r.target_type, targetId: r.target_id, label: r.label, reason: r.reason, removedAt: r.removed_at }));
       },
     },
 

@@ -13,16 +13,19 @@ import {
   DEMO_PASSWORD,
   SEED_EVENTS,
   SEED_FOLLOWS,
+  SEED_MODERATORS,
   SEED_PLACES,
   SEED_RATINGS,
   SEED_REPORTS,
   SEED_SAVES,
   SEED_USERS,
+  seedAccountAgeDays,
   seedEventTimes,
   seedPlaceByName,
   seedUserByName,
 } from "@/lib/seed/seed-data";
-import type { EventStatus, PlaceStatus, ReportReason, ReportTargetType, Visibility } from "../types";
+import type { EventStatus, ModerationLogAction, PlaceStatus, ReportReason, ReportStatus, ReportTargetType, Visibility } from "../types";
+import { oldEnoughToBeLocal, sameCity } from "../localTier";
 import { newId } from "@/lib/utils/ids";
 import { placePhotoReference } from "../photos";
 
@@ -39,6 +42,7 @@ export interface ProfileRow {
   avatarUrl: string | null;
   bio: string | null;
   homeCity: string | null;
+  homeCityChangedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -104,8 +108,29 @@ export interface ReportRow {
   targetId: string;
   reason: ReportReason;
   details: string | null;
-  status: "open" | "reviewed" | "dismissed";
+  status: ReportStatus;
   createdAt: string;
+  resolvedAt: string | null;
+}
+/** Mirrors moderation_actions: append-only. */
+export interface ModerationActionRow {
+  id: string;
+  moderatorId: string | null;
+  action: ModerationLogAction;
+  targetType: ReportTargetType;
+  targetId: string;
+  reason: string | null;
+  statusBefore: string | null;
+  statusAfter: string | null;
+  resolvedReports: number;
+  createdAt: string;
+}
+/** Mirrors rate_limit_counters: one row per user, action and fixed window. */
+export interface RateLimitRow {
+  userId: string;
+  action: string;
+  windowStart: number;
+  count: number;
 }
 
 export interface DemoState {
@@ -126,6 +151,10 @@ export interface DemoState {
   eventAttendees: { eventId: string; userId: string; createdAt: string }[];
   follows: { followerId: string; followingId: string; createdAt: string }[];
   reports: ReportRow[];
+  moderators: { userId: string; grantedAt: string; grantedBy: string | null }[];
+  moderationActions: ModerationActionRow[];
+  localRevocations: { userId: string; revokedBy: string | null; reason: string; revokedAt: string }[];
+  rateLimits: RateLimitRow[];
 }
 
 export interface SavedListRow {
@@ -136,7 +165,7 @@ export interface SavedListRow {
   updatedAt: string;
 }
 
-export const STATE_VERSION = 3;
+export const STATE_VERSION = 4;
 const DATA_DIR = path.join(process.cwd(), ".data");
 const STATE_FILE = path.join(DATA_DIR, "demo-store.json");
 
@@ -152,6 +181,7 @@ type LooseState = Record<string, unknown> & { version?: unknown };
 const COLLECTIONS = [
   "authUsers", "profiles", "profileInterests", "places", "placeTags", "placePhotos",
   "placeRatings", "savedPlaces", "savedLists", "savedListItems", "events", "eventTags", "eventAttendees", "follows", "reports",
+  "moderators", "moderationActions", "localRevocations", "rateLimits",
 ] as const;
 
 const LEGACY_PLACE_UPLOAD = /^\/api\/uploads\/(places-[^/]+)$/;
@@ -182,6 +212,19 @@ const MIGRATIONS: Record<number, (state: LooseState) => void> = {
   2(state) {
     state.savedLists ??= [];
     state.savedListItems ??= [];
+  },
+  // v3 → v4: moderation and the firmer local tier. Existing reports are
+  // unresolved as far as anyone recorded; existing home cities have no change
+  // date, so their first change is allowed straight away (as in the SQL
+  // migration). Moderators are seeded only in fresh stores: an existing store
+  // keeps whoever the owner has made a moderator by hand (none, until then).
+  3(state) {
+    state.moderators ??= [];
+    state.moderationActions ??= [];
+    state.localRevocations ??= [];
+    state.rateLimits ??= [];
+    for (const report of state.reports as Partial<ReportRow>[]) report.resolvedAt ??= null;
+    for (const profile of state.profiles as Partial<ProfileRow>[]) profile.homeCityChangedAt ??= null;
   },
 };
 
@@ -241,10 +284,15 @@ export function buildSeedState(now = new Date()): DemoState {
     eventAttendees: [],
     follows: [],
     reports: [],
+    moderators: [],
+    moderationActions: [],
+    localRevocations: [],
+    rateLimits: [],
   };
 
   SEED_USERS.forEach((u, i) => {
-    state.authUsers.push({ id: u.id, email: u.email, passwordHash: sharedHash, createdAt: daysAgo(90 - i) });
+    const created = daysAgo(seedAccountAgeDays(i));
+    state.authUsers.push({ id: u.id, email: u.email, passwordHash: sharedHash, createdAt: created });
     state.profiles.push({
       id: u.id,
       username: u.username,
@@ -252,8 +300,9 @@ export function buildSeedState(now = new Date()): DemoState {
       avatarUrl: null,
       bio: u.bio,
       homeCity: u.homeCity,
-      createdAt: daysAgo(90 - i),
-      updatedAt: daysAgo(90 - i),
+      homeCityChangedAt: null,
+      createdAt: created,
+      updatedAt: created,
     });
     for (const interest of u.interests) state.profileInterests.push({ profileId: u.id, interestSlug: interest });
   });
@@ -341,8 +390,13 @@ export function buildSeedState(now = new Date()): DemoState {
       details: r.details,
       status: r.status,
       createdAt: daysAgo(10 - (i % 8)),
+      resolvedAt: null,
     });
   });
+
+  for (const username of SEED_MODERATORS) {
+    state.moderators.push({ userId: seedUserByName(username).id, grantedAt: daysAgo(30), grantedBy: null });
+  }
 
   SEED_FOLLOWS.forEach((f, i) => {
     state.follows.push({
@@ -356,21 +410,24 @@ export function buildSeedState(now = new Date()): DemoState {
 }
 
 /**
- * Mirrors public.is_local(text) from 0003_tier2_community_layer.sql.
+ * Mirrors public.is_local(text) as redefined in 0010_moderation.sql.
  *
- * A viewer is a local of a city when their home city matches, or when they have
- * contributed at least one published place there. Kept beside the store so the
- * demo and Supabase paths cannot drift apart silently.
+ * A viewer is a local of a city when their account is at least 7 days old, no
+ * moderator has revoked their local status, and either their home city matches
+ * or they have contributed at least one published place there. Kept beside the
+ * store so the demo and Supabase paths cannot drift apart silently.
  */
-export function isLocalOfCity(state: DemoState, userId: string | null, city: string): boolean {
+export function isLocalOfCity(state: DemoState, userId: string | null, city: string, now = Date.now()): boolean {
   if (!userId || !city) return false;
-  const norm = (v: string) => v.trim().toLowerCase();
-  const target = norm(city);
   const profile = state.profiles.find((p) => p.id === userId);
-  if (profile?.homeCity && norm(profile.homeCity) === target) return true;
-  return state.places.some(
-    (p) => p.creatorId === userId && p.status === "published" && norm(p.city) === target,
-  );
+  if (!profile || !oldEnoughToBeLocal(profile.createdAt, now)) return false;
+  if (state.localRevocations.some((r) => r.userId === userId)) return false;
+  if (profile.homeCity && sameCity(profile.homeCity, city)) return true;
+  return state.places.some((p) => p.creatorId === userId && p.status === "published" && sameCity(p.city, city));
+}
+
+export function isModeratorIn(state: DemoState, userId: string | null): boolean {
+  return !!userId && state.moderators.some((m) => m.userId === userId);
 }
 
 /** Mirrors the Postgres trigger that maintains places.rating_avg / rating_count. */

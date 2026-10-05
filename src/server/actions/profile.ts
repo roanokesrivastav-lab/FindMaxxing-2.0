@@ -40,6 +40,8 @@ export async function updateProfileAction(_prev: ActionResult | null, formData: 
     await repo.profiles.update(viewer.id, { ...parsed.data, avatarUrl });
   } catch (err) {
     if (err instanceof DataError && err.code === "conflict") return fail(err.message, { username: err.message });
+    if (err instanceof DataError && err.code === "rate_limited" && /home city/i.test(err.message)) return fail(err.message, { homeCity: err.message });
+    if (err instanceof DataError && err.code === "rate_limited") return fail(err.message, { avatar: err.message });
     return toFailure(err);
   }
   revalidatePath("/profile");

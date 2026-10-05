@@ -187,6 +187,19 @@ export const reportSchema = z.object({
   details: optionalText(500),
 });
 
+export const moderationSchema = z.object({
+  targetType: z.enum(["place", "event", "profile"]),
+  targetId: z.string().uuid(),
+  action: z.enum(["dismiss", "review", "remove", "restore"]),
+  reason: z.string().trim().max(500, "Keep the reason under 500 characters").optional().transform((v) => (v ? v : null)),
+});
+
+export const localStatusSchema = z.object({
+  userId: z.string().uuid(),
+  revoked: z.boolean(),
+  reason: z.string().trim().min(1, "Give a reason").max(500, "Keep the reason under 500 characters"),
+});
+
 export const signUpSchema = z.object({
   email: z.string().trim().toLowerCase().email("Enter a valid email"),
   password: z.string().min(8, "Password must be at least 8 characters").max(72),

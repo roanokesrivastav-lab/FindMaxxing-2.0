@@ -1,11 +1,13 @@
 import Link from "next/link";
-import { Flag, MapPin, Pencil } from "lucide-react";
-import type { Profile, ProfileStats, UserActivity } from "@/lib/data/types";
+import { Flag, MapPin, Pencil, ShieldAlert, ShieldCheck } from "lucide-react";
+import type { Profile, ProfileStats, RemovedContent, UserActivity } from "@/lib/data/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { getInterest } from "@/lib/data/taxonomy";
 import { FollowButton } from "./FollowButton";
 import { ActivityTabs } from "./ActivityTabs";
 import { SignOutButton } from "@/components/auth/SignOutButton";
+
+const REMOVED_DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
 
 export function ProfileView({
   profile,
@@ -14,6 +16,8 @@ export function ProfileView({
   isSelf,
   viewerSignedIn,
   viewerFollows,
+  removed = [],
+  isModerator = false,
 }: {
   profile: Profile;
   stats: ProfileStats;
@@ -21,6 +25,9 @@ export function ProfileView({
   isSelf: boolean;
   viewerSignedIn: boolean;
   viewerFollows: boolean;
+  /** The viewer's own content that moderators removed (self view only). */
+  removed?: RemovedContent[];
+  isModerator?: boolean;
 }) {
   return (
     <div className="max-w-2xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-nav md:pb-10">
@@ -95,16 +102,44 @@ export function ProfileView({
         </dl>
       </div>
 
+      {isSelf && removed.length ? (
+        <section className="mt-5 card p-5 border-danger/40" aria-labelledby="removed-heading">
+          <h2 id="removed-heading" className="font-bold inline-flex items-center gap-2">
+            <ShieldAlert size={16} className="text-danger" /> Removed by moderators
+          </h2>
+          <p className="text-sm text-muted mt-1">These no longer appear anywhere, for anyone. You can&apos;t edit or republish them.</p>
+          <ul className="mt-3 flex flex-col gap-2 list-none p-0 m-0">
+            {removed.map((r) => (
+              <li key={`${r.targetType}:${r.targetId}`} className="rounded-xl bg-surface-2 px-4 py-3">
+                <p className="text-sm font-semibold break-words">
+                  {r.targetType === "place" ? "Place" : "Event"}: {r.label}
+                </p>
+                <p className="text-sm text-ink-2 mt-0.5 break-words">{r.reason ? `Reason: ${r.reason}` : "No reason was recorded."}</p>
+                {r.removedAt ? <p className="text-xs text-muted mt-1">Removed {REMOVED_DATE.format(new Date(r.removedAt))}</p> : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       <div className="mt-5">
         <ActivityTabs activity={activity} isSelf={isSelf} />
       </div>
 
       {isSelf ? (
         <div className="mt-8 flex flex-col items-center gap-3">
-          <Link href="/profile/reports" className="chip">
-            <Flag size={14} />
-            Reports
-          </Link>
+          <div className="flex flex-wrap justify-center gap-2">
+            <Link href="/profile/reports" className="chip">
+              <Flag size={14} />
+              Reports
+            </Link>
+            {isModerator ? (
+              <Link href="/moderation" className="chip">
+                <ShieldCheck size={14} />
+                Moderation queue
+              </Link>
+            ) : null}
+          </div>
           <SignOutButton />
         </div>
       ) : null}

@@ -38,6 +38,22 @@ export default async function MyProfilePage() {
     );
   }
   const repo = await getRepository();
-  const [stats, activity] = await Promise.all([repo.profiles.stats(viewer.id), repo.profiles.activity(viewer.id, viewer.id)]);
-  return <ProfileView profile={viewer.profile} stats={stats} activity={activity} isSelf viewerSignedIn viewerFollows={false} />;
+  const [stats, activity, removed, isModerator] = await Promise.all([
+    repo.profiles.stats(viewer.id),
+    repo.profiles.activity(viewer.id, viewer.id),
+    repo.moderation.myRemovedContent(viewer.id),
+    repo.moderation.isModerator(viewer.id),
+  ]);
+  return (
+    <ProfileView
+      profile={viewer.profile}
+      stats={stats}
+      activity={activity}
+      isSelf
+      viewerSignedIn
+      viewerFollows={false}
+      removed={removed}
+      isModerator={isModerator}
+    />
+  );
 }

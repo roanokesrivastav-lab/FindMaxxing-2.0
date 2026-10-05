@@ -11,7 +11,7 @@ The core loop: **discover → view → save → contribute → create event → 
 - **Supabase** (Postgres + Auth + Storage) with Row Level Security; **demo mode** fallback with no credentials
 - **Mapbox GL** when a token is present; **MapLibre GL + OpenFreeMap** tiles otherwise (no key needed)
 - **Zod** validation shared by forms and server actions
-- **Vitest** + **PGlite** (embedded Postgres) so the real SQL migration is tested on every `npm test`
+- **Vitest** + **PGlite** (embedded Postgres) so the real SQL migration is tested on every `npm test`. The helper sets Supabase-style default privileges once, at table creation, so a migration's column grants and revokes are what the tests actually exercise
 
 ## Quick start (no credentials needed)
 
@@ -20,7 +20,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000. The app runs in **demo mode**: a file-backed local store (`.data/demo-store.json`, git-ignored) seeded with fictional Columbus, Ohio data. Sign in from `/auth/sign-in` by tapping a persona, or with any seeded email (e.g. `maya@example.com`) and the password `findmaxxing`. Sign-ups, saves, ratings, events and follows persist across restarts. When the store format changes, the file is migrated forward on startup and the previous copy is kept beside it as `demo-store.v<N>-<timestamp>.bak.json`; an unreadable or newer file is backed up rather than overwritten. Delete `.data/` to reset.
+Open http://localhost:3000. The app runs in **demo mode**: a file-backed local store (`.data/demo-store.json`, git-ignored) seeded with fictional Columbus, Ohio data. Sign in from `/auth/sign-in` by tapping a persona, or with any seeded email (e.g. `maya@example.com`) and the password `findmaxxing`. `sam@example.com` is the seeded **moderator**: their profile links to the report queue at `/moderation`. Sign-ups, saves, ratings, events and follows persist across restarts. When the store format changes, the file is migrated forward on startup and the previous copy is kept beside it as `demo-store.v<N>-<timestamp>.bak.json`; an unreadable or newer file is backed up rather than overwritten. Delete `.data/` to reset.
 
 ## Checks
 
@@ -36,6 +36,9 @@ npm run check       # all of the above
 flow in a headless browser and writes screenshots to `.data/smoke/`.
 `node scripts/smoke-tier2.mjs` does the same for the community layer and asserts its Tier 2 checks,
 including that a non-local genuinely cannot see a locals-only place.
+`node scripts/smoke-moderation.mjs [baseUrl]` walks the moderation loop (non-moderator 404, queue,
+remove with a reason, owner notice, reporter feedback) and exits non-zero on any failure. Run the app
+with `FINDMAXXING_DEMO_NO_PERSIST=1` so the walk does not change your demo store.
 `npx tsx tests/helpers/measure-discovery.ts 50000` loads synthetic places into PGlite and prints
 query plans and timings for the discovery queries.
 
@@ -51,9 +54,17 @@ query plans and timings for the discovery queries.
    - `supabase/migrations/0007_discovery_filters_and_aggregates.sql` — neighborhood, created-after and starts-before discovery filters, plus the neighborhood and interest count aggregates the list pages use
    - `supabase/migrations/0008_photo_variants.sql` — lets each place photo's smaller stored sizes follow the photo's own read and delete rules
    - `supabase/migrations/0009_saved_lists.sql` — owner-only saved lists that organize bookmarks, with their summaries and add-to-list function
+   - `supabase/migrations/0010_moderation.sql` — moderators, the report queue and review RPCs, the append-only moderation history, removed-content rules, and the firmer local tier (7-day accounts, 30-day home city cooldown, revocation)
+   - `supabase/migrations/0011_rate_limits.sql` — database-enforced write limits for places, events, ratings, lists, reports and uploads
    - `supabase/seed.sql` — optional fictional demo data (generated from `src/lib/seed/seed-data.ts` via `npm run seed:sql`; **do not use the demo users in production**)
 2. In Supabase Auth settings, add `http://localhost:3000/auth/callback` (and your production URL) to the redirect allow-list. Email confirmation is supported: the sign-up flow shows a "check your email" state and `/auth/callback` exchanges the code.
-3. Copy `.env.example` to `.env.local` and fill in:
+   Under **Authentication → Rate Limits**, keep sign-ups and password-recovery emails low for the beta: 30 sign-ups and 30 token verifications per 5 minutes per IP, and 4 emails per hour (or connect your own SMTP provider and raise it deliberately). Turn on CAPTCHA protection if sign-up spam appears. These sit in front of the app's own per-IP limit (see [Rate limits](#rate-limits)).
+3. Make at least one moderator. Moderators are granted only from SQL or the service role, never from the app:
+   ```sql
+   insert into public.moderators (user_id)
+   select id from public.profiles where username = 'your_username';
+   ```
+4. Copy `.env.example` to `.env.local` and fill in:
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
@@ -77,6 +88,7 @@ src/
     events, events/[id], events/new, events/[id]/edit
     neighborhoods, neighborhoods/[name], tags, tags/[slug]
     saved, saved/[id], people, profile, profile/edit, profile/reports
+    moderation, moderation/[type]/[id]   Report queue and review (moderators only; 404 for everyone else)
     u/[username], u/[username]/[kind]
     auth/sign-in, auth/sign-up, auth/callback
     api/discover/*           Discovery endpoints: places, events, map, item
@@ -114,10 +126,13 @@ scripts/                     seed generator, browser smoke test
 Three features carry the "local knowledge is the moat" idea beyond a plain listings app:
 
 **Trust tiers.** A place is visible to `public`, `locals`, or `private`. The rule for who counts as a
-local is defined once, in SQL, as `public.is_local(city)`: your profile's home city matches, **or**
-you have contributed a published place in that city. The demo store mirrors the same rule in
-`isLocalOfCity`, and both are covered by tests, so the two paths cannot drift. Locals-only places are
-filtered by the row-level policy itself, not by a query the client could forget.
+local is defined once, in SQL, as `public.is_local(city)`: your account is at least 7 days old, a
+moderator has not revoked your local status, **and** your profile's home city matches or you have
+contributed a published place in that city. Home city can change once every 30 days (a trigger
+enforces it; case and spacing fixes are free) and the profile form shows the next allowed date.
+The demo store mirrors the same rule in `isLocalOfCity`, and both are covered by tests, so the two
+paths cannot drift. Locals-only places are filtered by the row-level policy itself, not by a query
+the client could forget. See [the local-tier decision](#decision-is-a-self-declared-home-city-enough-for-the-local-tier).
 
 **Photos follow their place.** Place photos live in a private bucket. The browser only ever sees
 `/api/photos/[id]`, which checks visibility on every request (RLS in Supabase mode, `canViewPlace` in demo mode)
@@ -164,12 +179,84 @@ as a reviews list on the place page. Only ratings that carry a note show up ther
 
 **Reports that go somewhere.** Two read paths, exposed as definer-rights views that omit
 `reporter_id` outright rather than merely not selecting it: `reports_i_filed` for the person who
-filed, and `reports_about_my_stuff` for the owner of the reported listing. An owner can see what was
-said and act on it by editing or hiding the listing. A moderation console over the base table is
-service-role work and is deliberately not built.
+filed (now with the time a moderator resolved it, never who), and `reports_about_my_stuff` for the
+owner of the reported listing. An owner can see what was said and act on it by editing or hiding the
+listing. Moderators work the queue; see [Moderation](#moderation).
 
 Owners may set `published` and `hidden`. The `pending` and `removed` statuses stay reserved for
-moderation, and the `WITH CHECK` clause on the update policy is what makes that reservation real.
+moderation: the update policy's `WITH CHECK` refuses setting them and its `USING` refuses leaving them.
+
+## Moderation
+
+**Who moderates.** `public.moderators` holds the role. Clients have no insert, update or delete
+grant on it, moderators included, so the role is granted only from SQL or the service role (see
+step 3 of [Going live](#going-live-with-supabase--mapbox)). `public.is_moderator()` (definer rights)
+answers for the current session. In demo mode `sam@example.com` is seeded as a moderator; a demo
+store upgraded from an earlier version has none until you add one to `moderators` in
+`.data/demo-store.json`.
+
+**The queue** (`/moderation`) lists open reports grouped by target, oldest first, with the count and
+reasons, in keyset pages of 30 (first reported, target id) so it never silently truncates. A target
+page (`/moderation/[type]/[id]`) shows the target as it is now, whoever may otherwise see it
+(`moderation_target()`, so a moderator who is not a local can still review a locals-only place),
+every report with who filed it, and the target's moderation history. Both routes 404 for anyone else,
+and the database returns nothing to them either: the queue and snapshot functions check
+`is_moderator()`, and the moderator read policies on `reports` and `moderation_actions` do too.
+
+**Decisions** go through one RPC, `moderate_target(type, id, action, reason)`, which resolves every
+open report on the target in one transaction (an advisory lock per target makes two moderators take
+turns):
+
+| Action | Reports become | Content |
+| --- | --- | --- |
+| Dismiss | dismissed | unchanged |
+| Mark reviewed | reviewed | unchanged |
+| Remove (reason required) | reviewed | `removed` |
+| Restore | any open ones dismissed | `removed` → `published` |
+
+Profiles can be dismissed or reviewed, not removed; a moderator can instead revoke the person's local
+status (`set_local_status`, reason required), which is also audited.
+
+**Removed means removed for everyone.** `can_view_place` and `can_view_event` no longer let an owner
+see their own removed content, so it disappears from discovery, detail pages, saved lists and counts
+for its owner too. The owner instead sees a "Removed by moderators" section on their profile with the
+reason (`my_removed_content()`), and cannot edit or republish it. Nothing is deleted, so a moderator
+can restore it.
+
+**The audit trail** is `moderation_actions`: who, what, which target, the reason, the time, the status
+before and after, and how many reports it resolved. Moderators can read it; nobody else can. It is
+append-only twice over: no client has an insert, update or delete grant, and a trigger refuses every
+update or delete, even by the table owner (and so by any definer-rights function), unless the
+session is the service role. The one change it allows is the foreign key clearing `moderator_id` when
+a moderator deletes their account.
+
+## Rate limits
+
+Write volume is bounded in the database, so a client calling PostgREST or Storage directly with its
+own JWT hits the same limits as the app. `check_rate_limit(action)` counts writes per user in fixed
+windows (`rate_limit_counters`), under a per-user-and-action advisory lock, and raises SQLSTATE
+`FM429` with how long to wait; the app turns that into "Too many places for now. Try again in about
+3 hours." The increment rolls back with the write it guards, so a write that fails for another reason
+does not use up the allowance. Sessions without a user (seeds, SQL, the service role) are not limited.
+
+| Action | Limit | Enforced by |
+| --- | --- | --- |
+| Places | 20 a day | `before insert` trigger on `places` (also covers `create_place_with_details`) |
+| Events | 50 a day | trigger on `events` |
+| Ratings | 100 a day | trigger on `place_ratings` (an upsert counts, even when it updates) |
+| Lists | 30 a day | trigger on `saved_lists` (on top of the 100-list cap) |
+| Reports | 30 a day | trigger on `reports` |
+| Photo uploads | 60 an hour | the Storage insert policy; one per photo, not per stored size |
+| Avatar uploads | 20 an hour | the Storage insert policy |
+| Sign-ups | 5 an hour per IP | the sign-up server action |
+
+The numbers live in one table, `rate_limit_rules`, mirrored by `RATE_LIMITS` in
+`src/lib/rateLimits.ts`; a test keeps them equal, and the demo repository enforces the same limits
+with the same window arithmetic. Sign-ups (and, later, password-reset requests) cannot be attributed
+to a user, so they are limited per IP in the server action with an in-memory limiter. That limiter is
+**per instance**: a deploy running several instances needs a shared store (Redis, Upstash or a
+Postgres table) for it to be global. Supabase Auth's own limits sit in front of it (see
+[Going live](#going-live-with-supabase--mapbox)).
 
 ## Discovery queries
 
@@ -216,7 +303,7 @@ place picker searches `/api/discover/places` instead of listing every place.
 
 ## Data model
 
-`profiles` · `profile_interests` · `interests` · `categories` · `places` · `place_tags` · `place_photos` · `place_ratings` · `saved_places` · `saved_lists` · `saved_list_items` · `events` · `event_tags` · `event_attendees` · `follows` · `reports`
+`profiles` · `profile_interests` · `interests` · `categories` · `places` · `place_tags` · `place_photos` · `place_ratings` · `saved_places` · `saved_lists` · `saved_list_items` · `events` · `event_tags` · `event_attendees` · `follows` · `reports` · `moderators` · `moderation_actions` · `local_revocations` · `rate_limit_rules` · `rate_limit_counters`
 
 Plus two views for the report read paths: `reports_i_filed` and `reports_about_my_stuff`.
 
@@ -228,7 +315,8 @@ Integrity is enforced in the database, not just the UI:
 - saved lists organize bookmarks without replacing them: `saved_places` is still the save, and a saved place can be in no list or in several. Two composite foreign keys hold the rules. `(list_id, owner_id) → saved_lists` means an item can only live in its own owner's list. `(owner_id, place_id) → saved_places` means an item is always one of its owner's bookmarks: no orphan items, and unsaving a place removes it from every list. Deleting a list keeps its bookmarks. List names are normalized in the database the same way the app normalizes them (every whitespace run, tabs and Unicode spaces included, becomes one space, and the ends are trimmed). They are unique per owner, ignoring case and spacing, and each owner can have at most 100 lists (a trigger with an advisory lock). RLS makes lists and items owner-only, and only a list's name can change. `add_to_saved_list` bookmarks and adds in one transaction, and `saved_list_summaries()` counts only the places the owner can still open. In the app, the bookmark on a place's page saves it in one tap and opens a "Save to" sheet. There you can unsave it (which also takes it out of every list), tick any of your lists, or create a new list with the place already in it. `/saved` shows your lists above all saved places. `/saved/[id]` is one list, visible only to its owner, with search and sort, "remove from this list", rename, and delete (which keeps every place saved)
 - no self-follows, no duplicate follows or saves, one open report per reporter per target
 - check constraints on coordinates, scores, lengths, statuses
-- `places.visibility` drives the trust tiers, and events inherit the visibility of their linked place; the `pending` and `removed` statuses are reserved so a moderation workflow can be added later without a migration
+- `places.visibility` drives the trust tiers, and events inherit the visibility of their linked place; `removed` is set only by moderators (`moderate_target`), and `pending` stays reserved
+- profiles grant update only on the columns a user edits, so nobody can backdate `created_at` or `home_city_changed_at`; a trigger forces both on self-inserted rows too
 
 ## Security notes
 
@@ -257,6 +345,28 @@ Integrity is enforced in the database, not just the UI:
 - **Seed data is fictional** (names, tips, venues) and placed at real Columbus coordinates so the map looks alive. It is not a set of real recommendations. One seeded account (`nina@example.com`, home city Cleveland) is deliberately *not* a Columbus local, so the trust tier is visible in demo mode rather than only in tests.
 - **Images:** uploads are processed server-side (see the image pipeline above), then go to Supabase Storage in per-user folders, or to `.data/uploads` in demo mode. Place photos are private and are served only through `/api/photos/[id]` after a visibility check (see [The community layer](#the-community-layer)); avatars stay public. Photos are plain `<img>` with `srcSet`, not `next/image`: the files are already sized, and the optimizer would have to fetch private photos through the authorized route anyway. Places without photos get a generated category cover so nothing looks empty.
 
+## Decision: is a self-declared home city enough for the local tier?
+
+**Status: pending owner confirmation.**
+
+Before Session 8, `is_local(city)` trusted the profile's home city, which anyone could set at sign-up
+and change at will, so "locals only" was a soft barrier. The beta default, now implemented:
+
+- **New accounts wait 7 days** before they count as a local anywhere.
+- **Home city changes at most once per 30 days**, enforced by a trigger (the first time it is set is
+  free, and so are case and spacing fixes). The profile form shows the next allowed date.
+- **Moderators can revoke local status** for a user, with a reason and an audit entry, and restore it.
+
+Alternatives considered and deferred:
+
+- **Address verification** (a mailed code, or a utility bill): strong, but it costs money, adds a
+  privacy burden (storing addresses), and is a heavy step for a beta.
+- **Vouching by existing locals**: fits the community thesis, but needs a reputation system to stop
+  rings of new accounts vouching for each other. It belongs with Session 11's reputation work.
+- **Activity thresholds** (for example, three published places in the city before you count): hard to
+  fake, but it locks newcomers out of exactly the places they most want to find, and it rewards
+  volume over knowledge.
+
 ## Intentionally deferred
 
-Direct messaging, push notifications, recommendation algorithms, payments, moderation dashboard, advanced reputation scoring, native apps, analytics, and production deployment. The schema and repository contract are shaped so these can be added without rewrites.
+Direct messaging, push notifications, recommendation algorithms, payments, advanced reputation scoring, native apps, analytics, and production deployment. The schema and repository contract are shaped so these can be added without rewrites.

@@ -11,13 +11,20 @@ export type EventStatus = "published" | "cancelled" | "hidden" | "removed";
  *   locals  — only people who count as a local of the place's city
  *   private — only the creator
  * "Who is a local" is defined once in SQL (public.is_local) and mirrored by the
- * demo store: home city matches, or you have contributed a published place there.
+ * demo store: an account at least LOCAL_MIN_ACCOUNT_AGE_DAYS old, whose local
+ * status a moderator has not revoked, whose home city matches or who has
+ * contributed a published place there.
  */
 export type Visibility = "public" | "locals" | "private";
 
 /** Statuses an owner may set. `pending` and `removed` are reserved for moderation. */
 export const OWNER_SETTABLE_PLACE_STATUSES = ["published", "hidden"] as const;
 export type OwnerPlaceStatus = (typeof OWNER_SETTABLE_PLACE_STATUSES)[number];
+
+/** A new account counts as a local only after this many days. */
+export const LOCAL_MIN_ACCOUNT_AGE_DAYS = 7;
+/** Home city can change at most once per this many days. */
+export const HOME_CITY_COOLDOWN_DAYS = 30;
 
 /** Upper bound on a place's photo set, enforced in the database and both repositories. */
 export const MAX_PLACE_PHOTOS = 6;
@@ -32,6 +39,8 @@ export interface ProfileSummary {
 export interface Profile extends ProfileSummary {
   bio: string | null;
   homeCity: string | null;
+  /** When the home city last changed; it can change again 30 days later. */
+  homeCityChangedAt: string | null;
   interests: string[];
   createdAt: string;
   updatedAt: string;
@@ -215,11 +224,15 @@ export interface ReportEntry {
   targetId: string;
   reason: ReportReason;
   details: string | null;
-  status: "open" | "reviewed" | "dismissed";
+  status: ReportStatus;
   createdAt: string;
+  /** When a moderator resolved it. Who resolved it is never exposed. */
+  resolvedAt: string | null;
   /** Resolved label for the reported place/event, when it still exists. */
   targetLabel: string | null;
 }
+
+export type ReportStatus = "open" | "reviewed" | "dismissed";
 
 export interface NewReportInput {
   targetType: ReportTargetType;
@@ -366,6 +379,89 @@ export interface UserActivity {
   savedPlaces: Place[];
 }
 
+// ----------------------------------------------------------------------------
+// Moderation
+// ----------------------------------------------------------------------------
+
+/**
+ * dismiss and review resolve the open reports and leave the content alone;
+ * remove takes content down (a reason is required and shown to its owner);
+ * restore publishes removed content again.
+ */
+export type ModerationAction = "dismiss" | "review" | "remove" | "restore";
+export type ModerationLogAction = ModerationAction | "revoke_local" | "restore_local";
+
+/** One target in the queue: its open reports, grouped. */
+export interface ModerationQueueItem {
+  targetType: ReportTargetType;
+  targetId: string;
+  reportCount: number;
+  firstReportedAt: string;
+  lastReportedAt: string;
+  reasons: ReportReason[];
+  /** Null when the target no longer exists. */
+  targetLabel: string | null;
+  /** Content status, or "active"/"revoked" (local status) for profiles. */
+  targetStatus: string | null;
+}
+
+/** A report as a moderator sees it: with who filed it. */
+export interface ModerationReport {
+  id: string;
+  reason: ReportReason;
+  details: string | null;
+  status: ReportStatus;
+  createdAt: string;
+  resolvedAt: string | null;
+  reporter: ProfileSummary | null;
+}
+
+export interface ModerationLogEntry {
+  id: string;
+  action: ModerationLogAction;
+  reason: string | null;
+  statusBefore: string | null;
+  statusAfter: string | null;
+  resolvedReports: number;
+  createdAt: string;
+  moderator: ProfileSummary | null;
+}
+
+/** The target as it is now, whoever may otherwise see it. */
+export interface ModerationSnapshot {
+  label: string;
+  status: string;
+  visibility: string | null;
+  city: string | null;
+  neighborhood: string | null;
+  body: string | null;
+  /** Local tip for places, location for events. */
+  extra: string | null;
+  ownerId: string | null;
+  ownerUsername: string | null;
+  createdAt: string;
+}
+
+export interface ModerationTargetDetail {
+  targetType: ReportTargetType;
+  targetId: string;
+  /** Null when the target has been deleted since it was reported. */
+  snapshot: ModerationSnapshot | null;
+  /** Every report on the target, open first, then newest first. */
+  reports: ModerationReport[];
+  /** Every moderation action on the target, newest first. */
+  history: ModerationLogEntry[];
+}
+
+/** One of the viewer's own places or events that moderators removed. */
+export interface RemovedContent {
+  targetType: "place" | "event";
+  targetId: string;
+  label: string;
+  reason: string | null;
+  removedAt: string | null;
+}
+
 /** Thrown by repositories for expected, user-facing failures. */
 export class DataError extends Error {
   constructor(
@@ -376,7 +472,8 @@ export class DataError extends Error {
       | "forbidden"
       | "full"
       | "invalid"
-      | "unavailable" = "invalid",
+      | "unavailable"
+      | "rate_limited" = "invalid",
   ) {
     super(message);
     this.name = "DataError";

@@ -526,6 +526,17 @@ export const SEED_FOLLOWS: { follower: string; following: string }[] = [
   { follower: "nina", following: "lena" },
 ];
 
+/**
+ * Seeded moderators. In Supabase the role is granted only from SQL or the
+ * service role (see 0010_moderation.sql); the seed does it from SQL.
+ */
+export const SEED_MODERATORS: string[] = ["sam_k"];
+
+/** How long ago each seed account was created: old enough to count as a local. */
+export function seedAccountAgeDays(index: number): number {
+  return 90 - index;
+}
+
 export function seedUserByName(username: string): SeedUser {
   const found = SEED_USERS.find((x) => x.username === username);
   if (!found) throw new Error(`Unknown seed user ${username}`);
