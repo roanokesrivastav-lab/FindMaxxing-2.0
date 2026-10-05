@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { MAX_EVENT_HOURS, combineDateTime, eventSchema, fieldErrors, placeSchema, profileSchema, ratingSchema, searchQuerySchema, signUpSchema } from "../src/lib/validation/schemas";
+import { MAX_EVENT_HOURS, combineDateTime, eventSchema, fieldErrors, placeSchema, profileSchema, ratingSchema, searchQuerySchema, signUpSchema, IMAGE_MAX_BYTES, IMAGE_ORIGINAL_MAX_BYTES, isAllowedImage } from "../src/lib/validation/schemas";
 
 describe("searchQuerySchema", () => {
   it("trims and collapses whitespace", () => {
@@ -194,5 +194,21 @@ describe("event duration (the previously dead end-time check)", () => {
     expect(MAX_EVENT_HOURS).toBe(18);
     const r = eventSchema.safeParse({ ...base, startTime: "06:00", endTime: "23:59" });
     expect(r.success).toBe(true);
+  });
+});
+
+describe("isAllowedImage", () => {
+  const file = (bytes: number, type = "image/jpeg") => new File([new Uint8Array(bytes)], "photo.jpg", { type });
+
+  it("accepts a large phone original for shrinking, but only a shrunk-size file for upload", () => {
+    const original = file(12 * 1024 * 1024);
+    expect(isAllowedImage(original, IMAGE_ORIGINAL_MAX_BYTES)).toBeNull();
+    expect(isAllowedImage(original)).toBe("Image must be under 10MB");
+    expect(isAllowedImage(file(IMAGE_ORIGINAL_MAX_BYTES + 1), IMAGE_ORIGINAL_MAX_BYTES)).toBe("Image must be under 40MB");
+    expect(isAllowedImage(file(IMAGE_MAX_BYTES))).toBeNull();
+  });
+
+  it("checks the declared type first", () => {
+    expect(isAllowedImage(file(10, "image/gif"))).toBe("Use a JPG, PNG or WebP");
   });
 });

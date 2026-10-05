@@ -7,6 +7,7 @@ import { getViewer } from "@/lib/auth/server";
 import { fieldErrors, isAllowedImage, profileSchema, uuidSchema } from "@/lib/validation/schemas";
 import { DataError } from "@/lib/data/types";
 import { fail, str, strList, succeed, toFailure, type ActionResult } from "./result";
+import { imageFailure, prepareAvatar } from "@/server/images";
 
 export async function updateProfileAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   const viewer = await getViewer();
@@ -28,7 +29,13 @@ export async function updateProfileAction(_prev: ActionResult | null, formData: 
     if (avatar instanceof File && avatar.size > 0) {
       const problem = isAllowedImage(avatar);
       if (problem) return fail(problem, { avatar: problem });
-      avatarUrl = (await repo.storage.uploadImage(avatar, "avatars", viewer.id)).url;
+      let prepared;
+      try {
+        prepared = await prepareAvatar(avatar);
+      } catch (err) {
+        return imageFailure(err, "avatar");
+      }
+      avatarUrl = (await repo.storage.uploadImage(prepared, "avatars", viewer.id)).url;
     }
     await repo.profiles.update(viewer.id, { ...parsed.data, avatarUrl });
   } catch (err) {

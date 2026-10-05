@@ -118,6 +118,9 @@ export interface DemoState {
   placePhotos: PlacePhotoRow[];
   placeRatings: PlaceRatingRow[];
   savedPlaces: { userId: string; placeId: string; createdAt: string }[];
+  savedLists: SavedListRow[];
+  /** Mirrors saved_list_items: always one of the owner's savedPlaces, in one of the owner's lists. */
+  savedListItems: { listId: string; ownerId: string; placeId: string; createdAt: string }[];
   events: EventRow[];
   eventTags: { eventId: string; interestSlug: string }[];
   eventAttendees: { eventId: string; userId: string; createdAt: string }[];
@@ -125,7 +128,15 @@ export interface DemoState {
   reports: ReportRow[];
 }
 
-export const STATE_VERSION = 2;
+export interface SavedListRow {
+  id: string;
+  ownerId: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const STATE_VERSION = 3;
 const DATA_DIR = path.join(process.cwd(), ".data");
 const STATE_FILE = path.join(DATA_DIR, "demo-store.json");
 
@@ -140,7 +151,7 @@ type LooseState = Record<string, unknown> & { version?: unknown };
 
 const COLLECTIONS = [
   "authUsers", "profiles", "profileInterests", "places", "placeTags", "placePhotos",
-  "placeRatings", "savedPlaces", "events", "eventTags", "eventAttendees", "follows", "reports",
+  "placeRatings", "savedPlaces", "savedLists", "savedListItems", "events", "eventTags", "eventAttendees", "follows", "reports",
 ] as const;
 
 const LEGACY_PLACE_UPLOAD = /^\/api\/uploads\/(places-[^/]+)$/;
@@ -165,6 +176,12 @@ const MIGRATIONS: Record<number, (state: LooseState) => void> = {
     }
     for (const place of state.places as Partial<PlaceRow>[]) place.visibility ??= "public";
     for (const rating of state.placeRatings as Partial<PlaceRatingRow>[]) rating.note ??= null;
+  },
+  // v2 → v3: saved lists. Bookmarks (savedPlaces) stay exactly as they are;
+  // every one of them is simply in no list yet.
+  2(state) {
+    state.savedLists ??= [];
+    state.savedListItems ??= [];
   },
 };
 
@@ -217,6 +234,8 @@ export function buildSeedState(now = new Date()): DemoState {
     placePhotos: [],
     placeRatings: [],
     savedPlaces: [],
+    savedLists: [],
+    savedListItems: [],
     events: [],
     eventTags: [],
     eventAttendees: [],

@@ -23,7 +23,7 @@ export function Avatar({
   const style = { width: size, height: size, fontSize: Math.max(11, size * 0.38) };
   if (src) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={src} alt={name} style={style} className={cn("rounded-full object-cover shrink-0 bg-surface-2", className)} />;
+    return <img src={src} alt={name} style={style} loading="lazy" decoding="async" className={cn("rounded-full object-cover shrink-0 bg-surface-2", className)} />;
   }
   return (
     <span

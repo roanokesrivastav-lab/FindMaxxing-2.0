@@ -15,7 +15,8 @@ import {
   uuidSchema,
 } from "@/lib/validation/schemas";
 import type { DataRepository } from "@/lib/data/repository";
-import { MAX_PLACE_PHOTOS, type StoredImage } from "@/lib/data/types";
+import { MAX_PLACE_PHOTOS, type ImageUpload, type StoredImage } from "@/lib/data/types";
+import { imageFailure, preparePlacePhotos } from "@/server/images";
 import { fail, str, strList, succeed, toFailure, type ActionResult } from "./result";
 
 export async function createPlaceAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
@@ -45,11 +46,17 @@ export async function createPlaceAction(_prev: ActionResult | null, formData: Fo
     const problem = isAllowedImage(file);
     if (problem) return fail(problem, { photos: problem });
   }
+  let prepared: ImageUpload[];
+  try {
+    prepared = await preparePlacePhotos(files);
+  } catch (err) {
+    return imageFailure(err, "photos");
+  }
   const repo = await getRepository();
   let photos: StoredImage[] = [];
   let placeId: string;
   try {
-    photos = await uploadPlaceImages(repo, files, viewer.id);
+    photos = await uploadPlaceImages(repo, prepared, viewer.id);
     placeId = (await repo.places.create({ ...parsed.data, photos }, viewer.id)).id;
   } catch (err) {
     await cleanupPlaceImages(repo, photos);
@@ -133,7 +140,8 @@ export async function toggleSaveAction(placeId: string, save: boolean): Promise<
     if (save) await repo.places.save(viewer.id, id.data);
     else await repo.places.unsave(viewer.id, id.data);
     revalidatePath(`/places/${id.data}`);
-    revalidatePath("/saved");
+    // Unsaving also takes the place out of every list page under /saved.
+    revalidatePath("/saved", "layout");
     return succeed({ saved: save });
   } catch (err) {
     return toFailure(err);
@@ -200,10 +208,16 @@ export async function addPlacePhotosAction(_prev: ActionResult | null, formData:
     if (problem) return fail(problem, { photos: problem });
   }
 
+  let prepared: ImageUpload[];
+  try {
+    prepared = await preparePlacePhotos(files);
+  } catch (err) {
+    return imageFailure(err, "photos");
+  }
   const repo = await getRepository();
   let images: StoredImage[] = [];
   try {
-    images = await uploadPlaceImages(repo, files, viewer.id);
+    images = await uploadPlaceImages(repo, prepared, viewer.id);
     await repo.places.addPhotos(id.data, images, viewer.id);
     revalidatePath(`/places/${id.data}`);
     return succeed(undefined);
@@ -213,8 +227,8 @@ export async function addPlacePhotosAction(_prev: ActionResult | null, formData:
   }
 }
 
-async function uploadPlaceImages(repo: DataRepository, files: File[], ownerId: string): Promise<StoredImage[]> {
-  const results = await Promise.allSettled(files.map((file) => repo.storage.uploadImage(file, "places", ownerId)));
+async function uploadPlaceImages(repo: DataRepository, images: ImageUpload[], ownerId: string): Promise<StoredImage[]> {
+  const results = await Promise.allSettled(images.map((image) => repo.storage.uploadImage(image, "places", ownerId)));
   const uploaded = results.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
   const failure = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
   if (failure) {

@@ -437,6 +437,37 @@ describe("session 1 — private photos and save counts", () => {
       expect(await readObject(nina.id, objectPath)).toHaveLength(0);
     });
 
+    it("gives every stored size of a photo the photo's own visibility", async () => {
+      // A legacy .jpg original with the .md/.sm WebP siblings the migration script adds.
+      const variants = [`${jules.id}/ridgeline-cover.md.webp`, `${jules.id}/ridgeline-cover.sm.webp`];
+      const unrelated = `${jules.id}/ridgeline-cover-2.md.webp`;
+      await db.query("insert into storage.objects (bucket_id, name) values ('place-photos', $1), ('place-photos', $2), ('place-photos', $3)", [
+        ...variants, unrelated,
+      ]);
+      try {
+        for (const name of variants) {
+          expect(await readObject(jules.id, name)).toHaveLength(1);
+          expect(await readObject(nina.id, name)).toHaveLength(0);
+          expect(await readObject(null, name)).toHaveLength(0);
+        }
+        // A different stem is not a variant: it stays an unattached object.
+        expect(await readObject(nina.id, unrelated)).toHaveLength(0);
+        await db.query("update public.places set visibility = 'public' where id = $1", [ridgeline]);
+        for (const name of variants) expect(await readObject(null, name)).toHaveLength(1);
+      } finally {
+        await db.query("update public.places set visibility = 'locals' where id = $1", [ridgeline]);
+        await db.query("delete from storage.objects where name = any($1)", [[...variants, unrelated]]);
+      }
+    });
+
+    it("stems photo object names so only a photo's own sizes share one", async () => {
+      const { rows } = await db.query<{ stem: string }>(
+        `select public.photo_object_stem(n) as stem from unnest($1::text[]) as n`,
+        [["u/abc.webp", "u/abc.md.webp", "u/abc.SM.webp", "u/abc.jpg", "u/abc.jpeg", "u/abc.png", "u/abc.lg.webp", "u/abc.md"]],
+      );
+      expect(rows.map((r) => r.stem)).toEqual(["u/abc", "u/abc", "u/abc", "u/abc", "u/abc", "u/abc", "u/abc.lg", "u/abc.md"]);
+    });
+
     it("keeps avatars readable by anyone", async () => {
       const rows = await as<{ name: string }>(null, "select name from storage.objects where bucket_id = 'avatars'");
       expect(rows).toHaveLength(1);

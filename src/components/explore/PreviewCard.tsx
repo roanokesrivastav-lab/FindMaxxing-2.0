@@ -18,7 +18,7 @@ export function PreviewCard({ selected, onClose, distanceMeters }: { selected: S
     <div className="card overflow-hidden animate-rise shadow-float flex" role="dialog" aria-label={selected.kind === "place" ? selected.item.name : selected.item.title}>
       <Link href={href} className="w-24 shrink-0 relative">
         {selected.kind === "place" ? (
-          <PlaceCover photoUrl={selected.item.photos[0]?.url} categorySlug={selected.item.categorySlug} name={selected.item.name} emojiSize={30} />
+          <PlaceCover photoUrl={selected.item.photos[0]?.url} categorySlug={selected.item.categorySlug} name={selected.item.name} emojiSize={30} layout="thumb" />
         ) : (
           <div className="h-full w-full bg-pulse-50 flex flex-col items-center justify-center text-pulse">
             <span className="text-2xl">{c.emoji}</span>

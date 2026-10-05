@@ -6,6 +6,8 @@ import { SavedClient } from "@/components/places/SavedClient";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ButtonLink } from "@/components/ui/Button";
+import { ListCards } from "@/components/saved/ListCards";
+import { NewListButton } from "@/components/saved/NewListButton";
 
 export const metadata: Metadata = { title: "Saved" };
 export const dynamic = "force-dynamic";
@@ -26,10 +28,28 @@ export default async function SavedPage() {
     );
   }
   const repo = await getRepository();
-  const places = await repo.places.listSaved(viewer.id);
+  const [places, lists] = await Promise.all([repo.places.listSaved(viewer.id), repo.savedLists.list(viewer.id)]);
   return (
     <div className="max-w-2xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-nav md:pb-10">
       <PageHeader eyebrow="Your list" title="Saved places" subtitle={places.length ? `${places.length} place${places.length === 1 ? "" : "s"} to try` : undefined} />
+
+      <section className="mb-6" aria-labelledby="your-lists">
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <h2 id="your-lists" className="text-xs font-bold uppercase tracking-wider text-muted">
+            Your lists{lists.length ? ` · ${lists.length}` : ""}
+          </h2>
+          <NewListButton />
+        </div>
+        {lists.length ? (
+          <ListCards lists={lists} />
+        ) : (
+          <p className="text-sm text-muted">
+            Group saved places into lists like “Date night” or “Rainy day”. Add a place from the bookmark on its page.
+          </p>
+        )}
+      </section>
+
+      <h2 className="text-xs font-bold uppercase tracking-wider text-muted mb-2">All saved</h2>
       {places.length ? (
         <SavedClient places={places} />
       ) : (

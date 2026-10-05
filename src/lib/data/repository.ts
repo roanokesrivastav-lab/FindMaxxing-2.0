@@ -22,7 +22,9 @@ import type {
   PlaceCountOptions,
   PlaceRating,
   PlacePhotoDelivery,
+  ImageUpload,
   ReportEntry,
+  SavedList,
   StoredImage,
   TagCounts,
   Visibility,
@@ -110,6 +112,29 @@ export interface DataRepository {
     /** Visible places and upcoming events per interest slug, over the whole data set. */
     counts(opts?: { viewerId?: string | null }): Promise<TagCounts>;
   };
+  /**
+   * Lists that organize a user's bookmarks. places.save/unsave stay the
+   * bookmark itself: a saved place may be in no list or in several, and
+   * unsaving it removes it from every list. All methods act on the owner's own
+   * lists only; anyone else's list is not_found.
+   */
+  savedLists: {
+    /** The owner's lists, most recently changed first. */
+    list(ownerId: string): Promise<SavedList[]>;
+    /** Names are trimmed and must be unique per owner, ignoring case (conflict); at most MAX_SAVED_LISTS (full). */
+    create(ownerId: string, name: string): Promise<SavedList>;
+    rename(ownerId: string, listId: string, name: string): Promise<void>;
+    /** Removes the list and its memberships; the bookmarks stay saved. */
+    delete(ownerId: string, listId: string): Promise<void>;
+    /** Bookmarks the place if it is not already saved, then adds it. Idempotent. */
+    addPlace(ownerId: string, listId: string, placeId: string): Promise<void>;
+    /** Takes the place out of this list only; it stays saved. */
+    removePlace(ownerId: string, listId: string, placeId: string): Promise<void>;
+    /** The list and the places in it the owner can open, most recently added first. */
+    get(ownerId: string, listId: string): Promise<{ list: SavedList; places: Place[] } | null>;
+    /** Ids of the owner's lists that contain the place. */
+    memberships(ownerId: string, placeId: string): Promise<string[]>;
+  };
   profiles: {
     getById(id: string): Promise<Profile | null>;
     getByUsername(username: string): Promise<Profile | null>;
@@ -143,9 +168,14 @@ export interface DataRepository {
      * Stores an image. Avatars get a public URL; place photos are private and
      * get a storage reference, delivered later through /api/photos/[id].
      */
-    uploadImage(file: File, folder: "places" | "avatars", ownerId: string): Promise<{ url: string; storagePath: string | null }>;
-    /** Delivers a place photo object. Callers must authorize with places.getPhotoObject first. */
-    deliverPlacePhoto(storagePath: string): Promise<PlacePhotoDelivery | null>;
+    uploadImage(image: ImageUpload, folder: "places" | "avatars", ownerId: string): Promise<{ url: string; storagePath: string | null }>;
+    /**
+     * Delivers one stored place-photo object (the photo's path or one of its
+     * size variants), or null when it does not exist. Callers must authorize
+     * with places.getPhotoObject first.
+     */
+    deliverPlacePhoto(objectPath: string): Promise<PlacePhotoDelivery | null>;
+    /** Removes an image and, for place photos, every stored size of it. */
     removeImage(folder: "places" | "avatars", storagePath: string): Promise<void>;
   };
 }

@@ -8,6 +8,7 @@ import { removePlacePhotoAction } from "@/server/actions/places";
 import { useToast } from "@/components/ui/Toast";
 import { AddPhotosButton } from "./AddPhotosButton";
 import { MAX_PLACE_PHOTOS } from "@/lib/data/types";
+import { PHOTO_LAYOUT_SIZES, photoSrc, photoSrcSet } from "@/lib/images/sizes";
 
 export function PlacePhotos({ placeId, photos, viewerId, creatorId, signedIn }: { placeId: string; photos: Photo[]; viewerId: string | null; creatorId: string | null; signedIn: boolean }) {
   const router = useRouter();
@@ -30,7 +31,15 @@ export function PlacePhotos({ placeId, photos, viewerId, creatorId, signedIn }: 
         {photos.map((photo) => (
           <div key={photo.id} className="relative aspect-[4/3] overflow-hidden rounded-2xl bg-surface-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={photo.url} alt="Place" className="h-full w-full object-cover" />
+            <img
+              src={photoSrc(photo.url, "sm")}
+              srcSet={photoSrcSet(photo.url)}
+              sizes={PHOTO_LAYOUT_SIZES.gallery}
+              alt="Place"
+              loading="lazy"
+              decoding="async"
+              className="h-full w-full object-cover"
+            />
             {viewerId && (photo.uploaderId === viewerId || creatorId === viewerId) ? (
               <button type="button" aria-label="Remove photo" disabled={pending} onClick={() => start(async () => {
                 const result = await removePlacePhotoAction(placeId, photo.id);

@@ -9,21 +9,23 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { searchTerms } from "@/lib/data/taxonomy";
 import { distanceMeters } from "@/lib/utils/geo";
 import { useGeolocation } from "@/lib/map/useGeolocation";
+import { RemoveFromListButton } from "@/components/saved/RemoveFromListButton";
 
 type Sort = "recent" | "rating" | "nearest" | "name";
 
 const SORTS: { value: Sort; label: string }[] = [
-  { value: "recent", label: "Recently saved" },
+  { value: "recent", label: "Recent" },
   { value: "rating", label: "Top rated" },
   { value: "nearest", label: "Nearest" },
   { value: "name", label: "A–Z" },
 ];
 
 /**
- * The saved list, with search and sort. Places arrive from the server already
- * ordered by save recency, which is the default here.
+ * Saved places, or one list's places, with search and sort. Places arrive
+ * from the server newest first (saved, or added to the list), the default here.
+ * With `listId`, each card can be taken out of that list.
  */
-export function SavedClient({ places }: { places: Place[] }) {
+export function SavedClient({ places, listId }: { places: Place[]; listId?: string }) {
   const [query, setQuery] = useState("");
   const deferred = useDeferredValue(query);
   const [sort, setSort] = useState<Sort>("recent");
@@ -69,7 +71,7 @@ export function SavedClient({ places }: { places: Place[] }) {
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search your saved places"
+          placeholder={listId ? "Search this list" : "Search your saved places"}
           className="flex-1 bg-transparent outline-none text-[15px] placeholder:text-muted min-w-0"
           aria-label="Search saved places"
         />
@@ -102,11 +104,10 @@ export function SavedClient({ places }: { places: Place[] }) {
       {sorted.length ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {sorted.map((p) => (
-            <PlaceCard
-              key={p.id}
-              place={p}
-              distanceMeters={geo.location ? distanceMeters(geo.location, p) : null}
-            />
+            <div key={p.id} className="relative">
+              <PlaceCard place={p} distanceMeters={geo.location ? distanceMeters(geo.location, p) : null} />
+              {listId ? <RemoveFromListButton listId={listId} placeId={p.id} placeName={p.name} /> : null}
+            </div>
           ))}
         </div>
       ) : (

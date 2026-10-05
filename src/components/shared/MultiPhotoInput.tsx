@@ -1,8 +1,10 @@
 "use client";
-import { ImagePlus, X } from "lucide-react";
+import { ImagePlus, Loader2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FieldError, FieldLabel } from "@/components/ui/Field";
-import { IMAGE_TYPES, isAllowedImage } from "@/lib/validation/schemas";
+import { IMAGE_BATCH_MAX_BYTES, IMAGE_ORIGINAL_MAX_BYTES, IMAGE_TYPES, isAllowedImage } from "@/lib/validation/schemas";
+import { useHoldSubmit } from "@/lib/forms/useHoldSubmit";
+import { shrinkForUpload } from "@/lib/images/client";
 import { MAX_PLACE_PHOTOS } from "@/lib/data/types";
 
 interface Picked {
@@ -34,8 +36,17 @@ export function MultiPhotoInput({
 }) {
   const [picked, setPicked] = useState<Picked[]>([]);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [preparing, setPreparing] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const objectUrls = useRef(new Set<string>());
+  // The latest picked list, for merging shrunk files that finish after other changes.
+  const pickedRef = useRef(picked);
+  useEffect(() => {
+    pickedRef.current = picked;
+  });
+
+  // Submitting now would send the form without the photos still being shrunk.
+  useHoldSubmit(inputRef, preparing > 0, () => setLocalError("Photos are still being prepared. Try again in a moment."));
 
   // Keep the real input in sync with our state so the form submits the right set.
   const syncFiles = useCallback(() => {
@@ -67,32 +78,60 @@ export function MultiPhotoInput({
     };
   }, []);
 
-  const add = (files: FileList | null) => {
+  const add = async (files: FileList | null) => {
     if (!files?.length) return;
     setLocalError(null);
     const incoming = Array.from(files);
-    const room = max - picked.length;
+    const room = max - picked.length - preparing;
     if (room <= 0) {
       setLocalError(`Up to ${max} photos`);
       return;
     }
-    const accepted: Picked[] = [];
+    const candidates: { file: File; key: string }[] = [];
     const seen = new Set(picked.map((p) => p.key));
     for (const file of incoming.slice(0, room)) {
-      const problem = isAllowedImage(file);
+      // The original may be large: it only has to fit once shrunk (checked below).
+      const problem = isAllowedImage(file, IMAGE_ORIGINAL_MAX_BYTES);
       if (problem) {
         setLocalError(problem);
         continue;
       }
+      // Keyed on the original, so picking the same photo twice is still caught after shrinking.
       const key = `${file.name}-${file.size}-${file.lastModified}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      const url = URL.createObjectURL(file);
-      objectUrls.current.add(url);
-      accepted.push({ file, url, key });
+      candidates.push({ file, key });
     }
     if (incoming.length > room) setLocalError(`Only the first ${room} added. Up to ${max} photos.`);
-    setPicked((prev) => [...prev, ...accepted]);
+    if (!candidates.length) return;
+
+    setPreparing((n) => n + candidates.length);
+    const shrunk = await Promise.all(candidates.map(async (c) => ({ ...c, file: await shrinkForUpload(c.file) })));
+
+    const next = [...pickedRef.current];
+    let total = next.reduce((sum, p) => sum + p.file.size, 0);
+    let problem: string | null = null;
+    for (const c of shrunk) {
+      if (next.length >= max || next.some((p) => p.key === c.key)) continue;
+      const tooBig = isAllowedImage(c.file);
+      if (tooBig) {
+        problem = tooBig;
+        continue;
+      }
+      // One submission carries every photo; past this the server would refuse the whole form.
+      if (total + c.file.size > IMAGE_BATCH_MAX_BYTES) {
+        problem = "Those photos are too large to send together. Remove one or pick smaller photos.";
+        continue;
+      }
+      total += c.file.size;
+      const url = URL.createObjectURL(c.file);
+      objectUrls.current.add(url);
+      next.push({ file: c.file, url, key: c.key });
+    }
+    pickedRef.current = next;
+    setPicked(next);
+    setPreparing((n) => n - candidates.length);
+    if (problem) setLocalError(problem);
   };
 
   const remove = (key: string) => {
@@ -127,7 +166,14 @@ export function MultiPhotoInput({
           </div>
         ))}
 
-        {picked.length < max ? (
+        {Array.from({ length: preparing }, (_, i) => (
+          <div key={`preparing-${i}`} className="aspect-square rounded-xl bg-surface-2 border border-line text-muted flex flex-col items-center justify-center gap-1" aria-live="polite">
+            <Loader2 size={18} className="animate-spin" />
+            <span className="text-[11px] font-semibold">Preparing</span>
+          </div>
+        ))}
+
+        {picked.length + preparing < max ? (
           <label className="aspect-square rounded-xl border-2 border-dashed border-line-2 bg-surface-2 text-muted hover:border-ink hover:text-ink transition-colors cursor-pointer flex flex-col items-center justify-center gap-1">
             <ImagePlus size={22} />
             <span className="text-[11px] font-semibold">Add</span>
@@ -137,7 +183,7 @@ export function MultiPhotoInput({
               multiple
               className="sr-only"
               onChange={(e) => {
-                add(e.target.files);
+                void add(e.target.files);
                 e.target.value = "";
               }}
             />

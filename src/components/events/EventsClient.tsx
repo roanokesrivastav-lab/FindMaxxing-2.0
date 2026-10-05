@@ -13,9 +13,6 @@ type When = "all" | "today" | "week" | "mine" | "past";
 type Feed = { when: "all" | "today" | "week"; startsBefore: string | null };
 
 const PAGE_SIZE = 30;
-const UPCOMING_GRACE_MS = 60 * 60_000;
-
-const upcomingCutoff = () => Date.now() - UPCOMING_GRACE_MS;
 
 /** The upcoming feed's upper bound for a range, in the viewer's local time. */
 function feedFor(when: "all" | "today" | "week"): Feed {
@@ -52,9 +49,9 @@ export function EventsClient({
   // "Joined" and "Been to" come from the viewer's own (bounded) list, not the city feed.
   const own = useMemo(() => {
     if (when !== "mine" && when !== "past") return null;
-    const cutoff = upcomingCutoff();
-    const upcoming = (e: Event) => !eventHasEnded(e.startsAt, e.endsAt, cutoff);
-    const rows = when === "mine" ? joined.filter(upcoming) : joined.filter((e) => !upcoming(e)).reverse();
+    // Split on the actual current time: an event that ended minutes ago has been attended.
+    const ended = (e: Event) => eventHasEnded(e.startsAt, e.endsAt);
+    const rows = when === "mine" ? joined.filter((e) => !ended(e)) : joined.filter(ended).reverse();
     return rows.filter((e) => !category || e.categorySlug === category);
   }, [when, joined, category]);
 

@@ -3,6 +3,15 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   typedRoutes: false,
   agentRules: false,
+  experimental: {
+    serverActions: {
+      // Place photos are posted to server actions. The browser shrinks them
+      // first, and the form refuses a batch over IMAGE_BATCH_MAX_BYTES; this
+      // leaves room for the multipart overhead. The default 1MB rejected most
+      // phone photos.
+      bodySizeLimit: "16mb",
+    },
+  },
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "images.unsplash.com" },

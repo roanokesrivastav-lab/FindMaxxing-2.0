@@ -47,9 +47,12 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
   const [{ id }, sp, viewer, repo] = await Promise.all([params, searchParams, getViewer(), getRepository()]);
   const place = await repo.places.get(id, viewer?.id ?? null);
   if (!place) notFound();
-  const [events, ratings] = await Promise.all([
+  const [events, ratings, lists, memberIds] = await Promise.all([
     repo.events.listForPlace(place.id),
     repo.places.listRatings(place.id, viewer?.id ?? null),
+    // The viewer's own lists (at most 100) for the Save button's sheet.
+    viewer ? repo.savedLists.list(viewer.id) : Promise.resolve([]),
+    viewer ? repo.savedLists.memberships(viewer.id, place.id) : Promise.resolve([]),
   ]);
   const isOwner = !!viewer && viewer.id === place.creatorId;
   const category = getCategory(place.categorySlug);
@@ -59,13 +62,13 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
     <article className="pb-nav md:pb-10">
       {/* Hero */}
       <div className="relative h-[260px] md:h-[360px] md:mx-6 md:mt-6 md:rounded-3xl overflow-hidden">
-        <PlaceCover photoUrl={place.photos[0]?.url} categorySlug={place.categorySlug} name={place.name} emojiSize={72} />
+        <PlaceCover photoUrl={place.photos[0]?.url} categorySlug={place.categorySlug} name={place.name} emojiSize={72} layout="hero" priority />
         <div className="absolute inset-x-0 top-0 p-4 flex items-center justify-between">
           <BackButton fallback="/" />
           <div className="flex items-center gap-2">
             {isOwner ? <OwnerActions kind="place" id={place.id} canEdit canDelete /> : null}
             <ShareButton title={place.name} text={place.localTip ?? place.description} />
-            <SaveButton placeId={place.id} saved={place.viewerSaved} signedIn={!!viewer} variant="icon" />
+            <SaveButton placeId={place.id} saved={place.viewerSaved} signedIn={!!viewer} lists={lists} memberIds={memberIds} variant="icon" />
           </div>
         </div>
         <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-ink/50 to-transparent" aria-hidden />

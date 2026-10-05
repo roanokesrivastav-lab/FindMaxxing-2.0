@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { requireViewer } from "@/lib/auth/server";
 import { getRepository } from "@/lib/data";
+import { uuidSchema } from "@/lib/validation/schemas";
 import { toPlaceOption } from "@/components/forms/PlacePicker";
 import { EventForm } from "@/components/forms/EventForm";
 import { FormShell } from "@/components/layout/FormShell";
@@ -12,7 +13,9 @@ export default async function NewEventPage({ searchParams }: PageProps<"/events/
   const [sp, viewer] = await Promise.all([searchParams, requireViewer("/events/new")]);
   const repo = await getRepository();
   // Only the place linked from ?placeId= is resolved here; the picker searches for the rest.
-  const linked = typeof sp.placeId === "string" ? await repo.places.get(sp.placeId, viewer.id) : null;
+  // A malformed id is treated like an unknown one: no place preselected.
+  const placeId = uuidSchema.safeParse(sp.placeId);
+  const linked = placeId.success ? await repo.places.get(placeId.data, viewer.id) : null;
   const initialPlace = linked ? toPlaceOption(linked) : null;
   return (
     <FormShell

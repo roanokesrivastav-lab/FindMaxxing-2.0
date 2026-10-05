@@ -48,6 +48,9 @@ query plans and timings for the discovery queries.
    - `supabase/migrations/0004_audit_hardening.sql` — visibility inheritance, transactional writes, and concurrency guards
    - `supabase/migrations/0005_private_photos_and_save_counts.sql` — private place-photo bucket with visibility-checked reads, and trigger-maintained save totals
    - `supabase/migrations/0006_discovery_queries.sql` — bounded, RLS-scoped discovery functions and their indexes
+   - `supabase/migrations/0007_discovery_filters_and_aggregates.sql` — neighborhood, created-after and starts-before discovery filters, plus the neighborhood and interest count aggregates the list pages use
+   - `supabase/migrations/0008_photo_variants.sql` — lets each place photo's smaller stored sizes follow the photo's own read and delete rules
+   - `supabase/migrations/0009_saved_lists.sql` — owner-only saved lists that organize bookmarks, with their summaries and add-to-list function
    - `supabase/seed.sql` — optional fictional demo data (generated from `src/lib/seed/seed-data.ts` via `npm run seed:sql`; **do not use the demo users in production**)
 2. In Supabase Auth settings, add `http://localhost:3000/auth/callback` (and your production URL) to the redirect allow-list. Email confirmation is supported: the sign-up flow shows a "check your email" state and `/auth/callback` exchanges the code.
 3. Copy `.env.example` to `.env.local` and fill in:
@@ -73,7 +76,7 @@ src/
     places/[id], places/new, places/[id]/edit
     events, events/[id], events/new, events/[id]/edit
     neighborhoods, neighborhoods/[name], tags, tags/[slug]
-    saved, people, profile, profile/edit, profile/reports
+    saved, saved/[id], people, profile, profile/edit, profile/reports
     u/[username], u/[username]/[kind]
     auth/sign-in, auth/sign-up, auth/callback
     api/discover/*           Discovery endpoints: places, events, map, item
@@ -124,6 +127,38 @@ without a Storage download, and a viewer who has lost access gets a 404 on the v
 `can_view_place()` rule, so a non-local cannot fetch a locals-only photo even with its object path, and an uploader's own objects are readable only while they are not yet attached to a photo row. Avatars
 stay public because they belong to the public profile.
 
+**Images go through a pipeline before they are stored** (`src/lib/images/pipeline.ts`, using `sharp`).
+The decoded bytes decide what a file is, not its name or declared type: only JPEG, PNG and WebP are accepted,
+animated images are refused, and so are images under 200px (96px for avatars) or over 40 megapixels,
+which is checked before decoding so a small file cannot expand into gigabytes. EXIF orientation is applied,
+all metadata (GPS included) is dropped, and the result is re-encoded as WebP. Each place photo is stored at
+three sizes, 480, 960 and 1600px on the long edge: `owner/abc.webp` plus `owner/abc.md.webp` and
+`owner/abc.sm.webp`. The smaller sizes are derived from the storage path, so there is no schema change.
+Migration 0008 makes them follow their photo's visibility. Avatars are a 256px square.
+`/api/photos/[id]?size=sm|md|lg` serves one size, and pages ask for them with `srcSet` and a per-layout
+`sizes`, loading everything lazily except the detail-page hero. Each photo is decoded once, straight
+down to the largest size, and the three sizes are encoded from that one after another. Across all requests
+at most two images are processed at a time (`withImageSlot`), so several six-photo forms queue instead of
+decoding 40-megapixel images side by side. The browser also shrinks photos to 2400px before sending them
+(`src/lib/images/client.ts`). It accepts originals up to 40MB, and the shrunk file must be under 10MB. A form
+refuses to submit while photos are still being prepared, refuses a batch over 15MB, and server actions
+accept 16MB bodies. The old 1MB default rejected most phone photos.
+
+**Mobile budget:** a place page with all six photos must stay under 600KB of images on the Lighthouse
+mobile profile (412px wide, DPR 1.75), where it loads the hero at 960px and the gallery at 480px.
+`tests/images.test.ts` enforces this with realistic ~4MB phone photos: they come to about 450KB. A
+browser measurement at 412px and DPR 2 came to 226KB. A phone at DPR 3 picks the next size up
+(about 850KB for the same page); the budget is set for the Lighthouse profile.
+
+**Existing images:** `npx tsx scripts/migrate-images.ts [--dry-run] [--delete-originals]` re-encodes
+photos and avatars stored before the pipeline. It writes each one to a new path and repoints its row,
+so cached copies never go stale (the photo route's ETag is keyed on the path) and originals stay as a
+backup unless `--delete-originals` is passed. Even then, originals are deleted only after every repoint
+has been saved, so an interrupted run never leaves a row pointing at a deleted file. A photo counts as
+current only when both smaller sizes exist. Until then, the photo route falls back to the original for
+every size. In demo mode, stop the dev server first; the script backs up `demo-store.json`. For
+Supabase it needs `SUPABASE_SERVICE_ROLE_KEY`. Re-running it only reports what is already current.
+
 **Rating notes.** A rating is a number; the note attached to it is the local knowledge. Notes appear
 as a reviews list on the place page. Only ratings that carry a note show up there.
 
@@ -157,8 +192,8 @@ The repository exposes two read models over the same filters:
 Map pins are capped and flagged instead of paged, because a paged map would make dense areas look
 empty. Cursors are opaque and keep microsecond timestamps, so page boundaries never skip or repeat
 a row. HTTP access: `GET /api/discover/places`, `/api/discover/events` and `/api/discover/map`,
-with `bbox=west,south,east,north`, `q`, `category`, `tags=a,b`, `limit`, `cursor`, `includePast`
-and (map only) `kind=all|places|events`. Responses are `private, no-store` because what you see
+with `bbox=west,south,east,north`, `q`, `category`, `tags=a,b`, `neighborhood`, `createdAfter`,
+`limit`, `cursor`, `includePast`, (events only) `startsBefore` and (map only) `kind=all|places|events`. Responses are `private, no-store` because what you see
 depends on who you are. `tests/discovery.test.ts` runs every filter for four viewers against both the SQL
 functions and the demo repository, and requires identical pages.
 
@@ -171,9 +206,17 @@ the map across refreshes, and a pin whose details are not loaded fetches them fr
 `GET /api/discover/item`. The server renders the first result set for the default viewport; the client
 re-queries with the real bounds once the map loads.
 
+**The other discovery pages** use the same list model. Events, New this week, each interest and each
+neighborhood render the first cursor page on the server and load more on demand. The Today and This
+week filters send a `startsBefore` computed in the viewer's local time. Header counts and the
+Interests and Neighborhoods indexes come from `count()` and two invoker-rights aggregates,
+`discover_tag_counts` and `discover_neighborhoods`, so a place the viewer cannot see is never counted.
+Neighborhoods match on a normalized key (trimmed, lowercased, whitespace collapsed). The event form's
+place picker searches `/api/discover/places` instead of listing every place.
+
 ## Data model
 
-`profiles` · `profile_interests` · `interests` · `categories` · `places` · `place_tags` · `place_photos` · `place_ratings` · `saved_places` · `events` · `event_tags` · `event_attendees` · `follows` · `reports`
+`profiles` · `profile_interests` · `interests` · `categories` · `places` · `place_tags` · `place_photos` · `place_ratings` · `saved_places` · `saved_lists` · `saved_list_items` · `events` · `event_tags` · `event_attendees` · `follows` · `reports`
 
 Plus two views for the report read paths: `reports_i_filed` and `reports_about_my_stuff`.
 
@@ -182,6 +225,7 @@ Integrity is enforced in the database, not just the UI:
 - one rating per user per place (`unique (place_id, user_id)`), aggregate maintained by trigger
 - at most six photos per place, enforced by trigger
 - one join per user per event (primary key), capacity and "not ended" enforced by a trigger that row-locks the event
+- saved lists organize bookmarks without replacing them: `saved_places` is still the save, and a saved place can be in no list or in several. Two composite foreign keys hold the rules. `(list_id, owner_id) → saved_lists` means an item can only live in its own owner's list. `(owner_id, place_id) → saved_places` means an item is always one of its owner's bookmarks: no orphan items, and unsaving a place removes it from every list. Deleting a list keeps its bookmarks. List names are normalized in the database the same way the app normalizes them (every whitespace run, tabs and Unicode spaces included, becomes one space, and the ends are trimmed). They are unique per owner, ignoring case and spacing, and each owner can have at most 100 lists (a trigger with an advisory lock). RLS makes lists and items owner-only, and only a list's name can change. `add_to_saved_list` bookmarks and adds in one transaction, and `saved_list_summaries()` counts only the places the owner can still open. In the app, the bookmark on a place's page saves it in one tap and opens a "Save to" sheet. There you can unsave it (which also takes it out of every list), tick any of your lists, or create a new list with the place already in it. `/saved` shows your lists above all saved places. `/saved/[id]` is one list, visible only to its owner, with search and sort, "remove from this list", rename, and delete (which keeps every place saved)
 - no self-follows, no duplicate follows or saves, one open report per reporter per target
 - check constraints on coordinates, scores, lengths, statuses
 - `places.visibility` drives the trust tiers, and events inherit the visibility of their linked place; the `pending` and `removed` statuses are reserved so a moderation workflow can be added later without a migration
@@ -211,7 +255,7 @@ Integrity is enforced in the database, not just the UI:
   `src/lib/forms/useFormSubmit.ts`, which also focuses the first field the server rejected.
 - **Place "local tip" is a dedicated field.** It is the product's differentiator, so it gets its own prominent slot on cards and detail pages.
 - **Seed data is fictional** (names, tips, venues) and placed at real Columbus coordinates so the map looks alive. It is not a set of real recommendations. One seeded account (`nina@example.com`, home city Cleveland) is deliberately *not* a Columbus local, so the trust tier is visible in demo mode rather than only in tests.
-- **Images:** uploads go to Supabase Storage in per-user folders, or to `.data/uploads` in demo mode. Place photos are private and are served only through `/api/photos/[id]` after a visibility check (see [The community layer](#the-community-layer)); avatars stay public. Places without photos get a generated category cover so nothing looks empty.
+- **Images:** uploads are processed server-side (see the image pipeline above), then go to Supabase Storage in per-user folders, or to `.data/uploads` in demo mode. Place photos are private and are served only through `/api/photos/[id]` after a visibility check (see [The community layer](#the-community-layer)); avatars stay public. Photos are plain `<img>` with `srcSet`, not `next/image`: the files are already sized, and the optimizer would have to fetch private photos through the authorized route anyway. Places without photos get a generated category cover so nothing looks empty.
 
 ## Intentionally deferred
 

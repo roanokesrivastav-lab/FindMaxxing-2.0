@@ -12,8 +12,10 @@ import {
   type ReportEntry,
   type TagCounts,
   type UserActivity,
+  type SavedList,
 } from "../types";
-import { getDemoStore, isLocalOfCity, recomputeRating, type DemoState, type EventRow, type PlaceRow, type ProfileRow, type ReportRow, type StoreHandle } from "./store";
+import { getDemoStore, isLocalOfCity, recomputeRating, type DemoState, type EventRow, type PlaceRow, type ProfileRow, type ReportRow, type SavedListRow, type StoreHandle } from "./store";
+import { LIST_LIMIT_ERROR, MAX_SAVED_LISTS, duplicateListName, listNameKey, normalizeListName } from "../savedLists";
 import { newId } from "@/lib/utils/ids";
 import { neighborhoodKey } from "@/lib/utils/neighborhoods";
 import {
@@ -33,13 +35,13 @@ import {
   type NormalizedFilters,
 } from "../discovery";
 import { mkdirSync, writeFileSync, unlinkSync, readFileSync } from "node:fs";
-import { placePhotoReference, placePhotoUrl } from "../photos";
+import { placePhotoReference, placePhotoUrl, sniffImageType } from "../photos";
+import { photoObjectPaths, photoVariantPath } from "@/lib/images/sizes";
 import path from "node:path";
 
 const UPLOAD_DIR = path.join(process.cwd(), ".data", "uploads");
-const UPLOAD_MIME: Record<string, string> = { jpg: "image/jpeg", png: "image/png", webp: "image/webp" };
-/** Generated upload names only; anything else is refused before touching disk. */
-export const DEMO_UPLOAD_NAME = /^(places|avatars)-[0-9a-f]{8}-[0-9a-f-]{36}\.(jpg|png|webp)$/;
+/** Generated upload names (and their .sm/.md size siblings) only; anything else is refused before touching disk. */
+export const DEMO_UPLOAD_NAME = /^(places|avatars)-[0-9a-f]{8}-[0-9a-f-]{36}(\.(sm|md))?\.(jpg|png|webp)$/;
 
 function summary(p: ProfileRow): ProfileSummary {
   return { id: p.id, username: p.username, displayName: p.displayName, avatarUrl: p.avatarUrl };
@@ -236,6 +238,33 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
     return p;
   };
 
+  /** Deletes list items, touching each affected list like the database trigger. */
+  const removeListItems = (match: (item: DemoState["savedListItems"][number]) => boolean) => {
+    const now = new Date().toISOString();
+    const touched = new Set(state.savedListItems.filter(match).map((i) => i.listId));
+    state.savedListItems = state.savedListItems.filter((i) => !match(i));
+    for (const list of state.savedLists) if (touched.has(list.id)) list.updatedAt = now;
+  };
+  const ownList = (ownerId: string, listId: string) => {
+    const list = state.savedLists.find((l) => l.id === listId && l.ownerId === ownerId);
+    if (!list) throw new DataError("List not found", "not_found");
+    return list;
+  };
+  /** Places in a list the owner can open, newest membership first. */
+  const listPlaces = (list: SavedListRow) =>
+    state.savedListItems
+      .filter((i) => i.listId === list.id)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || compareIds(a.placeId, b.placeId))
+      .map((i) => state.places.find((p) => p.id === i.placeId))
+      .filter((p): p is PlaceRow => !!p && p.status === "published" && canViewPlace(state, p, list.ownerId));
+  const toSavedList = (list: SavedListRow): SavedList => ({
+    id: list.id,
+    name: list.name,
+    createdAt: list.createdAt,
+    updatedAt: list.updatedAt,
+    placeCount: listPlaces(list).length,
+  });
+
   const repo: DataRepository = {
     places: {
       async search(opts = {}) {
@@ -388,15 +417,14 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         if (place.creatorId !== creatorId) throw new DataError("You don't have permission to delete this place", "forbidden");
         const photos = state.placePhotos.filter((p) => p.placeId === id);
         for (const photo of photos) {
-          if (photo.storagePath) {
-            try { unlinkSync(path.join(UPLOAD_DIR, path.basename(photo.storagePath))); } catch { /* already removed */ }
-          }
+          if (photo.storagePath) await repo.storage.removeImage("places", photo.storagePath);
         }
         state.places = state.places.filter((p) => p.id !== id);
         state.placeTags = state.placeTags.filter((t) => t.placeId !== id);
         state.placePhotos = state.placePhotos.filter((p) => p.placeId !== id);
         state.placeRatings = state.placeRatings.filter((r) => r.placeId !== id);
         state.savedPlaces = state.savedPlaces.filter((s) => s.placeId !== id);
+        removeListItems((i) => i.placeId === id);
         // Match ON DELETE SET NULL for linked events while preserving their snapshot location fields.
         for (const event of state.events) if (event.placeId === id) event.placeId = null;
         persist();
@@ -487,7 +515,8 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
       async listSaved(userId) {
         const saved = state.savedPlaces
           .filter((s) => s.userId === userId)
-          .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+          // created_at desc, place_id asc: the order the Supabase repository pages in.
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || compareIds(a.placeId, b.placeId));
         return saved
           .map((s) => state.places.find((p) => p.id === s.placeId))
           .filter((p): p is PlaceRow => !!p && canViewPlace(state, p, userId))
@@ -506,6 +535,8 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         const idx = state.savedPlaces.findIndex((s) => s.userId === userId && s.placeId === placeId);
         if (idx >= 0) {
           state.savedPlaces.splice(idx, 1);
+          // saved_list_items cascade from the bookmark: unsaving leaves every list.
+          removeListItems((i) => i.ownerId === userId && i.placeId === placeId);
           persist();
         }
       },
@@ -726,6 +757,71 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
       },
     },
 
+    savedLists: {
+      async list(ownerId) {
+        return state.savedLists
+          .filter((l) => l.ownerId === ownerId)
+          .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || compareIds(a.id, b.id))
+          .map(toSavedList);
+      },
+      async create(ownerId, rawName) {
+        requireProfile(ownerId);
+        const name = normalizeListName(rawName);
+        const mine = state.savedLists.filter((l) => l.ownerId === ownerId);
+        // Same order as the database: the cap trigger runs before the unique index.
+        if (mine.length >= MAX_SAVED_LISTS) throw new DataError(LIST_LIMIT_ERROR, "full");
+        if (mine.some((l) => listNameKey(l.name) === listNameKey(name))) throw duplicateListName(name);
+        const now = new Date().toISOString();
+        const row: SavedListRow = { id: newId(), ownerId, name, createdAt: now, updatedAt: now };
+        state.savedLists.push(row);
+        persist();
+        return toSavedList(row);
+      },
+      async rename(ownerId, listId, rawName) {
+        const list = ownList(ownerId, listId);
+        const name = normalizeListName(rawName);
+        const clash = state.savedLists.some((l) => l.ownerId === ownerId && l.id !== listId && listNameKey(l.name) === listNameKey(name));
+        if (clash) throw duplicateListName(name);
+        list.name = name;
+        list.updatedAt = new Date().toISOString();
+        persist();
+      },
+      async delete(ownerId, listId) {
+        ownList(ownerId, listId);
+        state.savedLists = state.savedLists.filter((l) => l.id !== listId);
+        state.savedListItems = state.savedListItems.filter((i) => i.listId !== listId);
+        persist();
+      },
+      async addPlace(ownerId, listId, placeId) {
+        const list = ownList(ownerId, listId);
+        const place = state.places.find((p) => p.id === placeId);
+        if (!place || !canViewPlace(state, place, ownerId)) throw new DataError("Place not found", "not_found");
+        const now = new Date().toISOString();
+        // The bookmark first: an item is always one of the owner's saved places.
+        if (!state.savedPlaces.some((s) => s.userId === ownerId && s.placeId === placeId)) {
+          state.savedPlaces.push({ userId: ownerId, placeId, createdAt: now });
+        }
+        if (!state.savedListItems.some((i) => i.listId === listId && i.placeId === placeId)) {
+          state.savedListItems.push({ listId, ownerId, placeId, createdAt: now });
+          list.updatedAt = now;
+        }
+        persist();
+      },
+      async removePlace(ownerId, listId, placeId) {
+        ownList(ownerId, listId);
+        removeListItems((i) => i.listId === listId && i.placeId === placeId);
+        persist();
+      },
+      async get(ownerId, listId) {
+        const list = state.savedLists.find((l) => l.id === listId && l.ownerId === ownerId);
+        if (!list) return null;
+        return { list: toSavedList(list), places: listPlaces(list).map((p) => toPlace(state, p)) };
+      },
+      async memberships(ownerId, placeId) {
+        return state.savedListItems.filter((i) => i.ownerId === ownerId && i.placeId === placeId).map((i) => i.listId);
+      },
+    },
+
     profiles: {
       async getById(id) {
         const p = state.profiles.find((x) => x.id === id);
@@ -907,22 +1003,26 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
     },
 
     storage: {
-      async uploadImage(file, folder, ownerId) {
-        const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
-        const name = `${folder}-${ownerId.slice(0, 8)}-${newId()}.${ext}`;
+      async uploadImage(image, folder, ownerId) {
+        // Everything stored has been through the image pipeline, which emits WebP.
+        const name = `${folder}-${ownerId.slice(0, 8)}-${newId()}.webp`;
         mkdirSync(UPLOAD_DIR, { recursive: true });
-        writeFileSync(path.join(UPLOAD_DIR, name), Buffer.from(await file.arrayBuffer()));
+        writeFileSync(path.join(UPLOAD_DIR, name), image.main);
+        for (const size of ["md", "sm"] as const) {
+          const bytes = image.variants?.[size];
+          if (bytes) writeFileSync(path.join(UPLOAD_DIR, photoVariantPath(name, size)), bytes);
+        }
         // Avatars are public profile data; place photos are served only through
         // the authorized /api/photos/[id] route.
         const url = folder === "avatars" ? `/api/uploads/${name}` : placePhotoReference(name);
         return { url, storagePath: name };
       },
-      async deliverPlacePhoto(storagePath) {
-        const name = path.basename(storagePath);
+      async deliverPlacePhoto(objectPath) {
+        const name = path.basename(objectPath);
         if (!DEMO_UPLOAD_NAME.test(name) || !name.startsWith("places-")) return null;
         try {
           const body = new Uint8Array(readFileSync(path.join(UPLOAD_DIR, name)));
-          return { kind: "bytes", body, contentType: UPLOAD_MIME[name.split(".").pop() ?? ""] ?? "application/octet-stream" };
+          return { kind: "bytes", body, contentType: sniffImageType(body) };
         } catch {
           return null;
         }
@@ -930,7 +1030,9 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
       async removeImage(folder, storagePath) {
         const filename = path.basename(storagePath);
         if (!filename.startsWith(`${folder}-`)) return;
-        try { unlinkSync(path.join(UPLOAD_DIR, filename)); } catch { /* already removed */ }
+        for (const name of folder === "places" ? photoObjectPaths(filename) : [filename]) {
+          try { unlinkSync(path.join(UPLOAD_DIR, name)); } catch { /* already removed */ }
+        }
       },
     },
   };

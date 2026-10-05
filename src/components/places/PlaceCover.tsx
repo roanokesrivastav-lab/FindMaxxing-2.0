@@ -1,9 +1,13 @@
 import { getCategory } from "@/lib/data/taxonomy";
 import { cn } from "@/lib/utils/cn";
+import { PHOTO_LAYOUT_SIZES, photoSrc, photoSrcSet } from "@/lib/images/sizes";
 
 /**
  * Visual for a place: the first photo if one exists, otherwise a generated
  * category-colored cover so listings never look empty.
+ *
+ * `layout` sets `sizes`, which decides the file a phone downloads; `priority`
+ * is for the one above-the-fold hero, everything else loads lazily.
  */
 export function PlaceCover({
   photoUrl,
@@ -11,17 +15,34 @@ export function PlaceCover({
   name,
   className,
   emojiSize = 40,
+  layout,
+  priority = false,
 }: {
   photoUrl?: string | null;
   categorySlug: string;
   name: string;
   className?: string;
   emojiSize?: number;
+  layout: keyof typeof PHOTO_LAYOUT_SIZES;
+  priority?: boolean;
 }) {
   const c = getCategory(categorySlug);
   if (photoUrl) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={photoUrl} alt={name} className={cn("object-cover w-full h-full bg-surface-2", className)} />;
+    return (
+      // Not next/image: photos come from the authorized route, which already
+      // serves pipeline-sized files; srcSet picks among them.
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={photoSrc(photoUrl, "md")}
+        srcSet={photoSrcSet(photoUrl)}
+        sizes={PHOTO_LAYOUT_SIZES[layout]}
+        alt={name}
+        loading={priority ? "eager" : "lazy"}
+        fetchPriority={priority ? "high" : undefined}
+        decoding="async"
+        className={cn("object-cover w-full h-full bg-surface-2", className)}
+      />
+    );
   }
   const seed = name.length % 4;
   return (

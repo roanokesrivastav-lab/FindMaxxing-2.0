@@ -1,8 +1,10 @@
 "use client";
-import { ImagePlus, X } from "lucide-react";
+import { ImagePlus, Loader2, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { FieldError, FieldLabel } from "@/components/ui/Field";
-import { IMAGE_TYPES, isAllowedImage } from "@/lib/validation/schemas";
+import { IMAGE_ORIGINAL_MAX_BYTES, IMAGE_TYPES, isAllowedImage } from "@/lib/validation/schemas";
+import { useHoldSubmit } from "@/lib/forms/useHoldSubmit";
+import { shrinkForUpload } from "@/lib/images/client";
 import { cn } from "@/lib/utils/cn";
 
 export function PhotoInput({
@@ -23,23 +25,51 @@ export function PhotoInput({
   const [preview, setPreview] = useState<string | null>(currentUrl ?? null);
   const [localError, setLocalError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [preparing, setPreparing] = useState(false);
+  // Only the latest pick may write back: an earlier, slower shrink must not replace it.
+  const pick = useRef(0);
 
-  const onChange = (file: File | undefined) => {
+  // Submitting now would send the original, or nothing, instead of the shrunk photo.
+  useHoldSubmit(inputRef, preparing, () => setLocalError("The photo is still being prepared. Try again in a moment."));
+
+  const reject = (problem: string) => {
+    setLocalError(problem);
+    setPreview(currentUrl ?? null);
+    if (inputRef.current) inputRef.current.value = "";
+  };
+
+  const onChange = async (file: File | undefined) => {
+    const token = ++pick.current;
     setLocalError(null);
     if (!file) {
+      setPreparing(false);
       setPreview(currentUrl ?? null);
       return;
     }
-    const problem = isAllowedImage(file);
+    // The original may be large: it only has to fit once shrunk.
+    const problem = isAllowedImage(file, IMAGE_ORIGINAL_MAX_BYTES);
     if (problem) {
-      setLocalError(problem);
-      if (inputRef.current) inputRef.current.value = "";
-      return;
+      setPreparing(false);
+      return reject(problem);
     }
-    setPreview(URL.createObjectURL(file));
+    setPreparing(true);
+    const shrunk = await shrinkForUpload(file);
+    if (token !== pick.current) return;
+    setPreparing(false);
+    const tooBig = isAllowedImage(shrunk);
+    if (tooBig) return reject(tooBig);
+    // Send the shrunk copy: swap it into the input the form submits.
+    if (shrunk !== file && inputRef.current) {
+      const dt = new DataTransfer();
+      dt.items.add(shrunk);
+      inputRef.current.files = dt.files;
+    }
+    setPreview(URL.createObjectURL(shrunk));
   };
 
   const clear = () => {
+    pick.current += 1;
+    setPreparing(false);
     if (inputRef.current) inputRef.current.value = "";
     setPreview(currentUrl ?? null);
   };
@@ -63,13 +93,18 @@ export function PhotoInput({
               {shape === "wide" ? <span className="text-sm font-semibold">Add a photo</span> : null}
             </>
           )}
+          {preparing ? (
+            <span className="absolute inset-0 flex items-center justify-center gap-1.5 bg-surface-2/80 text-xs font-semibold text-muted" aria-live="polite">
+              <Loader2 size={14} className="animate-spin" /> Preparing
+            </span>
+          ) : null}
           <input
             ref={inputRef}
             type="file"
             name={name}
             accept={IMAGE_TYPES.join(",")}
             className="sr-only"
-            onChange={(e) => onChange(e.target.files?.[0])}
+            onChange={(e) => void onChange(e.target.files?.[0])}
           />
         </label>
         {preview && preview !== currentUrl ? (

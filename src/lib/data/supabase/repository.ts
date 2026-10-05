@@ -13,10 +13,12 @@ import {
   type ProfileSummary,
   type PlaceRating,
   type ReportEntry,
+  type SavedList,
   type ConnectionEntry,
   type EventMapRecord,
   type PlaceMapRecord,
 } from "../types";
+import { LIST_LIMIT_ERROR, duplicateListName, normalizeListName } from "../savedLists";
 import {
   DEFAULT_MAP_MARKERS,
   DEFAULT_PAGE_SIZE,
@@ -30,7 +32,8 @@ import {
   toPage,
   type NormalizedFilters,
 } from "../discovery";
-import { PLACE_PHOTO_BUCKET, placePhotoReference, placePhotoUrl } from "../photos";
+import { PLACE_PHOTO_BUCKET, placePhotoReference, placePhotoUrl, sniffImageType } from "../photos";
+import { photoObjectPaths, photoVariantPath } from "@/lib/images/sizes";
 
 /**
  * Supabase implementation. Every query runs through the request-scoped client
@@ -183,6 +186,47 @@ function translate(error: PostgrestError): DataError {
       return new DataError(error.message, "invalid");
     default:
       return new DataError(error.message || "Something went wrong", "unavailable");
+  }
+}
+
+interface SavedListRow {
+  id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+  place_count: number;
+}
+
+function mapSavedList(r: SavedListRow): SavedList {
+  return { id: r.id, name: r.name, createdAt: r.created_at, updatedAt: r.updated_at, placeCount: Number(r.place_count) };
+}
+
+/** Saved-list failures in the user's terms (the generic translate() would say "That already exists"). */
+function listError(error: PostgrestError, name?: string): DataError {
+  if (error.code === "23505" && name) return duplicateListName(name);
+  if (error.code === "P0001" && error.message.includes("at most")) return new DataError(LIST_LIMIT_ERROR, "full");
+  // add_to_saved_list: the list is not the caller's (P0002), or the place is not one they may see (RLS).
+  if (error.code === "P0002") return new DataError("List not found", "not_found");
+  if (error.code === "42501") return new DataError("Place not found", "not_found");
+  return translate(error);
+}
+
+/** PostgREST's default max-rows. A single request never returns more, silently. */
+export const SUPABASE_PAGE_ROWS = 1000;
+
+/**
+ * Every row of a query that has no natural bound (a user's bookmarks, a
+ * list's places), fetched in pages of SUPABASE_PAGE_ROWS. `page` must apply a
+ * total order (a unique tie-break column) so ranges neither skip nor repeat.
+ */
+export async function fetchAllRows<T>(
+  page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: PostgrestError | null }>,
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += SUPABASE_PAGE_ROWS) {
+    const batch = unwrap(await page(from, from + SUPABASE_PAGE_ROWS - 1)) ?? [];
+    rows.push(...batch);
+    if (batch.length < SUPABASE_PAGE_ROWS) return rows;
   }
 }
 
@@ -482,13 +526,15 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
         return rows.map(mapPlace);
       },
       async listSaved(userId) {
-        const rows = unwrap(
-          await supabase
+        const rows = (await fetchAllRows((from, to) =>
+          supabase
             .from("saved_places")
             .select(`created_at, place:places!saved_places_place_id_fkey(${PLACE_SELECT})`)
             .eq("user_id", userId)
-            .order("created_at", { ascending: false }),
-        ) as unknown as { place: PlaceRow | null }[];
+            .order("created_at", { ascending: false })
+            .order("place_id", { ascending: true })
+            .range(from, to),
+        )) as unknown as { place: PlaceRow | null }[];
         return rows.map((r) => r.place).filter((p): p is PlaceRow => !!p && p.status === "published").map(mapPlace);
       },
       async save(userId, placeId) {
@@ -705,6 +751,68 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
       },
     },
 
+    savedLists: {
+      async list() {
+        // RLS and the function's own filter scope this to the signed-in owner.
+        const rows = unwrap(await supabase.rpc("saved_list_summaries")) as SavedListRow[];
+        return rows.map(mapSavedList);
+      },
+      async create(ownerId, rawName) {
+        const name = normalizeListName(rawName);
+        const res = await supabase
+          .from("saved_lists")
+          .insert({ owner_id: ownerId, name })
+          .select("id, name, created_at, updated_at")
+          .single();
+        if (res.error) throw listError(res.error, name);
+        return mapSavedList({ ...(res.data as Omit<SavedListRow, "place_count">), place_count: 0 });
+      },
+      async rename(ownerId, listId, rawName) {
+        const name = normalizeListName(rawName);
+        const res = await supabase.from("saved_lists").update({ name }).eq("id", listId).eq("owner_id", ownerId).select("id");
+        if (res.error) throw listError(res.error, name);
+        if (!res.data?.length) throw new DataError("List not found", "not_found");
+      },
+      async delete(ownerId, listId) {
+        const rows = unwrap(await supabase.from("saved_lists").delete().eq("id", listId).eq("owner_id", ownerId).select("id")) as { id: string }[];
+        if (!rows.length) throw new DataError("List not found", "not_found");
+      },
+      async addPlace(_ownerId, listId, placeId) {
+        const res = await supabase.rpc("add_to_saved_list", { p_list_id: listId, p_place_id: placeId });
+        if (res.error) throw listError(res.error);
+      },
+      async removePlace(ownerId, listId, placeId) {
+        const lists = unwrap(await supabase.from("saved_lists").select("id").eq("id", listId).eq("owner_id", ownerId)) as { id: string }[];
+        if (!lists.length) throw new DataError("List not found", "not_found");
+        unwrap(await supabase.from("saved_list_items").delete().eq("list_id", listId).eq("place_id", placeId));
+      },
+      async get(ownerId, listId) {
+        const list = unwrap(
+          await supabase.from("saved_lists").select("id, name, created_at, updated_at").eq("id", listId).eq("owner_id", ownerId).maybeSingle(),
+        ) as Omit<SavedListRow, "place_count"> | null;
+        if (!list) return null;
+        // Paged: a list can hold more places than one PostgREST response returns.
+        const rows = (await fetchAllRows((from, to) =>
+          supabase
+            .from("saved_list_items")
+            .select(`created_at, place:places!saved_list_items_place_id_fkey(${PLACE_SELECT})`)
+            .eq("list_id", listId)
+            .order("created_at", { ascending: false })
+            .order("place_id", { ascending: true })
+            .range(from, to),
+        )) as unknown as { place: PlaceRow | null }[];
+        // RLS hides places the owner can no longer see; hidden ones are filtered here, as on the Saved page.
+        const places = rows.map((r) => r.place).filter((p): p is PlaceRow => !!p && p.status === "published").map(mapPlace);
+        return { list: mapSavedList({ ...list, place_count: places.length }), places };
+      },
+      async memberships(ownerId, placeId) {
+        const rows = unwrap(
+          await supabase.from("saved_list_items").select("list_id").eq("owner_id", ownerId).eq("place_id", placeId),
+        ) as { list_id: string }[];
+        return rows.map((r) => r.list_id);
+      },
+    },
+
     profiles: {
       async getById(id) {
         const row = unwrap(await supabase.from("profiles").select(PROFILE_SELECT).eq("id", id).maybeSingle()) as ProfileRow | null;
@@ -884,32 +992,46 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
     },
 
     storage: {
-      async uploadImage(file, folder, ownerId) {
+      async uploadImage(image, folder, ownerId) {
         const bucket = folder === "avatars" ? "avatars" : PLACE_PHOTO_BUCKET;
-        const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
-        const objectPath = `${ownerId}/${crypto.randomUUID()}.${ext}`;
-        const { error } = await supabase.storage.from(bucket).upload(objectPath, file, { contentType: file.type, upsert: false });
-        if (error) throw new DataError(`Upload failed: ${error.message}`, "unavailable");
+        // Everything stored has been through the image pipeline, which emits WebP.
+        const objectPath = `${ownerId}/${crypto.randomUUID()}.webp`;
+        const objects: [string, Uint8Array<ArrayBuffer>][] = [[objectPath, image.main]];
+        for (const size of ["md", "sm"] as const) {
+          const bytes = image.variants?.[size];
+          if (bytes) objects.push([photoVariantPath(objectPath, size), bytes]);
+        }
+        const stored: string[] = [];
+        for (const [path, bytes] of objects) {
+          const { error } = await supabase.storage.from(bucket).upload(path, bytes, { contentType: "image/webp", upsert: false });
+          if (error) {
+            // No half-stored photo: a missing size would fall back to the full-size object forever.
+            if (stored.length) await supabase.storage.from(bucket).remove(stored);
+            throw new DataError(`Upload failed: ${error.message}`, "unavailable");
+          }
+          stored.push(path);
+        }
         const url = folder === "avatars"
           ? supabase.storage.from(bucket).getPublicUrl(objectPath).data.publicUrl
           : placePhotoReference(objectPath);
         return { url, storagePath: objectPath };
       },
-      async deliverPlacePhoto(storagePath) {
+      async deliverPlacePhoto(objectPath) {
         // Bytes are delivered through the authorized route, so revocation is
         // immediate: no reusable signed URL outlives a visibility change. The
         // download itself runs under the viewer's session, so the
         // storage.objects policy re-applies place visibility independently of
         // the route's row lookup.
-        const { data, error } = await supabase.storage.from(PLACE_PHOTO_BUCKET).download(storagePath);
+        const { data, error } = await supabase.storage.from(PLACE_PHOTO_BUCKET).download(objectPath);
         if (error || !data) return null;
         const body = new Uint8Array(await data.arrayBuffer());
-        const contentType = data.type || "application/octet-stream";
-        return { kind: "bytes", body, contentType };
+        return { kind: "bytes", body, contentType: sniffImageType(body) };
       },
       async removeImage(folder, storagePath) {
         const bucket = folder === "avatars" ? "avatars" : PLACE_PHOTO_BUCKET;
-        const { error } = await supabase.storage.from(bucket).remove([storagePath]);
+        const paths = folder === "places" ? photoObjectPaths(storagePath) : [storagePath];
+        // Storage ignores paths that do not exist, so legacy photos without sizes are fine.
+        const { error } = await supabase.storage.from(bucket).remove(paths);
         if (error) throw new DataError(`Image removal failed: ${error.message}`, "unavailable");
       },
     },

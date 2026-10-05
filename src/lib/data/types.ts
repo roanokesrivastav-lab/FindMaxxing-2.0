@@ -188,6 +188,14 @@ export interface StoredImage {
   storagePath: string | null;
 }
 
+/** Processed image bytes, ready to store. Produced by src/lib/images/pipeline.ts. */
+export interface ImageUpload {
+  /** Stored at the returned storage path (the lg size for place photos). */
+  main: Uint8Array<ArrayBuffer>;
+  /** Smaller place-photo sizes, stored next to it (see photoVariantPath). */
+  variants?: Partial<Record<"sm" | "md", Uint8Array<ArrayBuffer>>>;
+}
+
 /** How a private place photo is handed to the browser once authorized. */
 export type PlacePhotoDelivery = { kind: "bytes"; body: Uint8Array<ArrayBuffer>; contentType: string };
 
@@ -330,6 +338,18 @@ export interface MapResult<T> {
   /** True when more records matched than the limit allowed. */
   truncated: boolean;
   limit: number;
+}
+
+/**
+ * One of a user's own saved lists. `placeCount` counts the places in it the
+ * owner can open (published and visible), like the Saved page.
+ */
+export interface SavedList {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  placeCount: number;
 }
 
 /** A profile in a follower/following list, with the viewer's own follow state. */

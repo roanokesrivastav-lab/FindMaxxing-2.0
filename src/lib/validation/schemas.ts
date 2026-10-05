@@ -272,11 +272,26 @@ export function fieldErrors(error: z.ZodError): FieldErrors {
   return out;
 }
 
-/** Image upload constraints (shared by client + server). */
-export const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+/**
+ * Image upload constraints (shared by client + server). A quick check on the
+ * declared type and size only; the server pipeline (src/lib/images/pipeline.ts)
+ * decides from the decoded bytes. The browser shrinks photos before sending, so
+ * the cap mostly matters when that fails.
+ */
+export const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 export const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
-export function isAllowedImage(file: File): string | null {
+/** Everything one form submits at once. Keep below serverActions.bodySizeLimit in next.config.ts. */
+export const IMAGE_BATCH_MAX_BYTES = 15 * 1024 * 1024;
+/**
+ * Largest original the browser will try to shrink. Phone cameras produce 12MB+
+ * photos that shrink far below IMAGE_MAX_BYTES, so the picker checks the
+ * original against this and the shrunk result against IMAGE_MAX_BYTES.
+ */
+export const IMAGE_ORIGINAL_MAX_BYTES = 40 * 1024 * 1024;
+
+/** `maxBytes` defaults to what may be uploaded; the picker passes IMAGE_ORIGINAL_MAX_BYTES before shrinking. */
+export function isAllowedImage(file: File, maxBytes: number = IMAGE_MAX_BYTES): string | null {
   if (!(IMAGE_TYPES as readonly string[]).includes(file.type)) return "Use a JPG, PNG or WebP";
-  if (file.size > IMAGE_MAX_BYTES) return "Image must be under 5MB";
+  if (file.size > maxBytes) return `Image must be under ${Math.round(maxBytes / (1024 * 1024))}MB`;
   return null;
 }
