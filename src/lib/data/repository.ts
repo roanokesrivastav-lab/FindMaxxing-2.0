@@ -1,5 +1,9 @@
 import type {
   ConnectionEntry,
+  AppNotification,
+  NotificationSettings,
+  PushClaim,
+  PushDevice,
   ConversationDetail,
   ConversationSummary,
   Message,
@@ -281,6 +285,35 @@ export interface DataRepository {
     unblock(userId: string, otherId: string): Promise<void>;
     /** People the viewer blocked. */
     blocked(userId: string): Promise<ProfileSummary[]>;
+  };
+  /**
+   * Notifications (0021_notifications.sql). Rows are written by database
+   * triggers (or, in demo mode, the repository) when someone acts; people
+   * only read, mark read and configure their own. The last four methods are
+   * service-level, for the cron route: in Supabase mode they need a
+   * repository built on the service-role client.
+   */
+  notifications: {
+    /** Most recently updated first, in cursor pages. */
+    list(userId: string, opts?: PageRequest): Promise<Page<AppNotification>>;
+    unreadCount(userId: string): Promise<number>;
+    /** Marks the given notifications (or all) read; returns how many changed. */
+    markRead(userId: string, ids?: string[] | null): Promise<number>;
+    settings(userId: string): Promise<NotificationSettings>;
+    updateSettings(userId: string, settings: NotificationSettings): Promise<void>;
+    /** A device opting in to push (an endpoint moves to its latest user; at most 10 each). */
+    addDevice(userId: string, device: PushDevice): Promise<void>;
+    removeDevice(userId: string, endpoint: string): Promise<void>;
+    deviceCount(userId: string): Promise<number>;
+    tripPlanReady(userId: string, title: string): Promise<void>;
+    /** Service: event reminders due at `now`; returns how many were created. Idempotent. */
+    scheduleReminders(now: string): Promise<number>;
+    /** Service: claims pending pushes (marked sent before returning, so a retry never resends). */
+    claimPushes(now: string, limit?: number): Promise<PushClaim[]>;
+    /** Service: forgets a device the push service says is gone. */
+    dropDevice(endpoint: string): Promise<void>;
+    /** Service: retention. */
+    purge(now: string): Promise<number>;
   };
   /** Limits on actions that write no row of their own (an AI plan). */
   limits: {

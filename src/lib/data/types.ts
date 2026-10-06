@@ -637,6 +637,68 @@ export interface Message {
   createdAt: string;
 }
 
+// ----------------------------------------------------------------------------
+// Notifications
+// ----------------------------------------------------------------------------
+export type NotificationType =
+  | "new_follower"
+  | "event_joined"
+  | "event_tomorrow"
+  | "event_soon"
+  | "event_changed"
+  | "event_cancelled"
+  | "new_message"
+  | "place_saved"
+  | "place_rated"
+  | "report_resolved"
+  | "content_moderated"
+  | "trip_plan_ready";
+
+export interface AppNotification {
+  id: string;
+  type: NotificationType;
+  /** Who did it; null for saves (private), scheduled reminders and moderation. */
+  actor: ProfileSummary | null;
+  subjectType: "profile" | "event" | "place" | "conversation" | "report" | "message" | "plan" | null;
+  subjectId: string | null;
+  label: string | null;
+  detail: string | null;
+  /** How many events this one stands for (batched). */
+  count: number;
+  createdAt: string;
+  updatedAt: string;
+  readAt: string | null;
+}
+
+export interface NotificationSettings {
+  mutedTypes: NotificationType[];
+  pushTypes: NotificationType[];
+  /** Local hours (0-23); pushes wait while quiet. Both null when off. */
+  quietStart: number | null;
+  quietEnd: number | null;
+  timeZone: string;
+}
+
+export interface PushDevice {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+}
+
+/** A push the scheduler claimed: already marked sent, with the devices to send it to. */
+export interface PushClaim {
+  notificationId: string;
+  userId: string;
+  type: NotificationType;
+  actorUsername: string | null;
+  subjectType: AppNotification["subjectType"];
+  subjectId: string | null;
+  label: string | null;
+  detail: string | null;
+  count: number;
+  devices: PushDevice[];
+}
+
 export class DataError extends Error {
   constructor(
     message: string,

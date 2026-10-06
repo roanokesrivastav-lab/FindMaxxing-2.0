@@ -10,6 +10,7 @@ import { MESSAGE_PAGE_SIZE, directKey, messagingError, normalizeMessageBody } fr
 import type { RateLimitAction } from "@/lib/rateLimits";
 import { newId } from "@/lib/utils/ids";
 import type { ConversationRow, DemoState, EventRow, MessageRow } from "./store";
+import { notifyOn } from "./notifications";
 
 const compareIds = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -192,6 +193,7 @@ export function createDemoMessaging(state: DemoState, h: MessagingHelpers): Data
       state.messages.push(row);
       chat.lastMessageAt = row.createdAt;
       counted();
+      notifyOn.message(state, conversationId, userId);
       h.persist();
       return toMessage(row);
     },
@@ -199,6 +201,7 @@ export function createDemoMessaging(state: DemoState, h: MessagingHelpers): Data
       const me = membership(conversationId, userId);
       if (!me) return;
       me.lastReadAt = new Date().toISOString();
+      notifyOn.conversationRead(state, userId, conversationId);
       h.persist();
     },
     async block(userId, otherId) {

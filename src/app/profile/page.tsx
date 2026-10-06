@@ -47,6 +47,7 @@ export default async function MyProfilePage() {
   ]);
   const suspended = await repo.admin.isSuspended(viewer.id);
   const unread = featureEnabled("messaging") ? await repo.messaging.unreadTotal(viewer.id) : null;
+  const notificationsUnread = featureEnabled("notifications") ? await repo.notifications.unreadCount(viewer.id) : null;
   return (
     <ProfileView
       profile={viewer.profile}
@@ -60,6 +61,7 @@ export default async function MyProfilePage() {
       showLevel={featureEnabled("reputation")}
       suspended={suspended}
       messaging={unread === null ? null : { unread }}
+      notificationsUnread={notificationsUnread}
     />
   );
 }

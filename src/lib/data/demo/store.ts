@@ -25,7 +25,7 @@ import {
   seedPlaceByName,
   seedUserByName,
 } from "@/lib/seed/seed-data";
-import type { EventStatus, ModerationLogAction, PlaceStatus, ReportReason, ReportStatus, ReportTargetType, ReputationLevel, Visibility } from "../types";
+import type { AppNotification, EventStatus, ModerationLogAction, NotificationSettings, NotificationType, PlaceStatus, ReportReason, ReportStatus, ReportTargetType, ReputationLevel, Visibility } from "../types";
 import { refreshDemoReputation } from "./reputation";
 import { syncAllEventChats } from "./messaging";
 import { CATEGORIES, INTERESTS } from "../taxonomy";
@@ -185,6 +185,29 @@ export interface DemoState {
   conversationMembers: { conversationId: string; userId: string; joinedAt: string; lastReadAt: string | null }[];
   messages: MessageRow[];
   blocks: { blockerId: string; blockedId: string; createdAt: string }[];
+  /** Mirrors 0021_notifications.sql (see ./notifications). */
+  notifications: NotificationRow[];
+  notificationSettings: ({ userId: string; updatedAt: string } & NotificationSettings)[];
+  pushSubscriptions: { id: string; userId: string; endpoint: string; p256dh: string; auth: string; createdAt: string }[];
+  pushLog: { userId: string; notificationId: string; sentAt: string }[];
+}
+
+export interface NotificationRow {
+  id: string;
+  userId: string;
+  type: NotificationType;
+  actorId: string | null;
+  subjectType: AppNotification["subjectType"];
+  subjectId: string | null;
+  label: string | null;
+  detail: string | null;
+  count: number;
+  batchKey: string | null;
+  dedupeKey: string | null;
+  pushState: "none" | "pending" | "sent" | "skipped" | "capped";
+  createdAt: string;
+  updatedAt: string;
+  readAt: string | null;
 }
 
 export interface ConversationRow {
@@ -231,7 +254,7 @@ export interface SavedListRow {
   updatedAt: string;
 }
 
-export const STATE_VERSION = 9;
+export const STATE_VERSION = 10;
 const DATA_DIR = path.join(process.cwd(), ".data");
 const STATE_FILE = path.join(DATA_DIR, "demo-store.json");
 
@@ -249,6 +272,7 @@ const COLLECTIONS = [
   "placeRatings", "savedPlaces", "savedLists", "savedListItems", "events", "eventTags", "eventAttendees", "follows", "reports",
   "moderators", "moderationActions", "localRevocations", "rateLimits", "admins", "analyticsEvents", "reputationResets", "suspensions", "taxonomy",
   "conversations", "conversationMembers", "messages", "blocks",
+  "notifications", "notificationSettings", "pushSubscriptions", "pushLog",
 ] as const;
 
 const LEGACY_PLACE_UPLOAD = /^\/api\/uploads\/(places-[^/]+)$/;
@@ -333,6 +357,13 @@ const MIGRATIONS: Record<number, (state: LooseState) => void> = {
     state.blocks ??= [];
     syncAllEventChats(state as unknown as DemoState);
   },
+  // v9 → v10: notifications. Nothing to tell anyone about yet.
+  9(state) {
+    state.notifications ??= [];
+    state.notificationSettings ??= [];
+    state.pushSubscriptions ??= [];
+    state.pushLog ??= [];
+  },
 };
 
 export type MigrationResult =
@@ -406,6 +437,10 @@ export function buildSeedState(now = new Date()): DemoState {
     conversationMembers: [],
     messages: [],
     blocks: [],
+    notifications: [],
+    notificationSettings: [],
+    pushSubscriptions: [],
+    pushLog: [],
   };
 
   SEED_USERS.forEach((u, i) => {

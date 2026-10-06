@@ -300,6 +300,7 @@ does not use up the allowance. Sessions without a user (seeds, SQL, the service 
 | Avatar uploads | 20 an hour | the Storage insert policy |
 | AI trip plans | 10 a day | `check_rate_limit('trip_plans')`, called before Claude is |
 | Messages | 60 an hour | trigger on `messages` |
+| Pushes received | 5 a day per person | `claim_push_batch()`; the rest stay in-app |
 | Sign-ups | 5 an hour per IP | the sign-up server action |
 
 The numbers live in one table, `rate_limit_rules`, mirrored by `RATE_LIMITS` in
@@ -715,9 +716,65 @@ store (conversations, unread counts, previews and the can-message matrix for eve
 users, and account deletion), through the actions and the route, and in a two-browser demo run.
 Realtime itself has not run against a real Supabase project (owner checklist).
 
+## Notifications
+
+Behind the `notifications` flag (in-app) and the `push` flag (web push, which also needs
+`VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`). Everything is in `0021_notifications.sql`.
+
+**What notifies whom.** Database triggers write a notification when a signed-in person acts, so
+seeds, the service role and account-deletion cascades are silent, and nobody is notified of their own
+action or about someone they blocked:
+
+| Type | Who hears | Batched |
+| --- | --- | --- |
+| New follower | the person followed (once per follower, ever) | |
+| Someone joined your event | the host | per event |
+| Event tomorrow / starting within the hour | everyone going (scheduled) | once each per event |
+| Event changed time or place / cancelled | everyone going, except the host | per event / once |
+| New message | the other members (never the text) | per conversation |
+| Your place was saved | its creator (never who: saves are private) | per place |
+| Your place was rated | its creator | per place |
+| Report reviewed | the reporter (never by whom) | |
+| Moderators removed or restored your content | its owner | |
+| Trip plan ready | the planner | one at a time |
+
+Batching means an unread notification absorbs the next one of the same kind ("Maya and 2 others
+joined Sunday pickup soccer"); once read, the next starts a new one. Reading a conversation also reads
+its message notification. Rows are owner-only (RLS); clients cannot insert them and can change only
+`read_at`.
+
+**In the app:** a Notifications entry with an unread count in the side rail (on a phone the count
+sits on the Profile tab), and `/notifications`, which marks what it shows as read. Per-type choices
+("in app" and "push") and quiet hours are in Settings.
+
+**Web push.** `public/sw.js` shows pushes and opens the right page on click. Each device opts in
+from Settings (`save_push_subscription`; an endpoint belongs to whoever signed in on it last, and
+there are at most 10 per person). Payloads carry the one-line text and a link, never message text.
+
+**Scheduling.** `/api/cron/notifications` runs every 15 minutes (`vercel.json`; sub-daily crons need
+a Vercel Pro plan, as does the hourly reputation job) with `Authorization: Bearer $CRON_SECRET`. It:
+
+1. creates event reminders (`schedule_event_reminders`, deduplicated, so reruns add nothing);
+2. claims pending pushes with `claim_push_batch`, which decides each one once under a row lock:
+   push off for that type, no device, or more than a day old → skipped; inside the person's quiet
+   hours (in their time zone) → left pending; already 5 pushes in the last 24 hours → capped (it stays
+   in the app); otherwise marked sent *before* returning it;
+3. sends each claimed push to each of the person's devices with `web-push`, and forgets devices the
+   push service reports gone (404/410).
+
+Because claims are marked before sending, a crashed or retried run can miss a push but never sends one
+twice. Without VAPID keys nothing is claimed and pushes wait. Once a day the run also applies
+retention: read notifications go after 90 days, all after 180, the push log after 2.
+
+Tested in PGlite under RLS (privacy, each trigger, batching and dedupe, blocks and mutes, reminders,
+every branch of the claim, device handling, retention), for parity with the demo store (the same
+notifications, unread counts, reminders and claims), through the pipeline with a mocked push sender,
+the cron route and the actions, and in the browser in demo mode. No push has been delivered through a
+real push service (owner checklist).
+
 ## Data model
 
-`profiles` · `profile_interests` · `interests` · `categories` · `places` · `place_tags` · `place_photos` · `place_ratings` · `saved_places` · `saved_lists` · `saved_list_items` · `events` · `event_tags` · `event_attendees` · `follows` · `reports` · `moderators` · `moderation_actions` · `local_revocations` · `rate_limit_rules` · `rate_limit_counters` · `conversations` · `conversation_members` · `messages` · `blocks`
+`profiles` · `profile_interests` · `interests` · `categories` · `places` · `place_tags` · `place_photos` · `place_ratings` · `saved_places` · `saved_lists` · `saved_list_items` · `events` · `event_tags` · `event_attendees` · `follows` · `reports` · `moderators` · `moderation_actions` · `local_revocations` · `rate_limit_rules` · `rate_limit_counters` · `conversations` · `conversation_members` · `messages` · `blocks` · `notifications` · `notification_settings` · `push_subscriptions` · `push_log`
 
 Plus two views for the report read paths: `reports_i_filed` and `reports_about_my_stuff`.
 
@@ -784,6 +841,6 @@ Alternatives considered and deferred:
 
 ## Intentionally deferred
 
-Push notifications, payments, ads, native apps and production deployment, until their sessions
-land; analytics, reputation, the admin dashboard, recommendations, trip planning and messaging are
+Payments, ads, native apps and production deployment, until their sessions land; analytics,
+reputation, the admin dashboard, recommendations, trip planning, messaging and notifications are
 built and sit behind [feature flags](#feature-flags-part-b).

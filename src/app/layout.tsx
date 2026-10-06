@@ -49,8 +49,12 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const viewer = await getViewer();
   // Flag-gated rail entries. A failed unread count never breaks the page.
   const messaging = !!viewer && featureEnabled("messaging");
-  const unread = messaging ? await getRepository().then((r) => r.messaging.unreadTotal(viewer.id)).catch(() => 0) : null;
-  const extras = { plan: !!viewer && featureEnabled("tripPlanning"), unread };
+  const notificationsOn = !!viewer && featureEnabled("notifications");
+  const [unread, notifications] = await Promise.all([
+    messaging ? getRepository().then((r) => r.messaging.unreadTotal(viewer.id)).catch(() => 0) : null,
+    notificationsOn ? getRepository().then((r) => r.notifications.unreadCount(viewer.id)).catch(() => 0) : null,
+  ]);
+  const extras = { plan: !!viewer && featureEnabled("tripPlanning"), unread, notifications };
   return (
     <html lang="en" className={`${figtree.variable} ${bricolage.variable} h-full`}>
       <body className="min-h-full flex flex-col">

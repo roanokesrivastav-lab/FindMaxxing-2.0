@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { MessageCircle, Plus, Route, Sparkles } from "lucide-react";
+import { Bell, MessageCircle, Plus, Route, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { BROWSE_ITEMS, NAV_ITEMS } from "./nav-items";
 import { Logo } from "./Logo";
@@ -15,6 +15,7 @@ export function SideRail({ viewer, dataMode, extras }: { viewer: ShellViewer | n
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const browse = [
+    ...(extras.notifications !== null && extras.notifications !== undefined ? [{ href: "/notifications", label: "Notifications", icon: Bell, match: (p: string) => p.startsWith("/notifications"), badge: extras.notifications }] : []),
     ...(extras.unread !== null ? [{ href: "/messages", label: "Messages", icon: MessageCircle, match: (p: string) => p.startsWith("/messages"), badge: extras.unread }] : []),
     ...(extras.plan ? [{ href: "/plan", label: "Plan my day", icon: Route, match: (p: string) => p === "/plan", badge: 0 }] : []),
     ...BROWSE_ITEMS.map((item) => ({ ...item, badge: 0 })),

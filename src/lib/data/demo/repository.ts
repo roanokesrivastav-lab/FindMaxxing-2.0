@@ -26,6 +26,7 @@ import { createHash } from "node:crypto";
 import { LEVEL_RANK, refreshDemoReputation } from "./reputation";
 import { recommendDemoEvents, recommendDemoPlaces } from "./recommend";
 import { createDemoMessaging, dropEventChats, joinEventChat, leaveEventChat } from "./messaging";
+import { createDemoNotifications, notifyOn } from "./notifications";
 import { LIST_LIMIT_ERROR, MAX_SAVED_LISTS, duplicateListName, listNameKey, normalizeListName } from "../savedLists";
 import { newId } from "@/lib/utils/ids";
 import { neighborhoodKey } from "@/lib/utils/neighborhoods";
@@ -667,6 +668,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         // Unique (user_id, place_id): idempotent.
         if (state.savedPlaces.some((s) => s.userId === userId && s.placeId === placeId)) return;
         state.savedPlaces.push({ userId, placeId, createdAt: new Date().toISOString() });
+        notifyOn.save(state, placeId, userId);
         persist();
       },
       async unsave(userId, placeId) {
@@ -695,6 +697,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           existing.updatedAt = now;
         } else {
           state.placeRatings.push({ id: newId(), placeId, userId, score, note, createdAt: now, updatedAt: now });
+          notifyOn.rate(state, placeId, userId);
         }
         recomputeRating(state, placeId);
         counted();
@@ -805,6 +808,9 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         if (input.capacity !== null && input.capacity !== undefined && input.capacity < attendeeCount) {
           throw new DataError("capacity cannot be below the existing attendee count", "invalid");
         }
+        // Mirrors the trigger's "when or where changed" test (instants, not their spelling).
+        const where = (e: EventRow) => JSON.stringify([Date.parse(e.startsAt), e.endsAt ? Date.parse(e.endsAt) : null, e.locationName, e.address, e.lat, e.lng, e.placeId]);
+        const before = where(ev);
         Object.assign(ev, {
           title: input.title,
           description: input.description,
@@ -821,6 +827,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         });
         state.eventTags = state.eventTags.filter((t) => t.eventId !== id);
         for (const tag of input.tags) state.eventTags.push({ eventId: id, interestSlug: tag });
+        if (where(ev) !== before) notifyOn.eventChanged(state, id, creatorId);
         persist();
         return toEvent(state, ev);
       },
@@ -832,6 +839,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         if (ev.status !== "published" || eventEndOrStart(ev) <= Date.now()) throw new DataError("Only future published events can be cancelled", "invalid");
         ev.status = "cancelled";
         ev.updatedAt = new Date().toISOString();
+        notifyOn.eventCancelled(state, id, creatorId);
         persist();
       },
       async delete(id, creatorId) {
@@ -858,6 +866,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         if (ev.capacity !== null && count >= ev.capacity) throw new DataError("This event is full", "full");
         state.eventAttendees.push({ eventId, userId, createdAt: new Date().toISOString() });
         joinEventChat(state, eventId, userId);
+        notifyOn.join(state, eventId, userId);
         persist();
       },
       async leave(userId, eventId) {
@@ -963,6 +972,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         // The bookmark first: an item is always one of the owner's saved places.
         if (!state.savedPlaces.some((s) => s.userId === ownerId && s.placeId === placeId)) {
           state.savedPlaces.push({ userId: ownerId, placeId, createdAt: now });
+          notifyOn.save(state, placeId, ownerId);
         }
         if (!state.savedListItems.some((i) => i.listId === listId && i.placeId === placeId)) {
           state.savedListItems.push({ listId, ownerId, placeId, createdAt: now });
@@ -1042,6 +1052,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         requireProfile(followingId);
         if (await repo.profiles.isFollowing(followerId, followingId)) return;
         state.follows.push({ followerId, followingId, createdAt: new Date().toISOString() });
+        notifyOn.follow(state, followerId, followingId);
         persist();
       },
       async unfollow(followerId, followingId) {
@@ -1285,6 +1296,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         for (const r of open) {
           r.status = reportStatus;
           r.resolvedAt = now;
+          notifyOn.reportResolved(state, r.id, r.reporterId, reportStatus);
         }
         if (content && after !== before) {
           content.status = after as typeof content.status;
@@ -1295,6 +1307,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           id: newId(), moderatorId, action, targetType, targetId, reason: why,
           statusBefore: before, statusAfter: after, resolvedReports: open.length, createdAt: now,
         });
+        notifyOn.moderated(state, targetType, targetId, action);
         persist();
         return { statusAfter: after, resolvedReports: open.length };
       },
@@ -1507,6 +1520,8 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         persist();
       },
     },
+
+    notifications: createDemoNotifications(state, { persist, summary: (id) => profileOf(state, id) }),
 
     messaging: createDemoMessaging(state, {
       persist,

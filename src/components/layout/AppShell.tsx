@@ -11,10 +11,11 @@ export interface ShellViewer {
   avatarUrl: string | null;
 }
 
-/** Rail entries behind feature flags: the trip planner, and messages with the unread count (null when off). */
+/** Entries behind feature flags: the trip planner, and messages and notifications with unread counts (null when off). */
 export interface ShellExtras {
   plan: boolean;
   unread: number | null;
+  notifications?: number | null;
 }
 
 export function AppShell({ viewer, dataMode, extras = { plan: false, unread: null }, children }: { viewer: Viewer | null; dataMode: DataMode; extras?: ShellExtras; children: ReactNode }) {
@@ -32,7 +33,7 @@ export function AppShell({ viewer, dataMode, extras = { plan: false, unread: nul
       <div className="flex-1 min-w-0 flex flex-col">
         <main className="flex-1 min-w-0">{children}</main>
       </div>
-      <BottomNav viewer={shellViewer} />
+      <BottomNav viewer={shellViewer} badge={(extras.unread ?? 0) + (extras.notifications ?? 0)} />
     </div>
   );
 }

@@ -47,8 +47,10 @@ export async function POST(req: Request) {
     async start(controller) {
       const send = (e: PlanEvent) => controller.enqueue(encoder.encode(`${JSON.stringify(e)}\n`));
       send({ type: "status", text: "Starting" });
-      await planTrip(repo, viewer.id, parsed.data, send);
+      const plan = await planTrip(repo, viewer.id, parsed.data, send);
       controller.close();
+      // In case they left the page while it worked (best effort).
+      if (plan && featureEnabled("notifications")) await repo.notifications.tripPlanReady(viewer.id, plan.title).catch(() => {});
     },
   });
   return new Response(body, { headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" } });

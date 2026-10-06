@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { LevelBadge } from "./LevelBadge";
-import { Flag, MapPin, MessageCircle, Pencil, Settings, ShieldAlert, ShieldCheck } from "lucide-react";
+import { Bell, Flag, MapPin, MessageCircle, Pencil, Settings, ShieldAlert, ShieldCheck } from "lucide-react";
 import type { Profile, ProfileStats, RemovedContent, UserActivity } from "@/lib/data/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { getInterest } from "@/lib/data/taxonomy";
@@ -23,6 +23,7 @@ export function ProfileView({
   showLevel = false,
   suspended = false,
   messaging = null,
+  notificationsUnread = null,
 }: {
   profile: Profile;
   stats: ProfileStats;
@@ -43,6 +44,8 @@ export function ProfileView({
    * on their own, their unread count.
    */
   messaging?: { canMessage: boolean; blocked: boolean; unread?: never } | { unread: number; canMessage?: never; blocked?: never } | null;
+  /** Self view, behind the notifications flag. */
+  notificationsUnread?: number | null;
 }) {
   return (
     <div className="max-w-2xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-nav md:pb-10">
@@ -161,6 +164,12 @@ export function ProfileView({
       {isSelf ? (
         <div className="mt-8 flex flex-col items-center gap-3">
           <div className="flex flex-wrap justify-center gap-2">
+            {notificationsUnread !== null ? (
+              <Link href="/notifications" className="chip">
+                <Bell size={14} />
+                Notifications{notificationsUnread ? ` (${notificationsUnread})` : ""}
+              </Link>
+            ) : null}
             {messaging && messaging.unread !== undefined ? (
               <Link href="/messages" className="chip">
                 <MessageCircle size={14} />

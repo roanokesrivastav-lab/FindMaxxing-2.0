@@ -28,7 +28,11 @@ import {
   type ConversationMember,
   type ConversationSummary,
   type Message,
+  type AppNotification,
+  type NotificationSettings,
+  type PushClaim,
 } from "../types";
+import { DEFAULT_NOTIFICATION_SETTINGS } from "@/lib/notifications";
 import { MESSAGE_PAGE_SIZE, messagingError, normalizeMessageBody, parseMessagingMessage } from "../messaging";
 import { parseRateLimitMessage } from "@/lib/rateLimits";
 import { compareModerationReports, parseModerationMessage } from "../moderation";
@@ -313,6 +317,60 @@ async function readReports(supabase: SupabaseClient, view: "reports_i_filed" | "
     resolvedAt: r.resolved_at ?? null,
     targetLabel: labels.get(r.target_id) ?? null,
   }));
+}
+
+interface NotificationRpcRow {
+  id: string;
+  type: AppNotification["type"];
+  actor_id: string | null;
+  actor_username: string | null;
+  actor_display_name: string | null;
+  actor_avatar_url: string | null;
+  subject_type: AppNotification["subjectType"];
+  subject_id: string | null;
+  label: string | null;
+  detail: string | null;
+  count: number;
+  created_at: string;
+  updated_at: string;
+  read_at: string | null;
+}
+
+function mapNotification(r: NotificationRpcRow): AppNotification {
+  return {
+    id: r.id,
+    type: r.type,
+    actor: r.actor_id && r.actor_username ? { id: r.actor_id, username: r.actor_username, displayName: r.actor_display_name ?? r.actor_username, avatarUrl: r.actor_avatar_url } : null,
+    subjectType: r.subject_type,
+    subjectId: r.subject_id,
+    label: r.label,
+    detail: r.detail,
+    count: Number(r.count),
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    readAt: r.read_at,
+  };
+}
+
+interface SettingsRow {
+  muted_types: NotificationSettings["mutedTypes"];
+  push_types: NotificationSettings["pushTypes"];
+  quiet_start: number | null;
+  quiet_end: number | null;
+  time_zone: string;
+}
+
+interface PushClaimRow {
+  notification_id: string;
+  user_id: string;
+  type: PushClaim["type"];
+  actor_username: string | null;
+  subject_type: PushClaim["subjectType"];
+  subject_id: string | null;
+  label: string | null;
+  detail: string | null;
+  count: number;
+  devices: PushClaim["devices"];
 }
 
 interface ConversationRpcRow {
@@ -1267,6 +1325,67 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
         const out = { community: 0, seed: 0 };
         for (const r of rows) out[r.source] = r.saves;
         return out;
+      },
+    },
+
+    notifications: {
+      async list(_userId, opts = {}) {
+        const limit = clampLimit(opts.limit, 30, 100);
+        const before = decodeCursor(opts.cursor);
+        const rows = unwrap(await supabase.rpc("my_notifications", {
+          p_before_at: before?.key ?? null, p_before_id: before?.id ?? null, p_limit: limit + 1,
+        })) as NotificationRpcRow[];
+        return toPage(rows, limit, mapNotification, (r) => ({ key: r.updated_at, id: r.id }));
+      },
+      async unreadCount(userId) {
+        const res = await supabase.from("notifications").select("id", { count: "exact", head: true }).eq("user_id", userId).is("read_at", null);
+        if (res.error) throw translate(res.error);
+        return res.count ?? 0;
+      },
+      async markRead(_userId, ids = null) {
+        return Number(unwrap(await supabase.rpc("mark_notifications_read", { p_ids: ids })) ?? 0);
+      },
+      async settings(userId) {
+        const row = unwrap(await supabase.from("notification_settings").select("*").eq("user_id", userId).maybeSingle()) as SettingsRow | null;
+        return row ? { mutedTypes: row.muted_types, pushTypes: row.push_types, quietStart: row.quiet_start, quietEnd: row.quiet_end, timeZone: row.time_zone } as NotificationSettings : { ...DEFAULT_NOTIFICATION_SETTINGS };
+      },
+      async updateSettings(userId, input) {
+        const res = await supabase.from("notification_settings").upsert({
+          user_id: userId, muted_types: input.mutedTypes, push_types: input.pushTypes,
+          quiet_start: input.quietStart, quiet_end: input.quietEnd, time_zone: input.timeZone,
+        });
+        if (res.error?.code === "22023") throw new DataError("Unknown time zone", "invalid"); // invalid_parameter_value
+        if (res.error) throw translate(res.error);
+      },
+      async addDevice(_userId, device) {
+        unwrap(await supabase.rpc("save_push_subscription", { p_endpoint: device.endpoint, p_p256dh: device.p256dh, p_auth: device.auth }));
+      },
+      async removeDevice(userId, endpoint) {
+        unwrap(await supabase.from("push_subscriptions").delete().eq("user_id", userId).eq("endpoint", endpoint));
+      },
+      async deviceCount(userId) {
+        const res = await supabase.from("push_subscriptions").select("id", { count: "exact", head: true }).eq("user_id", userId);
+        if (res.error) throw translate(res.error);
+        return res.count ?? 0;
+      },
+      async tripPlanReady(_userId, title) {
+        unwrap(await supabase.rpc("notify_trip_plan_ready", { p_title: title }));
+      },
+      async scheduleReminders(now) {
+        return Number(unwrap(await supabase.rpc("schedule_event_reminders", { p_now: now })) ?? 0);
+      },
+      async claimPushes(now, limit = 100) {
+        const rows = unwrap(await supabase.rpc("claim_push_batch", { p_now: now, p_limit: limit })) as PushClaimRow[];
+        return rows.map((r): PushClaim => ({
+          notificationId: r.notification_id, userId: r.user_id, type: r.type, actorUsername: r.actor_username,
+          subjectType: r.subject_type, subjectId: r.subject_id, label: r.label, detail: r.detail, count: r.count, devices: r.devices,
+        }));
+      },
+      async dropDevice(endpoint) {
+        unwrap(await supabase.rpc("drop_push_subscription", { p_endpoint: endpoint }));
+      },
+      async purge(now) {
+        return Number(unwrap(await supabase.rpc("purge_notifications", { p_now: now })) ?? 0);
       },
     },
 

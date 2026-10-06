@@ -51,6 +51,12 @@ export function deleteDemoAccount(handle: StoreHandle, userId: string): DeletedO
   state.events = state.events.filter((e) => !ownEvents.has(e.id));
   dropEventChats(state, ownEvents);
   deleteMessagingFor(state, userId);
+  // Their notifications, settings and devices go; they stop being anyone's actor.
+  state.notifications = state.notifications.filter((n) => n.userId !== userId);
+  for (const n of state.notifications) if (n.actorId === userId) n.actorId = null;
+  state.notificationSettings = state.notificationSettings.filter((s) => s.userId !== userId);
+  state.pushSubscriptions = state.pushSubscriptions.filter((d) => d.userId !== userId);
+  state.pushLog = state.pushLog.filter((l) => l.userId !== userId);
   state.eventTags = state.eventTags.filter((t) => !ownEvents.has(t.eventId));
   state.eventAttendees = state.eventAttendees.filter((a) => a.userId !== userId && !ownEvents.has(a.eventId));
   for (const event of state.events) if (event.placeId && ownPlaces.has(event.placeId)) event.placeId = null;
