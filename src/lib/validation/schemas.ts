@@ -207,6 +207,21 @@ export const signUpSchema = z.object({
   displayName: trimmed(2, 50, "Display name"),
 });
 
+export const passwordResetRequestSchema = z.object({
+  email: z.string().trim().toLowerCase().email("Enter a valid email"),
+});
+
+export const newPasswordSchema = z
+  .object({
+    password: z.string().min(8, "Password must be at least 8 characters").max(72),
+    confirm: z.string(),
+  })
+  .refine((v) => v.password === v.confirm, { message: "The passwords don't match", path: ["confirm"] });
+
+export const deleteAccountSchema = z.object({
+  password: z.string().min(1, "Enter your password"),
+});
+
 export const signInSchema = z.object({
   email: z.string().trim().toLowerCase().email("Enter a valid email"),
   password: z.string().min(1, "Enter your password"),
@@ -266,6 +281,19 @@ export const discoveryQuerySchema = z.object({
   cursor: z.string().max(512).optional().transform((v) => v || null),
   includePast: z.enum(["0", "1", "true", "false"]).optional().transform((v) => v === "1" || v === "true"),
   kind: z.enum(["all", "places", "events"]).default("all"),
+  // lat,lng: list places nearest this point first.
+  near: z
+    .string()
+    .optional()
+    .transform((v, ctx) => {
+      if (!v) return null;
+      const [lat, lng] = v.split(",").map(Number);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+        ctx.addIssue({ code: "custom", message: "near must be lat,lng" });
+        return z.NEVER;
+      }
+      return { lat, lng };
+    }),
 });
 export type DiscoveryQuery = z.output<typeof discoveryQuerySchema>;
 

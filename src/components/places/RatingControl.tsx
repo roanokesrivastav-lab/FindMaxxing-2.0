@@ -127,7 +127,7 @@ export function RatingControl({
                   setNote(savedNote);
                   setNoteOpen(true);
                 }}
-                className="text-xs font-semibold text-flare-600 shrink-0"
+                className="text-xs font-semibold text-flare-ink shrink-0"
               >
                 Edit note
               </button>
@@ -163,7 +163,7 @@ export function RatingControl({
               </div>
             </div>
           ) : (
-            <button type="button" onClick={() => setNoteOpen(true)} className="text-sm font-semibold text-flare-600">
+            <button type="button" onClick={() => setNoteOpen(true)} className="text-sm font-semibold text-flare-ink">
               + Add a note
             </button>
           )}

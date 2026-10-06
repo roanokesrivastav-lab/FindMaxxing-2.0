@@ -34,7 +34,7 @@ export default async function ReportsPage() {
 
       <section className="mb-8">
         <div className="flex items-center gap-2 mb-2">
-          <Inbox size={16} className="text-flare" />
+          <Inbox size={16} className="text-flare-ink" />
           <h2 className="text-lg font-bold">About your listings</h2>
           {openAgainst > 0 ? (
             <span className="rounded-full bg-danger-100 text-danger text-xs font-bold px-2 py-0.5">{openAgainst} open</span>

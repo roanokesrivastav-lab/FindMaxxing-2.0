@@ -5,25 +5,32 @@ import { WifiOff } from "lucide-react";
 import type { MapCanvasHandle, MapCanvasProps } from "./MapCanvas";
 import { mapProvider } from "@/lib/map/config";
 import { cn } from "@/lib/utils/cn";
+import { reportClientError } from "@/lib/observability/client";
 
 /**
  * Picks the map provider at build time from NEXT_PUBLIC_MAPBOX_TOKEN and
  * lazy-loads only that library on the client. Wraps loading and error states.
  */
+const MapLibre = dynamic(() => import("./MapLibreCanvas"), { ssr: false, loading: () => <MapSkeleton /> });
 const Canvas =
   mapProvider() === "mapbox"
     ? dynamic(() => import("./MapboxCanvas"), { ssr: false, loading: () => <MapSkeleton /> })
-    : dynamic(() => import("./MapLibreCanvas"), { ssr: false, loading: () => <MapSkeleton /> });
+    : MapLibre;
 
 export type MapViewProps = Omit<MapCanvasProps, "lib" | "mapStyle" | "mapboxAccessToken"> & { className?: string };
 
 export const MapView = forwardRef<MapCanvasHandle, MapViewProps>(function MapView({ className, onLoad, onError, ...props }, ref) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A Mapbox map that fails before its first load (a revoked or mistyped
+  // token, a style it cannot fetch) is swapped for MapLibre, which needs no key.
+  const [fellBack, setFellBack] = useState(false);
+  const Active = fellBack ? MapLibre : Canvas;
 
   return (
     <div className={cn("relative h-full w-full bg-paper-2 overflow-hidden", className)}>
-      <Canvas
+      <Active
+        key={fellBack ? "maplibre" : "primary"}
         ref={ref}
         {...props}
         onLoad={() => {
@@ -31,6 +38,11 @@ export const MapView = forwardRef<MapCanvasHandle, MapViewProps>(function MapVie
           onLoad?.();
         }}
         onError={(msg) => {
+          if (Canvas !== MapLibre && !fellBack && !loaded) {
+            reportClientError(Object.assign(new Error(`Mapbox failed, using MapLibre: ${msg}`), { name: "MapFallback" }));
+            setFellBack(true);
+            return;
+          }
           setError(msg);
           onError?.(msg);
         }}

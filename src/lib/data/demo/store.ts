@@ -43,6 +43,7 @@ export interface ProfileRow {
   bio: string | null;
   homeCity: string | null;
   homeCityChangedAt: string | null;
+  onboardedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -103,7 +104,8 @@ export interface EventRow {
 }
 export interface ReportRow {
   id: string;
-  reporterId: string;
+  /** Null once the reporter deletes their account: the report stays, anonymized. */
+  reporterId: string | null;
   targetType: ReportTargetType;
   targetId: string;
   reason: ReportReason;
@@ -165,7 +167,7 @@ export interface SavedListRow {
   updatedAt: string;
 }
 
-export const STATE_VERSION = 4;
+export const STATE_VERSION = 5;
 const DATA_DIR = path.join(process.cwd(), ".data");
 const STATE_FILE = path.join(DATA_DIR, "demo-store.json");
 
@@ -225,6 +227,11 @@ const MIGRATIONS: Record<number, (state: LooseState) => void> = {
     state.rateLimits ??= [];
     for (const report of state.reports as Partial<ReportRow>[]) report.resolvedAt ??= null;
     for (const profile of state.profiles as Partial<ProfileRow>[]) profile.homeCityChangedAt ??= null;
+  },
+  // v4 → v5: first-run onboarding. Everyone who already has an account counts
+  // as onboarded, as in the SQL migration, so nobody is sent back through it.
+  4(state) {
+    for (const profile of state.profiles as Partial<ProfileRow>[]) profile.onboardedAt ??= profile.createdAt ?? new Date().toISOString();
   },
 };
 
@@ -301,6 +308,7 @@ export function buildSeedState(now = new Date()): DemoState {
       bio: u.bio,
       homeCity: u.homeCity,
       homeCityChangedAt: null,
+      onboardedAt: created,
       createdAt: created,
       updatedAt: created,
     });
@@ -513,7 +521,8 @@ export function loadStateFile(file: string): { state: DemoState; migratedFrom: n
 function createHandle(initial?: DemoState): StoreHandle {
   // A missing file seeds; an unusable one throws and takes startup down —
   // it is user data, never silently replaced (see loadStateFile).
-  const loaded = initial ? null : loadStateFile(STATE_FILE);
+  // FINDMAXXING_DEMO_FRESH=1 starts from the seed whatever is on disk (scripted runs).
+  const loaded = initial || process.env.FINDMAXXING_DEMO_FRESH === "1" ? null : loadStateFile(STATE_FILE);
   const state = initial ?? loaded?.state ?? buildSeedState();
   let timer: NodeJS.Timeout | null = null;
   const handle: StoreHandle = {

@@ -35,7 +35,10 @@ import {
   UPCOMING_GRACE_MS,
   clampLimit,
   decodeCursor,
+  decodeDistanceCursor,
+  encodeDistanceCursor,
   normalizeFilters,
+  validateNear,
   normalizeTimestamp,
   toPage,
   type NormalizedFilters,
@@ -62,6 +65,7 @@ interface ProfileRow extends ProfileSummaryRow {
   bio: string | null;
   home_city: string | null;
   home_city_changed_at?: string | null;
+  onboarded_at?: string | null;
   created_at: string;
   updated_at: string;
   profile_interests?: { interest_slug: string }[];
@@ -125,6 +129,7 @@ function mapProfile(r: ProfileRow): Profile {
     bio: r.bio,
     homeCity: r.home_city,
     homeCityChangedAt: r.home_city_changed_at ?? null,
+    onboardedAt: r.onboarded_at ?? null,
     interests: (r.profile_interests ?? []).map((i) => i.interest_slug),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -392,6 +397,34 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
       async search(opts = {}) {
         const filters = normalizeFilters(opts);
         const limit = clampLimit(opts.limit, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
+        const near = validateNear(opts.near);
+        if (near) {
+          // Ids in distance order (RLS applies inside), then the full rows by id.
+          const afterNear = decodeDistanceCursor(opts.cursor);
+          const ranked = unwrap(
+            await supabase
+              .rpc("discover_places_nearest", {
+                p_lat: near.lat,
+                p_lng: near.lng,
+                ...discoverArgs(filters),
+                p_after_distance: afterNear?.distance ?? null,
+                p_after_id: afterNear?.id ?? null,
+              })
+              .order("distance_m", { ascending: true })
+              .order("id", { ascending: true })
+              .limit(limit + 1),
+          ) as { id: string; distance_m: number }[];
+          const page = ranked.slice(0, limit);
+          const full = page.length
+            ? (unwrap(await supabase.from("places").select(PLACE_SELECT).in("id", page.map((r) => r.id))) as PlaceRow[])
+            : [];
+          const byId = new Map(full.map((r) => [r.id, r]));
+          const last = page.at(-1);
+          return {
+            items: page.map((r) => byId.get(r.id)).filter((r): r is PlaceRow => !!r).map(mapPlace),
+            nextCursor: ranked.length > limit && last ? encodeDistanceCursor(Number(last.distance_m), last.id) : null,
+          };
+        }
         const after = decodeCursor(opts.cursor);
         // RLS applies inside the invoker-rights function; ordering and limit
         // are applied by PostgREST around the inlined query.
@@ -934,6 +967,9 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
         const updated = await repo.profiles.getById(userId);
         if (!updated) throw new DataError("Profile not found", "not_found");
         return updated;
+      },
+      async completeOnboarding(userId) {
+        unwrap(await supabase.from("profiles").update({ onboarded_at: new Date().toISOString() }).eq("id", userId).is("onboarded_at", null));
       },
       async stats(userId) {
         const [places, events, followers, following] = await Promise.all([

@@ -3,9 +3,10 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { getDataMode } from "@/lib/config";
 import { sniffImageType } from "@/lib/data/photos";
+import { UPLOAD_DIR } from "@/lib/data/demo/uploads";
 
 /**
- * Serves public demo-mode uploads (avatars) from .data/uploads.
+ * Serves public demo-mode uploads (avatars) from .data/uploads (or FINDMAXXING_DEMO_UPLOAD_DIR).
  * Place photos are private and go through /api/photos/[id], which checks
  * place visibility. In Supabase mode uploads go to Storage and this route is unused.
  */
@@ -18,7 +19,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/uploads/[name]"
     return new NextResponse("Not found", { status: 404 });
   }
   try {
-    const file = await readFile(path.join(process.cwd(), ".data", "uploads", name));
+    const file = await readFile(path.join(UPLOAD_DIR, name));
     const body = new Uint8Array(file);
     // From the bytes: migrated avatars keep their original name but hold WebP.
     return new NextResponse(body, {

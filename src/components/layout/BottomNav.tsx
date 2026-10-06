@@ -58,7 +58,7 @@ function NavLink({ item, active }: { item: (typeof NAV_ITEMS)[number]; active: b
       className={cn("flex flex-col items-center justify-center gap-1 text-[11px] font-semibold transition-colors", active ? "text-ink" : "text-muted")}
       aria-current={active ? "page" : undefined}
     >
-      <span className={cn("h-7 w-12 rounded-full inline-flex items-center justify-center transition-colors", active && "bg-flare-100 text-flare-600")}>
+      <span className={cn("h-7 w-12 rounded-full inline-flex items-center justify-center transition-colors", active && "bg-flare-100 text-flare-ink")}>
         <Icon size={21} strokeWidth={active ? 2.4 : 2} />
       </span>
       {item.label}

@@ -41,6 +41,8 @@ const { updateProfileAction } = await import("../src/server/actions/profile");
 const { limiters } = await import("../src/server/limiters");
 
 beforeEach(() => {
+  // Sign-up goes through the process-wide demo store; keep it in memory.
+  globalThis.__findmaxxingDemoStore = createIsolatedStore();
   ctx.viewer = sam;
   ctx.repo = createDemoRepository(createIsolatedStore());
   ctx.ip = "203.0.113.7";

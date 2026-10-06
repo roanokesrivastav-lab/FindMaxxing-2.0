@@ -10,7 +10,7 @@ export function CreateMenu({ open, onClose, signedIn }: { open: boolean; onClose
       <p className="text-sm text-muted -mt-1 mb-4">Share what you know. Every contribution helps someone new find their people.</p>
       <div className="flex flex-col gap-3">
         <Link href={withAuth("/places/new")} onClick={onClose} className="card flex items-center gap-4 p-4 hover:bg-surface-2 transition-colors">
-          <span className="h-12 w-12 rounded-2xl bg-flare-100 text-flare-600 inline-flex items-center justify-center">
+          <span className="h-12 w-12 rounded-2xl bg-flare-100 text-flare-ink inline-flex items-center justify-center">
             <MapPinPlus size={24} />
           </span>
           <span className="flex-1">

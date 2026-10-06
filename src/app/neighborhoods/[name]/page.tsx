@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { readableInk } from "@/lib/utils/contrast";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getRepository } from "@/lib/data";
@@ -65,7 +66,7 @@ export default async function NeighborhoodPage({ params }: PageProps<"/neighborh
       </div>
       <PageHeader
         eyebrow={
-          <Link href="/neighborhoods" className="hover:text-flare-600">
+          <Link href="/neighborhoods" className="hover:text-flare-ink">
             Neighborhoods · {group.city}
           </Link>
         }
@@ -87,7 +88,7 @@ export default async function NeighborhoodPage({ params }: PageProps<"/neighborh
             {group.topCategories.slice(0, 5).map((slug) => {
               const c = getCategory(slug);
               return (
-                <span key={slug} className="rounded-full px-2.5 py-1 text-xs font-semibold text-white" style={{ background: c.color }}>
+                <span key={slug} className="rounded-full px-2.5 py-1 text-xs font-semibold text-white" style={{ background: readableInk(c.color) }}>
                   {c.emoji} {c.label}
                 </span>
               );

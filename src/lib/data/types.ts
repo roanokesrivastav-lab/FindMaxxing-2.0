@@ -41,6 +41,8 @@ export interface Profile extends ProfileSummary {
   homeCity: string | null;
   /** When the home city last changed; it can change again 30 days later. */
   homeCityChangedAt: string | null;
+  /** When first-run onboarding was finished or skipped; null shows /welcome. */
+  onboardedAt: string | null;
   interests: string[];
   createdAt: string;
   updatedAt: string;
@@ -288,6 +290,12 @@ export interface Page<T> {
 
 export interface PlaceSearchOptions extends DiscoveryFilters, PageRequest {
   viewerId?: string | null;
+  /**
+   * Order by distance from this point instead of newest first (distance, then
+   * id). Bounds still prefilter when given. Cursors from one order do not work
+   * in the other.
+   */
+  near?: { lat: number; lng: number } | null;
 }
 
 export interface EventSearchOptions extends DiscoveryFilters, PageRequest {

@@ -84,7 +84,7 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
           <div className="flex flex-wrap items-center gap-2">
             <CategoryBadge slug={place.categorySlug} />
             {place.neighborhood ? (
-              <Link href={neighborhoodHref(place.neighborhood)} className="text-sm text-muted hover:text-flare-600 underline-offset-4 hover:underline" title={`Browse ${place.neighborhood}`}>
+              <Link href={neighborhoodHref(place.neighborhood)} className="text-sm text-muted hover:text-flare-ink underline-offset-4 hover:underline" title={`Browse ${place.neighborhood}`}>
                 {place.neighborhood}
               </Link>
             ) : null}

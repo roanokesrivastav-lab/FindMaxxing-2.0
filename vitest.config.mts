@@ -5,6 +5,8 @@ export default defineConfig({
   test: {
     include: ["tests/**/*.test.ts"],
     environment: "node",
+    // Tests must never write the developer's demo store (.data/demo-store.json).
+    env: { FINDMAXXING_DEMO_NO_PERSIST: "1" },
   },
   resolve: {
     alias: {

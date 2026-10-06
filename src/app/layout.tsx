@@ -40,7 +40,7 @@ export const viewport: Viewport = {
   themeColor: "#f6f4ee",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
+  // No maximumScale: people must be able to pinch-zoom text (WCAG 1.4.4).
   viewportFit: "cover",
 };
 

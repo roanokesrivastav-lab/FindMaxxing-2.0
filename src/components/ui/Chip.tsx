@@ -1,4 +1,5 @@
 "use client";
+import { readableInk } from "@/lib/utils/contrast";
 import { cn } from "@/lib/utils/cn";
 import type { ReactNode } from "react";
 
@@ -24,7 +25,7 @@ export function Chip({
       onClick={onClick}
       data-active={active ? "true" : "false"}
       className={cn("chip", className)}
-      style={active && color ? { background: color, borderColor: color, color: "white" } : undefined}
+      style={active && color ? { background: readableInk(color), borderColor: readableInk(color), color: "white" } : undefined}
       aria-pressed={active}
     >
       {children}

@@ -43,16 +43,20 @@ export function ExploreClient({
   initial,
   initialRequest,
   viewer,
+  welcome = false,
 }: {
   initial: DiscoveryResults;
   initialRequest: DiscoveryRequest;
   viewer: ExploreViewer | null;
+  /** Just finished onboarding: nudge toward a first save. */
+  welcome?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const [kind, setKind] = useState<Kind>("all");
   const [category, setCategory] = useState<string | null>(null);
-  const [interests, setInterests] = useState<string[]>([]);
+  const [interests, setInterests] = useState<string[]>(initialRequest.tags);
+  const [showWelcome, setShowWelcome] = useState(welcome);
   const [mode, setMode] = useState<"map" | "list">("map");
   const [filtersOpen, setFiltersOpen] = useState(false);
   // Folding the events section hands the whole panel to places. Remembered so
@@ -72,6 +76,9 @@ export function ExploreClient({
   const mapRef = useRef<MapCanvasHandle>(null);
   const geo = useGeolocation(true);
   const flewToUser = useRef(false);
+  // "Nearest" orders the place list by distance from the viewer, in SQL across every page.
+  const [nearest, setNearest] = useState(false);
+  const near = nearest && geo.location ? geo.location : null;
 
   useEffect(() => {
     if (geo.location && !flewToUser.current) {
@@ -95,8 +102,9 @@ export function ExploreClient({
       category,
       tags: interests,
       kind,
+      near,
     }),
-    [searching, searchArea, viewport, initialRequest.bounds, text, category, interests, kind],
+    [searching, searchArea, viewport, initialRequest.bounds, text, category, interests, kind, near],
   );
   const discovery = useDiscovery(request, initial, initialRequest);
   const { results } = discovery;
@@ -220,7 +228,7 @@ export function ExploreClient({
             >
               <SlidersHorizontal size={18} />
               {activeFilterCount ? (
-                <span className="absolute -top-1 -right-1 h-5 min-w-5 px-1 rounded-full bg-flare text-white text-[11px] font-bold inline-flex items-center justify-center">
+                <span className="absolute -top-1 -right-1 h-5 min-w-5 px-1 rounded-full bg-flare-ink text-white text-[11px] font-bold inline-flex items-center justify-center">
                   {activeFilterCount}
                 </span>
               ) : null}
@@ -288,7 +296,7 @@ export function ExploreClient({
               </span>
             ) : null}
             {discovery.status === "error" ? (
-              <button type="button" onClick={discovery.retry} className="chip bg-surface shadow-card text-flare-600">
+              <button type="button" onClick={discovery.retry} className="chip bg-surface shadow-card text-flare-ink">
                 <RotateCw size={14} /> Couldn&apos;t load results. Retry
               </button>
             ) : null}
@@ -343,7 +351,7 @@ export function ExploreClient({
             </div>
             <div className="flex gap-2">
               {activeFilterCount ? (
-                <button type="button" onClick={clearFilters} className="text-sm font-semibold text-flare-600">
+                <button type="button" onClick={clearFilters} className="text-sm font-semibold text-flare-ink">
                   Clear
                 </button>
               ) : null}
@@ -362,6 +370,16 @@ export function ExploreClient({
             </div>
           </div>
           <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-3 pb-nav md:pb-4">
+            {showWelcome ? (
+              <div className="rounded-2xl bg-moss-100 border border-moss/30 px-4 py-3 text-sm flex items-start gap-3" role="status">
+                <span className="flex-1">
+                  <b>You&apos;re in.</b> {interests.length ? "The map is showing your interests. " : ""}Find a place you love and tap the bookmark to save it: that&apos;s your first list started.
+                </span>
+                <button type="button" onClick={() => setShowWelcome(false)} className="font-semibold text-moss shrink-0" aria-label="Dismiss">
+                  Got it
+                </button>
+              </div>
+            ) : null}
             {totalResults === 0 && discovery.status === "loading" ? (
               <p className="text-sm text-muted text-center py-6">Searching…</p>
             ) : null}
@@ -410,12 +428,27 @@ export function ExploreClient({
             ) : null}
             {places.length ? (
               <section className="flex flex-col gap-2">
-                <FoldHeader
-                  label="Places"
-                  count={placeCount}
-                  open={placesOpen}
-                  onToggle={() => setFold("places", !placesOpen)}
-                />
+                <div className="flex items-center justify-between gap-2">
+                  <FoldHeader
+                    label="Places"
+                    count={placeCount}
+                    open={placesOpen}
+                    onToggle={() => setFold("places", !placesOpen)}
+                  />
+                  {geo.location && placesOpen ? (
+                    <button
+                      type="button"
+                      onClick={() => setNearest((v) => !v)}
+                      aria-pressed={nearest}
+                      className={cn(
+                        "rounded-full px-2.5 h-7 text-xs font-semibold border transition-colors",
+                        nearest ? "bg-ink text-white border-ink" : "bg-surface border-line text-ink-2 hover:bg-surface-2",
+                      )}
+                    >
+                      Nearest first
+                    </button>
+                  ) : null}
+                </div>
                 {placesOpen ? (
                   <>
                     {places.map((p) => (
@@ -566,7 +599,7 @@ function ResultsSummary({
           {activeFilters ? (
             <>
               {" · "}
-              <button type="button" onClick={onClear} className="text-flare-600 font-semibold">
+              <button type="button" onClick={onClear} className="text-flare-ink font-semibold">
                 clear filters
               </button>
             </>

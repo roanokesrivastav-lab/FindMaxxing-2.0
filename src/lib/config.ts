@@ -16,6 +16,23 @@ export function getDataMode(): DataMode {
   return getSupabaseEnv() ? "supabase" : "demo";
 }
 
+/**
+ * Demo mode is one JSON file rewritten on a debounce: not safe across
+ * processes, and never meant for real users. A production server refuses to
+ * start in demo mode unless FINDMAXXING_ALLOW_DEMO_IN_PRODUCTION=1 says this
+ * is a deliberate public demo. Returns the reason to refuse, or null.
+ */
+export function demoModeRefusal(env: Record<string, string | undefined> = process.env): string | null {
+  if (env.NODE_ENV !== "production") return null;
+  if (env.NEXT_PUBLIC_SUPABASE_URL && env.NEXT_PUBLIC_SUPABASE_ANON_KEY) return null;
+  if (env.FINDMAXXING_ALLOW_DEMO_IN_PRODUCTION === "1") return null;
+  return (
+    "FindMaxxing will not run in demo mode in production. Set NEXT_PUBLIC_SUPABASE_URL and " +
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY, or set FINDMAXXING_ALLOW_DEMO_IN_PRODUCTION=1 for a deliberate public demo " +
+    "(demo mode stores everything in one local file and is not safe for real users)."
+  );
+}
+
 export function getMapboxToken(): string | null {
   return process.env.NEXT_PUBLIC_MAPBOX_TOKEN || null;
 }

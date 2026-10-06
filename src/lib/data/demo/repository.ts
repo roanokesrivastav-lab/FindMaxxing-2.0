@@ -33,7 +33,11 @@ import {
   clampLimit,
   compareTimestamps,
   decodeCursor,
+  decodeDistanceCursor,
+  discoveryDistance,
+  encodeDistanceCursor,
   inBounds,
+  validateNear,
   normalizeFilters,
   normalizeTimestamp,
   textMatches,
@@ -45,7 +49,7 @@ import { placePhotoReference, placePhotoUrl, sniffImageType } from "../photos";
 import { photoObjectPaths, photoVariantPath } from "@/lib/images/sizes";
 import path from "node:path";
 
-const UPLOAD_DIR = path.join(process.cwd(), ".data", "uploads");
+import { UPLOAD_DIR } from "./uploads";
 /** Generated upload names (and their .sm/.md size siblings) only; anything else is refused before touching disk. */
 export const DEMO_UPLOAD_NAME = /^(places|avatars)-[0-9a-f]{8}-[0-9a-f-]{36}(\.(sm|md))?\.(jpg|png|webp)$/;
 
@@ -65,6 +69,7 @@ function toProfile(state: DemoState, p: ProfileRow): Profile {
     bio: p.bio,
     homeCity: p.homeCity,
     homeCityChangedAt: p.homeCityChangedAt,
+    onboardedAt: p.onboardedAt,
     interests: state.profileInterests.filter((x) => x.profileId === p.id).map((x) => x.interestSlug),
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
@@ -326,8 +331,24 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
       async search(opts = {}) {
         const f = normalizeFilters(opts);
         const limit = clampLimit(opts.limit, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
-        const after = decodeCursor(opts.cursor);
         const viewerId = opts.viewerId ?? null;
+        const near = validateNear(opts.near);
+        if (near) {
+          // Mirrors discover_places_nearest: (distance, id) ascending, keyset on both.
+          const afterNear = decodeDistanceCursor(opts.cursor);
+          const ranked = state.places
+            .filter((p) => placeMatches(state, p, f, viewerId))
+            .map((p) => ({ p, d: discoveryDistance(p, near) }))
+            .filter(({ p, d }) => !afterNear || d > afterNear.distance || (d === afterNear.distance && p.id > afterNear.id))
+            .sort((a, b) => a.d - b.d || compareIds(a.p.id, b.p.id));
+          const items = ranked.slice(0, limit);
+          const last = items.at(-1);
+          return {
+            items: items.map(({ p }) => toPlace(state, p)),
+            nextCursor: ranked.length > limit && last ? encodeDistanceCursor(last.d, last.p.id) : null,
+          };
+        }
+        const after = decodeCursor(opts.cursor);
         const rows = state.places
           .filter((p) => placeMatches(state, p, f, viewerId))
           .filter((p) => !after || compareTimestamps(p.createdAt, after.key) < 0 || (compareTimestamps(p.createdAt, after.key) === 0 && p.id < after.id))
@@ -918,6 +939,12 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         for (const i of input.interests) state.profileInterests.push({ profileId: userId, interestSlug: i });
         persist();
         return toProfile(state, p);
+      },
+      async completeOnboarding(userId) {
+        const p = requireProfile(userId);
+        if (p.onboardedAt) return;
+        p.onboardedAt = new Date().toISOString();
+        persist();
       },
       async stats(userId) {
         return {

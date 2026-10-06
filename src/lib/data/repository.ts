@@ -54,7 +54,8 @@ export interface DataRepository {
   places: {
     /**
      * Discovery list: every visible published place matching the filters,
-     * newest first (created_at desc, id desc), in cursor pages.
+     * newest first (created_at desc, id desc), or nearest first (distance, id)
+     * when `near` is given, in cursor pages.
      */
     search(opts?: PlaceSearchOptions): Promise<Page<Place>>;
     /** Total for the same filters, ignoring paging. */
@@ -145,6 +146,8 @@ export interface DataRepository {
     getById(id: string): Promise<Profile | null>;
     getByUsername(username: string): Promise<Profile | null>;
     update(userId: string, input: UpdateProfileInput): Promise<Profile>;
+    /** Marks first-run onboarding finished (or skipped). Idempotent. */
+    completeOnboarding(userId: string): Promise<void>;
     stats(userId: string): Promise<ProfileStats>;
     isFollowing(followerId: string, followingId: string): Promise<boolean>;
     follow(followerId: string, followingId: string): Promise<void>;

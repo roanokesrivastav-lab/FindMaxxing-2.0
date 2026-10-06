@@ -6,6 +6,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
+import { pg_trgm } from "@electric-sql/pglite/contrib/pg_trgm";
 import { buildSeedSql } from "../../scripts/generate-seed-sql";
 
 export const SUPABASE_STUBS = `
@@ -39,7 +40,7 @@ export const SUPABASE_STUBS = `
 `;
 
 export async function createSeededDb(): Promise<PGlite> {
-  const db = new PGlite({ extensions: { pgcrypto } });
+  const db = new PGlite({ extensions: { pgcrypto, pg_trgm } });
   await db.exec("create extension if not exists pgcrypto;");
   await db.exec(SUPABASE_STUBS);
   const migrationsDir = path.join(__dirname, "../../supabase/migrations");

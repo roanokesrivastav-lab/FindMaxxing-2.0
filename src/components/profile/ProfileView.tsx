@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Flag, MapPin, Pencil, ShieldAlert, ShieldCheck } from "lucide-react";
+import { Flag, MapPin, Pencil, Settings, ShieldAlert, ShieldCheck } from "lucide-react";
 import type { Profile, ProfileStats, RemovedContent, UserActivity } from "@/lib/data/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { getInterest } from "@/lib/data/taxonomy";
@@ -76,7 +76,7 @@ export function ProfileView({
             })}
           </div>
         ) : null}
-        <dl className="mt-5 grid grid-cols-4 gap-2 text-center">
+        <ul className="mt-5 grid grid-cols-4 gap-2 text-center list-none p-0 m-0" aria-label="Profile stats">
           {([
             { label: "Places", value: stats.places, href: null },
             { label: "Events", value: stats.events, href: null },
@@ -85,21 +85,23 @@ export function ProfileView({
           ] as const).map(({ label, value, href }) => {
             const body = (
               <>
-                <dt className="text-[11px] font-semibold uppercase tracking-wide text-muted">{label}</dt>
-                <dd className="font-display text-xl font-bold">{value}</dd>
+                <span className="block text-[11px] font-semibold uppercase tracking-wide text-muted">{label}</span>
+                <span className="block font-display text-xl font-bold">{value}</span>
               </>
             );
-            return href ? (
-              <Link key={label} href={href} className="rounded-xl bg-surface-2 py-2 hover:bg-line transition-colors">
-                {body}
-              </Link>
-            ) : (
-              <div key={label} className="rounded-xl bg-surface-2 py-2">
-                {body}
-              </div>
+            return (
+              <li key={label}>
+                {href ? (
+                  <Link href={href} className="block rounded-xl bg-surface-2 py-2 hover:bg-line transition-colors">
+                    {body}
+                  </Link>
+                ) : (
+                  <div className="rounded-xl bg-surface-2 py-2">{body}</div>
+                )}
+              </li>
             );
           })}
-        </dl>
+        </ul>
       </div>
 
       {isSelf && removed.length ? (
@@ -123,6 +125,8 @@ export function ProfileView({
       ) : null}
 
       <div className="mt-5">
+        {/* Keeps the heading outline whole: the activity cards use h3. */}
+        <h2 className="sr-only">Activity</h2>
         <ActivityTabs activity={activity} isSelf={isSelf} />
       </div>
 
@@ -132,6 +136,10 @@ export function ProfileView({
             <Link href="/profile/reports" className="chip">
               <Flag size={14} />
               Reports
+            </Link>
+            <Link href="/profile/settings" className="chip">
+              <Settings size={14} />
+              Settings
             </Link>
             {isModerator ? (
               <Link href="/moderation" className="chip">

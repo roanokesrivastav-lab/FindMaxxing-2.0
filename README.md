@@ -29,18 +29,39 @@ npm run typecheck   # next typegen + tsc
 npm run lint        # eslint (next + react-hooks rules)
 npm run test        # vitest: validation, demo repository, and the SQL schema via PGlite
 npm run build       # production build
-npm run check       # all of the above
+npm run check       # all of the above (what CI runs first)
+npm run e2e         # end-to-end beta suite in a real browser (needs a build)
+npm run a11y        # axe-core accessibility check (needs a build)
 ```
 
-`node scripts/smoke.mjs` (with `npm run dev` running and Google Chrome installed) walks every major
-flow in a headless browser and writes screenshots to `.data/smoke/`.
+**`npm run e2e`** starts the built app in demo mode on a fresh in-memory store (nothing read from
+or written to `.data`; uploads go to a scratch folder) and walks the core loop and the beta flows at
+390×844: discover on the map, sign up and onboard, open a place, save it to a new list, add a place
+with a photo, create and join events, follow someone, report a place, a moderator resolving the
+report, password reset, and account deletion. It fails on any broken step, page error or CSP
+violation and saves a screenshot per step to `.data/e2e` (`E2E_OUT` to change). `E2E_BASE_URL`
+points it at a running server instead. **`npm run a11y`** runs axe-core over 15 pages and sheets at
+the same size and fails on serious or critical violations; it also checks that a sheet traps focus
+and gives it back. Both use the installed Google Chrome; `E2E_CHANNEL=chromium` uses Playwright's own
+download (`npx playwright-core install chromium`), as CI does. Both run in CI
+(`.github/workflows/ci.yml`) on every push and pull request, with no secrets.
+
 `node scripts/smoke-tier2.mjs` does the same for the community layer and asserts its Tier 2 checks,
 including that a non-local genuinely cannot see a locals-only place.
 `node scripts/smoke-moderation.mjs [baseUrl]` walks the moderation loop (non-moderator 404, queue,
 remove with a reason, owner notice, reporter feedback) and exits non-zero on any failure. Run the app
 with `FINDMAXXING_DEMO_NO_PERSIST=1` so the walk does not change your demo store.
-`npx tsx tests/helpers/measure-discovery.ts 50000` loads synthetic places into PGlite and prints
-query plans and timings for the discovery queries.
+Measurements and operations scripts (see [Performance](#performance) and [Operations](#operations)):
+
+| Command | What it does |
+| --- | --- |
+| `npx tsx tests/helpers/measure-discovery.ts 50000` | 50k places (and 5k events) in one city in PGlite; p50/p95 and plan for every hot discovery query, flagging sequential scans |
+| `node scripts/measure-images.mjs` | Adds a place with six phone-sized photos through the real form, then measures image bytes on its page at 412px / DPR 1.75 against the 600KB budget |
+| `node scripts/load-test.mjs` | `autocannon` (through `npx`, not a dependency) against map discovery and a place page |
+| `npx tsx scripts/backup-restore-rehearsal.ts` | Dump, restore into a fresh database, compare everything (`--remote` for real databases) |
+| `npx tsx scripts/staging-check.ts` | The staging gate: migrations, RLS over HTTP as real users, image migration dry run, e2e |
+
+The beta's go/no-go list, with the command and current status of each gate, is `docs/beta-gate.md`.
 
 ## Going live with Supabase + Mapbox
 
@@ -56,6 +77,9 @@ query plans and timings for the discovery queries.
    - `supabase/migrations/0009_saved_lists.sql` — owner-only saved lists that organize bookmarks, with their summaries and add-to-list function
    - `supabase/migrations/0010_moderation.sql` — moderators, the report queue and review RPCs, the append-only moderation history, removed-content rules, and the firmer local tier (7-day accounts, 30-day home city cooldown, revocation)
    - `supabase/migrations/0011_rate_limits.sql` — database-enforced write limits for places, events, ratings, lists, reports and uploads
+   - `supabase/migrations/0012_account_deletion.sql` — deleting an account takes its places, events and photos with it, and keeps reports it filed with the reporter cleared
+   - `supabase/migrations/0013_discovery_performance.sql` — `pg_trgm` search indexes, row policies that read the row they are given, and the Nearest order
+   - `supabase/migrations/0014_onboarding.sql` — first-run onboarding state (existing accounts count as done)
    - `supabase/seed.sql` — optional fictional demo data (generated from `src/lib/seed/seed-data.ts` via `npm run seed:sql`; **do not use the demo users in production**)
 2. In Supabase Auth settings, add `http://localhost:3000/auth/callback` (and your production URL) to the redirect allow-list. Email confirmation is supported: the sign-up flow shows a "check your email" state and `/auth/callback` exchanges the code.
    Under **Authentication → Rate Limits**, keep sign-ups and password-recovery emails low for the beta: 30 sign-ups and 30 token verifications per 5 minutes per IP, and 4 emails per hour (or connect your own SMTP provider and raise it deliberately). Turn on CAPTCHA protection if sign-up spam appears. These sit in front of the app's own per-IP limit (see [Rate limits](#rate-limits)).
@@ -70,12 +94,24 @@ query plans and timings for the discovery queries.
 | --- | --- | --- |
 | `NEXT_PUBLIC_SUPABASE_URL` | for Supabase mode | Project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | for Supabase mode | Public anon key; all queries run under RLS as the signed-in user |
-| `SUPABASE_SERVICE_ROLE_KEY` | no | Reserved for server-only admin scripts; never read by the app or sent to the browser |
-| `NEXT_PUBLIC_MAPBOX_TOKEN` | no | Public `pk.*` token. Without it the map uses MapLibre + OpenFreeMap |
+| `SUPABASE_SERVICE_ROLE_KEY` | in production (secret) | Server only, never sent to the browser. Account deletion uses it for the Auth admin delete and Storage cleanup (`src/server/accountDeletion.ts`); so does `scripts/migrate-images.ts` |
+| `NEXT_PUBLIC_MAPBOX_TOKEN` | no | Public `pk.*` token. Without it (or with anything that is not a `pk.` token) the map uses MapLibre + OpenFreeMap; a token Mapbox rejects falls back to MapLibre at runtime |
 | `NEXT_PUBLIC_MAPBOX_STYLE` | no | Custom Mapbox style URL |
-| `NEXT_PUBLIC_SITE_URL` | no | Absolute origin for auth redirect links, and the User-Agent the geocoder identifies itself with |
+| `NEXT_PUBLIC_SITE_URL` | in production | Absolute origin for auth redirect links (sign-up confirmation, password recovery), and the User-Agent the geocoder identifies itself with |
+| `SENTRY_DSN` | no (secret) | Forward server and client errors to Sentry (see [Operations](#operations)) |
+| `ERROR_WEBHOOK_URL` | no (secret) | Forward errors as JSON to any endpoint |
+| `FINDMAXXING_ALLOW_DEMO_IN_PRODUCTION` | no | `1` lets a production server run in demo mode, for a deliberate public demo only |
+| `FINDMAXXING_DEMO_NO_PERSIST` / `FINDMAXXING_DEMO_FRESH` / `FINDMAXXING_DEMO_UPLOAD_DIR` | no | Demo mode for scripted runs: never write the store / ignore the store on disk / put uploads elsewhere |
 
 Setting both Supabase variables switches the whole app to Supabase mode. There is no code change; `src/lib/data/index.ts` picks the repository implementation from the environment.
+
+**Demo mode never serves production.** It keeps everything in one JSON file rewritten on a debounce,
+which is not safe across processes. A production server (`next start`, `NODE_ENV=production`)
+refuses to start without the Supabase variables, with a message saying why, unless
+`FINDMAXXING_ALLOW_DEMO_IN_PRODUCTION=1` declares a public demo; a Vercel build fails the same way.
+Local `next build` without Supabase still works, so CI can build and test.
+
+5. Deploy (see [Operations](#operations)), then run the staging gate in `docs/beta-gate.md`.
 
 ## Project structure
 
@@ -87,14 +123,17 @@ src/
     places/[id], places/new, places/[id]/edit
     events, events/[id], events/new, events/[id]/edit
     neighborhoods, neighborhoods/[name], tags, tags/[slug]
-    saved, saved/[id], people, profile, profile/edit, profile/reports
+    saved, saved/[id], people, profile, profile/edit, profile/reports, profile/settings
+    welcome                  First-run onboarding (once; finished or skipped, never again)
     moderation, moderation/[type]/[id]   Report queue and review (moderators only; 404 for everyone else)
     u/[username], u/[username]/[kind]
-    auth/sign-in, auth/sign-up, auth/callback
+    auth/sign-in, auth/sign-up, auth/callback, auth/forgot, auth/reset
     api/discover/*           Discovery endpoints: places, events, map, item
     api/geocode              Server-side address lookup (Mapbox or Nominatim)
     api/photos/[id]          Visibility-checked place photos
     api/uploads/[name]       Serves demo-mode avatar uploads
+    api/health               Database reachability for uptime checks ("ok" or "unavailable", nothing else)
+    api/client-errors        Error-boundary reports from the browser (rate-limited)
   components/
     ui/                      Design-system primitives (Button, Chip, Sheet, Stars, Toast…)
     layout/                  AppShell, bottom tab bar, desktop rail, create menu
@@ -108,17 +147,23 @@ src/
     data/demo/               File-backed demo implementation + demo auth
     data/taxonomy.ts         Categories + interests (single source of truth, mirrored in SQL)
     auth/server.ts           getViewer() / requireViewer()
+    observability/           Structured error logs and optional Sentry / webhook forwarding
+    security/csp.ts          The per-request Content-Security-Policy
+    rateLimits.ts            Write limits (mirrors rate_limit_rules) and the in-memory per-IP limiter
     supabase/                Server, browser and proxy clients
     validation/schemas.ts    Zod schemas for every form
     seed/seed-data.ts        Fictional demo data (drives both demo mode and seed.sql)
     map/, utils/
-  server/actions/            Server Actions: auth, places, events, profile
+  server/actions/            Server Actions: auth, account, places, events, lists, profile, moderation, onboarding
+  server/accountDeletion.ts  Account deletion (Supabase admin path and demo mirror)
+  server/passwordReset.ts    Password recovery (Supabase recovery email, or an on-screen demo link)
   proxy.ts                   Refreshes the Supabase session on each request
 supabase/
   migrations/                Ordered schema, RLS, feature, and hardening migrations
   seed.sql                   Generated demo seed
 tests/                       Vitest suites (schema runs against PGlite)
-scripts/                     seed generator, browser smoke test
+scripts/                     seed generator, e2e and accessibility suites, measurements, rehearsal, staging gate
+docs/                        beta-gate.md, runbooks/
 ```
 
 ## The community layer
@@ -284,6 +329,16 @@ with `bbox=west,south,east,north`, `q`, `category`, `tags=a,b`, `neighborhood`, 
 depends on who you are. `tests/discovery.test.ts` runs every filter for four viewers against both the SQL
 functions and the demo repository, and requires identical pages.
 
+**Nearest.** Lists can also be ordered by distance from a point: `places.search({ near })`, or
+`near=lat,lng` on `/api/discover/places`. `discover_places_nearest()` returns ids in (distance, id)
+order with a keyset cursor on both, computed in SQL with the usual filters (a bounding box
+prefilters when given), and the repository fetches the full rows by id. Distance is
+equirectangular, rounded to the centimetre, with a JavaScript twin (`discoveryDistance`) so the demo
+store orders identically; the parity test walks every page for several viewers and filters. On
+Explore, "Nearest first" appears beside the places list once the browser has a location. PostGIS
+was not needed: the measured plans are fine at 50k places (see [Performance](#performance)).
+The Saved page keeps its client-side Nearest sort, since it already holds the whole list.
+
 **Explore** is built on these. With no search text, results follow the map: once panning or zooming
 settles, it queries the visible bounds (debounced, stale requests aborted, previous results kept on
 screen while the next load). With search text, it searches everywhere, fits the map to the matches, and
@@ -300,6 +355,149 @@ Interests and Neighborhoods indexes come from `count()` and two invoker-rights a
 `discover_tag_counts` and `discover_neighborhoods`, so a place the viewer cannot see is never counted.
 Neighborhoods match on a normalized key (trimmed, lowercased, whitespace collapsed). The event form's
 place picker searches `/api/discover/places` instead of listing every place.
+
+## Accounts
+
+**Password recovery.** "Forgot password?" on sign-in leads to `/auth/forgot`. It always answers the
+same way ("if an account uses that address, we sent a link"), whether or not the email exists, and
+is limited to 5 requests an hour per network and per address. In Supabase mode it calls
+`resetPasswordForEmail` with a redirect through `/auth/callback` to `/auth/reset`, where `updateUser`
+sets the new password; Auth's own email limits sit in front. In demo mode no email is sent: the page
+shows the reset link instead. Demo tokens are random, stored only as hashes, in memory, valid for an
+hour and once; a request for an unknown email gets a decoy token that fails exactly like an expired
+one, so even the demo answer does not reveal who has an account.
+
+**Account deletion** is in `/profile/settings`. The user re-enters their password (checked on a
+separate client with no cookies), and the confirmation lists exactly what goes. One admin call
+deletes the auth user; the database cascades the rest (0012): profile, places and events they
+created (with their photos, ratings, saves and attendees), photos they added to other places,
+ratings, saves, lists, follows and attendance. Then every stored image goes: all three sizes of each
+photo on their places or uploaded by them, their avatar, and anything left in their Storage
+folders. A failed image removal is reported to monitoring with the paths, rather than undoing a
+deletion the user asked for. The deleted user's id is logged, so a restore from an older backup can
+re-apply deletions made since.
+
+**Decision: reports a deleted user filed are kept, anonymized** (pending owner confirmation).
+`reports.reporter_id` becomes null. An open report about harmful content should not disappear because
+the person who filed it left, and a removal decision should still show what it was based on.
+Nothing in the report identifies them afterwards. Moderation history they wrote is kept the same way.
+
+## Onboarding
+
+New accounts land on `/welcome`, four short steps: interests (they start the map's filter),
+home city (with the local-tier rules spelled out: when they will count as a local, and the 30-day
+change limit), optional location (kept on the device), and people who share their interests to
+follow. Every step can be skipped, and "Skip setup" ends it at once. Finishing or skipping sets
+`profiles.onboarded_at`; Explore sends a signed-in user without it to `/welcome`, so it shows until
+finished or skipped and never again. It lands on the map filtered to their interests, with a nudge
+to save a first place. Existing accounts were marked onboarded by the migration (and the demo store
+upgrade), so nobody is sent back through it.
+
+## Operations
+
+**Deployment target: Vercel.** It runs Next.js 16 natively (server actions, the proxy, streaming,
+`instrumentation.ts`), gives preview deploys per branch, and Vercel Cron covers the scheduled work
+later sessions add. `vercel.json` sets `npm ci`, the build, the `iad1` region (close to a us-east
+Supabase project), and a 30-second function limit for photo uploads. Set the variables from the
+table above in the Vercel project, separately for Preview (point it at the staging Supabase project)
+and Production. A Vercel build without the Supabase variables fails on purpose.
+
+**Per-instance behaviour.** Two things are per server instance, not global: the image pipeline's
+two-at-a-time processing limit (`withImageSlot`), and the in-memory limiters for sign-ups, password
+reset requests and client error reports. On Vercel each function instance has its own. The database
+rate limits are global. For a global sign-up limit across instances, move `createMemoryLimiter` onto
+a shared store (Upstash Redis, or a Postgres table keyed by IP hash).
+
+**Monitoring** (`src/lib/observability`). Every server error is one JSON log line (level, message,
+time, stack, context), which Vercel's log view and any log drain index. Context keys that could carry
+personal data (password, token, secret, cookie, email) are dropped. Forwarding is off unless
+configured: `SENTRY_DSN` sends events to Sentry's envelope endpoint over plain `fetch` (no SDK in the
+bundle), `ERROR_WEBHOOK_URL` POSTs JSON anywhere. Reported automatically: unexpected server-action
+failures (`toFailure`), every uncaught route, render and action error (`onRequestError` in
+`src/instrumentation.ts`), React error boundaries (`error.tsx` and `global-error.tsx` post to
+`/api/client-errors`, at most 30 a minute per client), and failed image cleanup after account
+deletion. `GET /api/health` answers `{"status":"ok"}` or a 503 `{"status":"unavailable"}` after a
+one-row read of a public table as anon, with a 3-second timeout: point an uptime monitor at it.
+
+**Security headers.** On top of `nosniff`, `X-Frame-Options`, the referrer policy and the
+permissions policy in `next.config.ts`, the proxy sets a Content-Security-Policy per request with a
+fresh nonce (`src/lib/security/csp.ts`). Scripts need the nonce (`'strict-dynamic'` lets Next's own
+scripts load the rest); connections, images and workers are limited to the site, Supabase,
+OpenFreeMap and Mapbox; framing, plugins and foreign form targets are refused. Styles allow
+`'unsafe-inline'` because the map libraries set inline styles on the elements they create. The e2e
+suite fails on any CSP violation in the browser console.
+
+**Backups** are covered in `docs/runbooks/backup-and-restore.md`: point-in-time recovery, the
+restore rehearsal, a scheduled Storage copy (Supabase backups do not include Storage), and restoring
+production.
+
+**Staging gate.** `scripts/staging-check.ts` applies the migrations with `supabase db push`, creates
+four users with the admin API (two members, a 0-day-old account and a moderator), checks
+cross-user access, the locals tier, lists, private photos, moderation and the list rate limit over
+HTTP, runs the image migration as a dry run, then the e2e suite against the staging deployment, and
+deletes its users at the end. Without credentials it exits 2 and changes nothing.
+
+## Performance
+
+Measured with `npx tsx tests/helpers/measure-discovery.ts 50000 --runs 10`: 50,026 places and 5,013
+upcoming events, all in one city (the dense case), ~12% locals-only, text from a 64-word vocabulary.
+PGlite is single-threaded WebAssembly, so absolute times are pessimistic; the comparison and the
+plans are what matter. p95 in milliseconds, as anon / as a signed-in local:
+
+| Query | Before 0013 | After 0013 | Plan after |
+| --- | --- | --- | --- |
+| Map markers, zoomed box | 6.5 / 3.2 | 4.7 / 1.6 | box index, sort |
+| Map markers, whole city | 5.7 / 2.8 | 2.0 / 1.4 | notability index |
+| List page 1, no filters / deep page | 1.2 / 5.7 | 0.9 / 4.8 | recency index |
+| List page 1, category + tag | 65 / 56 | 67 / 58 | recency index + tag filter |
+| Search, rare term | 361 / 353 | 8.7 / 7.6 | trigram indexes → id lookup |
+| Search, common term | 3.7 / 3.0 | 35 / 29 | trigram indexes → id lookup |
+| Search, no match | 375 / 352 | 10 / 10 | trigram indexes |
+| Search, events | 87 / 47 | 9.7 / 9.5 | trigram indexes |
+| Count, whole city | 353 / 261 | 64 / 30 | scan (counts every visible row) |
+| Aggregates (neighborhoods, tag counts) | 497–656 | 235–393 | scan (aggregates every visible row) |
+| Nearest, whole city | – | 112 / 84 | distance over the box, top-N sort |
+
+What changed in 0013, and why:
+
+- **Text search had no usable index under RLS.** Postgres will not run a non-leakproof operator like
+  `ILIKE` before a row policy, so even with trigram indexes every API search walked the table. The
+  match now runs in definer-rights helpers (`discover_place_text_ids`, `discover_event_text_ids`) that
+  can use the indexes and apply the same visibility rule themselves, returning only ids the caller
+  could see; the outer query still runs under RLS. A test compares them with the old row-by-row
+  match for every viewer, and another with the policies. Common words got slower (they used to find
+  31 matches a few rows into the recency index), but the worst case went from ~370 ms to ~35 ms.
+- **The places and events policies looked each row up again** through `can_view_place(id)`. They now
+  test the row's own columns, which roughly halved every count and aggregate. The child tables keep
+  the functions; a test holds the two forms to the same answer for every row and viewer.
+- City-wide counts and the two aggregates still scan, by nature: they visit every visible row.
+  Header counts and the index pages use them; at beta scale they are fine, and if they are not, they
+  are the first candidates for a per-viewer-class cache.
+
+**Images:** `node scripts/measure-images.mjs` uploads six ~2.6MB phone photos (15.6MB) through the
+form and loads the page at 412px / DPR 1.75: 285KB of images (the hero at 960px, five gallery
+thumbnails at 480px), against the 600KB budget. **Concurrency** (`node scripts/load-test.mjs`, demo
+mode, 20 connections for 15s on this machine): map discovery 3,126 req/s with p99 12ms; a place page
+418 req/s with p99 65ms; no errors or non-2xx responses. Run it against staging before trusting
+production numbers.
+
+## Accessibility
+
+- **Map pins** are buttons with a full name ("Little Alley Dumpling, Food, rated 4.7 from 3
+  ratings"; events give their start time), `aria-pressed` for the selected pin, and a visible focus
+  ring. They are in the tab order, and Enter or Space opens them. The list panel carries the same
+  results for anyone who prefers it.
+- **Sheets** (the save sheet, report, confirmations) are modal dialogs: focus moves into them (the
+  first field when there is one), Tab and Shift+Tab stay inside, Escape closes them, and focus returns
+  to whatever opened them.
+- **Contrast:** axe found muted text, the flare accent, category labels and avatar initials below AA.
+  The muted, danger and moss tokens are darker, a `flare-ink` token is used wherever flare is text or
+  sits behind white text (the bright flare stays for fills and icons), and `readableInk()` darkens
+  category and avatar colours just enough wherever they are text or behind it.
+- **Motion:** `prefers-reduced-motion` stops the pulsing event pins and slide-ins, and makes map
+  flights jump instead of animating. Pinch-zoom is no longer disabled.
+- `npm run a11y` runs axe-core over 15 pages and sheets (with reduced motion on) and fails on serious
+  or critical violations. A manual screen-reader pass has not been done yet (see the beta gate).
 
 ## Data model
 
@@ -330,7 +528,8 @@ Integrity is enforced in the database, not just the UI:
 
 - **Demo mode is a first-class repository, not a mock.** It mirrors the Postgres tables and rules (including capacity, duplicate-join, and rating aggregation), so the UI you develop against behaves like production.
 - **Filtering happens in the database, scoped to the map viewport.** Search text, category and tags go to the discovery functions along with the visible bounds, so results cover every matching record rather than a fixed recent slice. See [Discovery queries](#discovery-queries).
-- **The map provider is chosen at build time** from `NEXT_PUBLIC_MAPBOX_TOKEN`; only the selected library is bundled.
+- **The map provider is chosen at build time** from `NEXT_PUBLIC_MAPBOX_TOKEN`; only the selected library is bundled. A token that is not a public `pk.` token never selects Mapbox, and a Mapbox map that fails before its first load (a revoked or mistyped token) swaps itself for MapLibre and reports the failure. The Mapbox renderer has never been rendered with a real token; that is on the owner checklist.
+- **Pin clustering is deferred.** The map caps pins at 300 per view and asks the viewer to zoom in when an area is truncated. Real clustering means rendering pins as a GeoJSON layer (both libraries cluster sources natively) instead of the React `<Marker>` elements used now, which would lose the pin buttons' accessibility and needs a rewrite of `MapCanvas` for both providers. Building half of that would be worse than the cap, so it waits for a session of its own.
 - **Address lookup runs server-side** at `/api/geocode`, using Mapbox when a token is set and
   OpenStreetMap's Nominatim otherwise. Proxying it keeps the provider off the client, lets one
   cache serve every user, and satisfies Nominatim's requirement for an identifying User-Agent and

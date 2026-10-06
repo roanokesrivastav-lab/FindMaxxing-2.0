@@ -15,25 +15,29 @@
   --color-surface-2: #f4f2ec;
   --color-ink: #17181d;
   --color-ink-2: #45464d;
-  --color-muted: #7b7c85;
+  --color-muted: #62636b; /* 4.6:1+ on paper-2; was #7b7c85 (3.7:1) */
   --color-line: #e6e2d9;
   --color-line-2: #d4cfc4;
 
   --color-flare: #ff4d2e;
   --color-flare-600: #e63d1f;
   --color-flare-100: #ffe9e3;
+  /* Flare dark enough for text, and for white text on it (AA). The bright flare stays for fills and icons. */
+  --color-flare-ink: #b8371f;
   --color-flare-50: #fff4f0;
 
   --color-pulse: #6b4cff;
+  /* Pulse for small text on pale pulse tints (AA). */
+  --color-pulse-ink: #5233d6;
   --color-pulse-600: #5a3de6;
   --color-pulse-100: #ebe6ff;
   --color-pulse-50: #f4f1ff;
 
-  --color-moss: #1f8a5b;
+  --color-moss: #1b7a50;
   --color-moss-100: #dff3e8;
   --color-sun: #ffb400;
   --color-sun-100: #fff3d1;
-  --color-danger: #d62e2e;
+  --color-danger: #be2828;
   --color-danger-100: #fde3e3;
 
   --radius-xl: 1.25rem;
@@ -202,3 +206,13 @@ body {
   border: 1px solid var(--color-line) !important;
 }
 .maplibregl-marker, .mapboxgl-marker { cursor: pointer; }
+
+/* Honor reduced motion: no pulsing pins, no slide-ins, near-instant transitions. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

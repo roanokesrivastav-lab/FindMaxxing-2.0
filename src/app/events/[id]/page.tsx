@@ -147,7 +147,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
           {event.attendees.length ? (
             <div className="card p-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
               {event.attendees.map((a) => (
-                <Link key={a.id} href={`/u/${a.username}`} className="flex items-center gap-2 min-w-0 hover:text-flare-600">
+                <Link key={a.id} href={`/u/${a.username}`} className="flex items-center gap-2 min-w-0 hover:text-flare-ink">
                   <Avatar name={a.displayName} src={a.avatarUrl} size={32} />
                   <span className="text-sm font-semibold truncate">{a.displayName}</span>
                 </Link>

@@ -50,7 +50,7 @@ on conflict (id) do nothing;`);
   out.push("-- Profile details");
   SEED_USERS.forEach((u, i) => {
     // Backdated like the demo store, so seeded accounts are past the 7-day local rule.
-    out.push(`update public.profiles set bio = ${q(u.bio)}, home_city = ${q(u.homeCity)}, display_name = ${q(u.displayName)}, username = ${q(u.username)}, created_at = now() - interval '${seedAccountAgeDays(i)} days' where id = ${q(u.id)};`);
+    out.push(`update public.profiles set bio = ${q(u.bio)}, home_city = ${q(u.homeCity)}, display_name = ${q(u.displayName)}, username = ${q(u.username)}, created_at = now() - interval '${seedAccountAgeDays(i)} days', onboarded_at = now() - interval '${seedAccountAgeDays(i)} days' where id = ${q(u.id)};`);
     for (const interest of u.interests) {
       out.push(`insert into public.profile_interests (profile_id, interest_slug) values (${q(u.id)}, ${q(interest)}) on conflict do nothing;`);
     }

@@ -5,7 +5,7 @@ import { useState } from "react";
 
 export function StarRating({ value, size = 14, className }: { value: number; size?: number; className?: string }) {
   return (
-    <span className={cn("inline-flex items-center gap-px", className)} aria-label={`${value.toFixed(1)} out of 5`}>
+    <span className={cn("inline-flex items-center gap-px", className)} role="img" aria-label={`${value.toFixed(1)} out of 5`}>
       {[1, 2, 3, 4, 5].map((i) => {
         const fill = Math.max(0, Math.min(1, value - (i - 1)));
         return (

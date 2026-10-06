@@ -39,7 +39,7 @@ export function ReportList({ entries, perspective }: { entries: ReportEntry[]; p
                   {entry.targetType === "place" ? "Place" : entry.targetType === "event" ? "Event" : "Profile"}
                 </p>
                 {href && entry.targetLabel ? (
-                  <Link href={href} className="font-bold hover:text-flare-600 break-words">
+                  <Link href={href} className="font-bold hover:text-flare-ink break-words">
                     {label}
                   </Link>
                 ) : (
