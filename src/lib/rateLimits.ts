@@ -5,7 +5,7 @@
  */
 import { DataError } from "@/lib/data/types";
 
-export type RateLimitAction = "places" | "events" | "ratings" | "lists" | "reports" | "photos" | "avatars" | "analytics" | "trip_plans";
+export type RateLimitAction = "places" | "events" | "ratings" | "lists" | "reports" | "photos" | "avatars" | "analytics" | "trip_plans" | "messages";
 
 export interface RateLimitRule {
   max: number;
@@ -27,6 +27,7 @@ export const RATE_LIMITS: Record<RateLimitAction, RateLimitRule> = {
   avatars: { max: 20, windowSeconds: HOUR, label: "avatar uploads" },
   analytics: { max: 600, windowSeconds: HOUR, label: "analytics events" },
   trip_plans: { max: 10, windowSeconds: DAY, label: "trip plans" },
+  messages: { max: 60, windowSeconds: HOUR, label: "messages" },
 };
 
 /** Start of the fixed window containing `now`, the same rounding as check_rate_limit(). */
@@ -51,7 +52,7 @@ export function rateLimitError(action: RateLimitAction, retryAfterSeconds: numbe
 
 /** Parses the database's "rate_limited:<action>:<seconds>" message (SQLSTATE FM429). */
 export function parseRateLimitMessage(message: string): DataError | null {
-  const m = /rate_limited:([a-z]+):(\d+)/.exec(message);
+  const m = /rate_limited:([a-z_]+):(\d+)/.exec(message);
   if (!m || !(m[1] in RATE_LIMITS)) return null;
   return rateLimitError(m[1] as RateLimitAction, Number(m[2]));
 }

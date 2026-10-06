@@ -3,9 +3,11 @@
  * Postgres (0012_account_deletion.sql): the profile goes, and with it their
  * places, events, photos, ratings, saves, lists, follows and attendance;
  * reports they filed stay with the reporter cleared; moderation history they
- * wrote stays with the moderator cleared.
+ * wrote stays with the moderator cleared. Their messages, chat memberships and
+ * blocks go; the chats of their events go with the events.
  */
 import { recomputeRating, type StoreHandle } from "./store";
+import { deleteMessagingFor, dropEventChats } from "./messaging";
 
 export interface DeletedObjects {
   /** Place photo storage paths (each with its stored sizes) to remove. */
@@ -47,6 +49,8 @@ export function deleteDemoAccount(handle: StoreHandle, userId: string): DeletedO
 
   // Events they created; other people's events at their places keep the location.
   state.events = state.events.filter((e) => !ownEvents.has(e.id));
+  dropEventChats(state, ownEvents);
+  deleteMessagingFor(state, userId);
   state.eventTags = state.eventTags.filter((t) => !ownEvents.has(t.eventId));
   state.eventAttendees = state.eventAttendees.filter((a) => a.userId !== userId && !ownEvents.has(a.eventId));
   for (const event of state.events) if (event.placeId && ownPlaces.has(event.placeId)) event.placeId = null;

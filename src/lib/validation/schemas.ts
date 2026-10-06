@@ -181,14 +181,14 @@ export const placeVisibilitySchema = z.enum(["public", "locals", "trusted", "fol
 });
 
 export const reportSchema = z.object({
-  targetType: z.enum(["place", "event", "profile"]),
+  targetType: z.enum(["place", "event", "profile", "message"]),
   targetId: z.string().uuid(),
   reason: z.enum(["inaccurate", "closed", "inappropriate", "spam", "duplicate", "other"]),
   details: optionalText(500),
 });
 
 export const moderationSchema = z.object({
-  targetType: z.enum(["place", "event", "profile"]),
+  targetType: z.enum(["place", "event", "profile", "message"]),
   targetId: z.string().uuid(),
   action: z.enum(["dismiss", "review", "remove", "restore"]),
   reason: z.string().trim().max(500, "Keep the reason under 500 characters").optional().transform((v) => (v ? v : null)),

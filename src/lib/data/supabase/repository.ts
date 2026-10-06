@@ -25,7 +25,11 @@ import {
   type FunnelStep,
   type AdminHistoryEntry,
   type AdminUser,
+  type ConversationMember,
+  type ConversationSummary,
+  type Message,
 } from "../types";
+import { MESSAGE_PAGE_SIZE, messagingError, normalizeMessageBody, parseMessagingMessage } from "../messaging";
 import { parseRateLimitMessage } from "@/lib/rateLimits";
 import { compareModerationReports, parseModerationMessage } from "../moderation";
 import { homeCityCooldownMessage, nextHomeCityChange, sameCity } from "../localTier";
@@ -194,7 +198,7 @@ export function translate(error: PostgrestError): DataError {
     case "FM429": // check_rate_limit()
       return parseRateLimitMessage(error.message) ?? new DataError("Too many requests. Try again later.", "rate_limited");
     case "P0002": // no_data_found, raised by our functions for a missing target
-      return parseModerationMessage(error.message) ?? new DataError("Not found", "not_found");
+      return parseModerationMessage(error.message) ?? parseMessagingMessage(error.message) ?? new DataError("Not found", "not_found");
     case "23505":
       return new DataError("That already exists", "conflict");
     case "23503":
@@ -205,7 +209,7 @@ export function translate(error: PostgrestError): DataError {
     case "22008": // datetime_field_overflow
       return new DataError("Invalid date or time", "invalid");
     case "P0001": { // raise exception from our triggers
-      const moderation = parseModerationMessage(error.message);
+      const moderation = parseModerationMessage(error.message) ?? parseMessagingMessage(error.message);
       if (moderation) return moderation;
       const cooldown = /home_city_cooldown:(\S+)/.exec(error.message);
       if (cooldown) return new DataError(homeCityCooldownMessage(cooldown[1]), "rate_limited");
@@ -309,6 +313,42 @@ async function readReports(supabase: SupabaseClient, view: "reports_i_filed" | "
     resolvedAt: r.resolved_at ?? null,
     targetLabel: labels.get(r.target_id) ?? null,
   }));
+}
+
+interface ConversationRpcRow {
+  id: string;
+  kind: "direct" | "group";
+  event_id: string | null;
+  event_title: string | null;
+  other_id: string | null;
+  other_username: string | null;
+  other_display_name: string | null;
+  other_avatar_url: string | null;
+  last_message_at: string | null;
+  last_body: string | null;
+  last_sender_id: string | null;
+  unread: number;
+}
+
+function mapConversation(r: ConversationRpcRow): ConversationSummary {
+  return {
+    id: r.id,
+    kind: r.kind,
+    eventId: r.event_id,
+    eventTitle: r.event_title,
+    other: r.other_id && r.other_username ? { id: r.other_id, username: r.other_username, displayName: r.other_display_name ?? r.other_username, avatarUrl: r.other_avatar_url } : null,
+    lastMessageAt: r.last_message_at,
+    lastBody: r.last_body,
+    lastSenderId: r.last_sender_id,
+    unread: Number(r.unread),
+  };
+}
+
+/** Public profile summaries by id. */
+async function profileSummaries(supabase: SupabaseClient, ids: string[]): Promise<Map<string, ProfileSummary>> {
+  if (!ids.length) return new Map();
+  const rows = unwrap(await supabase.from("profiles").select(PROFILE_SUMMARY).in("id", ids)) as ProfileSummaryRow[];
+  return new Map(rows.map((r) => [r.id, mapSummary(r)!]));
 }
 
 /** Arguments shared by public.discover_places and public.discover_events. */
@@ -1227,6 +1267,88 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
         const out = { community: 0, seed: 0 };
         for (const r of rows) out[r.source] = r.saves;
         return out;
+      },
+    },
+
+    messaging: {
+      async conversations() {
+        return (unwrap(await supabase.rpc("my_conversations")) as ConversationRpcRow[]).map(mapConversation);
+      },
+      async unreadTotal() {
+        return (unwrap(await supabase.rpc("my_conversations")) as ConversationRpcRow[]).reduce((n, r) => n + Number(r.unread), 0);
+      },
+      async canMessage(_userId, otherId) {
+        return Boolean(unwrap(await supabase.rpc("can_message", { p_other: otherId })));
+      },
+      async startDirect(_userId, otherId) {
+        return unwrap(await supabase.rpc("start_direct", { p_other: otherId })) as string;
+      },
+      async eventConversation(_userId, eventId) {
+        // RLS: only members see the conversation row.
+        const row = unwrap(await supabase.from("conversations").select("id").eq("event_id", eventId).maybeSingle()) as { id: string } | null;
+        return row?.id ?? null;
+      },
+      async get(userId, conversationId) {
+        const all = (unwrap(await supabase.rpc("my_conversations")) as ConversationRpcRow[]).map(mapConversation);
+        const summary = all.find((c) => c.id === conversationId);
+        if (!summary) return null;
+        const rows = unwrap(await supabase
+          .from("conversation_members")
+          .select(`last_read_at, profile:profiles!conversation_members_user_id_fkey(${PROFILE_SUMMARY})`)
+          .eq("conversation_id", conversationId)) as unknown as { last_read_at: string | null; profile: ProfileSummaryRow | null }[];
+        const members: ConversationMember[] = rows
+          .map((r) => ({ profile: mapSummary(r.profile), lastReadAt: r.last_read_at }))
+          .filter((m): m is ConversationMember => !!m.profile)
+          .sort((a, b) => (a.profile.username < b.profile.username ? -1 : a.profile.username > b.profile.username ? 1 : 0));
+        let canSend: boolean;
+        if (summary.kind === "direct") {
+          canSend = !!summary.other && !(unwrap(await supabase.rpc("is_blocked_between", { a: userId, b: summary.other.id })) as boolean);
+        } else {
+          const ev = unwrap(await supabase.from("events").select("status").eq("id", summary.eventId!).maybeSingle()) as { status: string } | null;
+          canSend = ev?.status === "published";
+        }
+        return { ...summary, members, canSend };
+      },
+      async messages(_userId, conversationId, opts = {}) {
+        const limit = clampLimit(opts.limit, MESSAGE_PAGE_SIZE, 100);
+        const before = decodeCursor(opts.cursor);
+        const rows = unwrap(await supabase.rpc("conversation_messages", {
+          p_conversation: conversationId, p_before_at: before?.key ?? null, p_before_id: before?.id ?? null, p_limit: limit + 1,
+        })) as { id: string; sender_id: string; body: string; created_at: string }[];
+        const senders = await profileSummaries(supabase, [...new Set(rows.map((r) => r.sender_id))]);
+        return toPage(rows, limit, (r): Message => ({
+          id: r.id, conversationId, senderId: r.sender_id, sender: senders.get(r.sender_id) ?? null, body: r.body, createdAt: r.created_at,
+        }), (r) => ({ key: r.created_at, id: r.id }));
+      },
+      async send(userId, conversationId, body) {
+        const text = normalizeMessageBody(body);
+        const res = await supabase.from("messages").insert({ conversation_id: conversationId, sender_id: userId, body: text }).select("id, sender_id, body, created_at").single();
+        // The insert policy refuses non-members.
+        if (res.error?.code === "42501") throw messagingError("not_found");
+        const r = unwrap(res) as { id: string; sender_id: string; body: string; created_at: string };
+        const senders = await profileSummaries(supabase, [userId]);
+        return { id: r.id, conversationId, senderId: r.sender_id, sender: senders.get(userId) ?? null, body: r.body, createdAt: r.created_at };
+      },
+      async markRead(_userId, conversationId) {
+        unwrap(await supabase.rpc("mark_read", { p_conversation: conversationId }));
+      },
+      async block(userId, otherId) {
+        if (userId === otherId) throw messagingError("self");
+        const res = await supabase.from("blocks").insert({ blocker_id: userId, blocked_id: otherId });
+        if (res.error?.code === "23503") throw new DataError("Profile not found", "not_found");
+        if (res.error && res.error.code !== "23505") throw translate(res.error);
+      },
+      async unblock(userId, otherId) {
+        unwrap(await supabase.from("blocks").delete().eq("blocker_id", userId).eq("blocked_id", otherId));
+      },
+      async blocked(userId) {
+        const rows = unwrap(await supabase
+          .from("blocks")
+          .select(`created_at, blocked_id, profile:profiles!blocks_blocked_id_fkey(${PROFILE_SUMMARY})`)
+          .eq("blocker_id", userId)
+          .order("created_at", { ascending: false })
+          .order("blocked_id", { ascending: true })) as unknown as { profile: ProfileSummaryRow | null }[];
+        return rows.map((r) => mapSummary(r.profile)).filter((p): p is ProfileSummary => !!p);
       },
     },
 

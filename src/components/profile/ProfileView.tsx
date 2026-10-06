@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { LevelBadge } from "./LevelBadge";
-import { Flag, MapPin, Pencil, Settings, ShieldAlert, ShieldCheck } from "lucide-react";
+import { Flag, MapPin, MessageCircle, Pencil, Settings, ShieldAlert, ShieldCheck } from "lucide-react";
 import type { Profile, ProfileStats, RemovedContent, UserActivity } from "@/lib/data/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { getInterest } from "@/lib/data/taxonomy";
 import { FollowButton } from "./FollowButton";
 import { ActivityTabs } from "./ActivityTabs";
 import { SignOutButton } from "@/components/auth/SignOutButton";
+import { BlockButton, MessageButton } from "@/components/messages/MessageButtons";
 
 const REMOVED_DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
 
@@ -21,6 +22,7 @@ export function ProfileView({
   isModerator = false,
   showLevel = false,
   suspended = false,
+  messaging = null,
 }: {
   profile: Profile;
   stats: ProfileStats;
@@ -35,6 +37,12 @@ export function ProfileView({
   showLevel?: boolean;
   /** The viewer's own account is suspended (self view only). */
   suspended?: boolean;
+  /**
+   * Behind the messaging flag, for a signed-in viewer: on someone else's
+   * profile whether the rule lets them message and whether they blocked them;
+   * on their own, their unread count.
+   */
+  messaging?: { canMessage: boolean; blocked: boolean; unread?: never } | { unread: number; canMessage?: never; blocked?: never } | null;
 }) {
   return (
     <div className="max-w-2xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-nav md:pb-10">
@@ -59,6 +67,12 @@ export function ProfileView({
             <FollowButton userId={profile.id} following={viewerFollows} signedIn={viewerSignedIn} size="sm" />
           )}
         </div>
+        {!isSelf && messaging && messaging.canMessage !== undefined ? (
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            {messaging.blocked ? null : <MessageButton userId={profile.id} canMessage={messaging.canMessage} />}
+            <BlockButton userId={profile.id} blocked={messaging.blocked} name={profile.displayName} />
+          </div>
+        ) : null}
         {profile.bio ? <p className="mt-4 text-[15px] leading-relaxed">{profile.bio}</p> : isSelf ? (
           <p className="mt-4 text-sm text-muted">
             Add a bio and interests so people know what you&apos;re into.{" "}
@@ -147,6 +161,12 @@ export function ProfileView({
       {isSelf ? (
         <div className="mt-8 flex flex-col items-center gap-3">
           <div className="flex flex-wrap justify-center gap-2">
+            {messaging && messaging.unread !== undefined ? (
+              <Link href="/messages" className="chip">
+                <MessageCircle size={14} />
+                Messages{messaging.unread ? ` (${messaging.unread})` : ""}
+              </Link>
+            ) : null}
             <Link href="/profile/reports" className="chip">
               <Flag size={14} />
               Reports

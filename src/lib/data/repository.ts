@@ -1,5 +1,8 @@
 import type {
   ConnectionEntry,
+  ConversationDetail,
+  ConversationSummary,
+  Message,
   Event,
   EventDetail,
   EventCountOptions,
@@ -251,6 +254,33 @@ export interface DataRepository {
     places(viewerId: string, opts?: RecommendOptions): Promise<Recommendation<Place>[]>;
     /** `now` pins the clock (tests); defaults to the current time. */
     events(viewerId: string, opts?: RecommendOptions & { now?: string }): Promise<Recommendation<Event>[]>;
+  };
+  /**
+   * Direct messages and event group chats (0020_messaging.sql). Only members
+   * read a conversation. A direct conversation can be started only with
+   * someone who follows the viewer back or is going to an event they are both
+   * going to, never across a block; group chats follow event attendance.
+   */
+  messaging: {
+    /** The viewer's conversations, latest activity first, with unread counts. */
+    conversations(userId: string): Promise<ConversationSummary[]>;
+    unreadTotal(userId: string): Promise<number>;
+    /** The anti-spam rule, for the viewer and someone else. */
+    canMessage(userId: string, otherId: string): Promise<boolean>;
+    /** Opens (or finds) the direct conversation; refused as forbidden when the rule does not allow it. */
+    startDirect(userId: string, otherId: string): Promise<string>;
+    /** The id of an event's group chat, when the viewer is in it. */
+    eventConversation(userId: string, eventId: string): Promise<string | null>;
+    /** Header, members and read receipts, for members only (null for anyone else). */
+    get(userId: string, conversationId: string): Promise<ConversationDetail | null>;
+    /** Newest first, in cursor pages; empty for non-members. */
+    messages(userId: string, conversationId: string, opts?: PageRequest): Promise<Page<Message>>;
+    send(userId: string, conversationId: string, body: string): Promise<Message>;
+    markRead(userId: string, conversationId: string): Promise<void>;
+    block(userId: string, otherId: string): Promise<void>;
+    unblock(userId: string, otherId: string): Promise<void>;
+    /** People the viewer blocked. */
+    blocked(userId: string): Promise<ProfileSummary[]>;
   };
   /** Limits on actions that write no row of their own (an AI plan). */
   limits: {

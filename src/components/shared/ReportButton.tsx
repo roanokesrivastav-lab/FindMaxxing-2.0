@@ -11,7 +11,7 @@ import { useToast } from "@/components/ui/Toast";
 import type { ReportTargetType } from "@/lib/data/types";
 import type { ActionResult } from "@/server/actions/result";
 
-export function ReportButton({ targetType, targetId, signedIn, returnTo }: { targetType: ReportTargetType; targetId: string; signedIn: boolean; returnTo: string }) {
+export function ReportButton({ targetType, targetId, signedIn, returnTo, iconOnly = false }: { targetType: ReportTargetType; targetId: string; signedIn: boolean; returnTo: string; iconOnly?: boolean }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
@@ -33,11 +33,12 @@ export function ReportButton({ targetType, targetId, signedIn, returnTo }: { tar
         type="button"
         onClick={() => (signedIn ? setOpen(true) : router.push(`/auth/sign-in?next=${encodeURIComponent(returnTo)}`))}
         className="inline-flex items-center gap-1.5 text-sm font-semibold text-muted hover:text-ink"
+        aria-label={iconOnly ? `Report this ${targetType === "message" ? "message" : "listing"}` : undefined}
       >
-        <Flag size={15} />
-        Report
+        <Flag size={iconOnly ? 13 : 15} />
+        {iconOnly ? null : "Report"}
       </button>
-      <Sheet open={open} onClose={() => setOpen(false)} title="Report this listing">
+      <Sheet open={open} onClose={() => setOpen(false)} title={targetType === "message" ? "Report this message" : "Report this listing"}>
         <form action={action} className="flex flex-col gap-4">
           <input type="hidden" name="targetType" value={targetType} />
           <input type="hidden" name="targetId" value={targetId} />

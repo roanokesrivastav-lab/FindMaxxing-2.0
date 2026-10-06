@@ -10,7 +10,7 @@ import { DataError, type ModerationAction, type ReportTargetType } from "./types
 export const MAX_MODERATION_REASON = 500;
 export const SUSPENDED_MESSAGE = "Your account is suspended, so you can't add or change anything right now.";
 export const MODERATION_ACTIONS: readonly ModerationAction[] = ["dismiss", "review", "remove", "restore"];
-export const REPORT_TARGET_TYPES: readonly ReportTargetType[] = ["place", "event", "profile"];
+export const REPORT_TARGET_TYPES: readonly ReportTargetType[] = ["place", "event", "profile", "message"];
 
 const ERRORS = {
   invalid_target: ["Unknown report target", "invalid"],

@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { CalendarDays, Clock, MapPin, Navigation, Users } from "lucide-react";
+import { CalendarDays, Clock, MapPin, MessageCircle, Navigation, Users } from "lucide-react";
 import { getRepository } from "@/lib/data";
 import { getViewer } from "@/lib/auth/server";
+import { featureEnabled } from "@/lib/config";
 import { getCategory, getInterest } from "@/lib/data/taxonomy";
 import { JoinButton } from "@/components/events/JoinButton";
 import { ReportButton } from "@/components/shared/ReportButton";
@@ -44,6 +45,8 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
   const spotsLeft = event.capacity !== null ? Math.max(0, event.capacity - event.attendeeCount) : null;
   const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${event.lat},${event.lng}`;
   const day = relativeDayLabel(event.startsAt);
+  // The group chat, for people going (behind the messaging flag).
+  const chatId = viewer && event.viewerJoined && featureEnabled("messaging") ? await repo.messaging.eventConversation(viewer.id, event.id) : null;
 
   return (
     <article className="pb-nav md:pb-10">
@@ -104,6 +107,12 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
           </div>
           <JoinButton eventId={event.id} joined={event.viewerJoined} signedIn={!!viewer} full={full} ended={ended} cancelled={cancelled} size="md" />
         </div>
+        {chatId ? (
+          <Link href={`/messages/${chatId}`} className="mt-3 card p-3 flex items-center gap-2 font-semibold hover:bg-surface-2">
+            <MessageCircle size={18} className="text-pulse" /> Group chat
+            <span className="ml-auto text-xs font-normal text-muted">Everyone going</span>
+          </Link>
+        ) : null}
         {sp.new ? (
           <div className="mt-3">
             <NewBanner kind="event" />

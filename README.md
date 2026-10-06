@@ -298,6 +298,8 @@ does not use up the allowance. Sessions without a user (seeds, SQL, the service 
 | Reports | 30 a day | trigger on `reports` |
 | Photo uploads | 60 an hour | the Storage insert policy; one per photo, not per stored size |
 | Avatar uploads | 20 an hour | the Storage insert policy |
+| AI trip plans | 10 a day | `check_rate_limit('trip_plans')`, called before Claude is |
+| Messages | 60 an hour | trigger on `messages` |
 | Sign-ups | 5 an hour per IP | the sign-up server action |
 
 The numbers live in one table, `rate_limit_rules`, mirrored by `RATE_LIMITS` in
@@ -667,9 +669,55 @@ Tested with a mocked Anthropic client only: tool permissions, validation, the lo
 failure paths, the request shape, and the limit. Running it for real needs an API key (owner
 checklist).
 
+## Messaging
+
+Behind the `messaging` flag. Two kinds of conversation (`0020_messaging.sql`):
+
+- **Event group chats.** Every event has one, and its members are exactly the people going: a
+  trigger on `event_attendees` adds you when you join and removes you when you leave (the migration
+  backfills everyone already going). The chat closes, read-only, once the event is cancelled or
+  removed, and is deleted with the event. The event page links to it for people going.
+- **Direct messages**, one conversation per pair (`direct_key`). **The anti-spam rule:** you can start
+  one only with someone who follows you back, or who is going to an event you are both going to
+  (`can_message`, used by `start_direct`). Nobody can be messaged out of the blue, so there are no
+  message requests to triage. An existing conversation stays open if you later unfollow or leave the
+  event; blocking is how to end it. Someone else's profile shows "Message" when the rule allows it,
+  and the rule in words when it does not.
+
+**Privacy is in the database.** Only members read a conversation, its members or its messages (RLS
+with definer helpers, so the policies do not recurse). Members insert messages only as themselves;
+nobody can edit or delete a message, add members, or create conversations except through
+`start_direct` and the attendance trigger. Read receipts are each member's own `last_read_at`
+(column grant plus an own-row policy), set by `mark_read` with the database clock. Message text is
+never indexed and no discovery or recommendation function reads it.
+
+**Blocking** (`blocks`, private to the blocker): a blocked person cannot start or continue a direct
+conversation with you, in either direction (`messaging:blocked`); you stop seeing their messages,
+including in event chats; and you disappear from their view of member lists. Group chats stay open to
+both. Unblock from the conversation, their profile or `/messages`.
+
+**Abuse:** messages are rate limited (60 an hour), suspended accounts cannot send or block, and a
+member can report a message into the moderation queue (only members can, since only they saw it).
+Moderators see the full text of a reported message, and only of reported ones; removing it hides it
+from everyone, and restoring brings it back. Deleting an account deletes its messages, memberships
+and blocks; the other person keeps the conversation, with "Deleted account" on the other side.
+
+**Delivery.** `/messages` lists conversations with unread counts (`my_conversations()`); the rail
+shows the total. A thread loads its newest 50 messages (keyset pages via `conversation_messages`)
+and then stays live: with Supabase it subscribes to Realtime inserts on `messages` (the migration adds
+the table to the `supabase_realtime` publication when it exists, and RLS decides who receives each
+row) and refetches through `/api/messages/[id]`, with a slow poll as a fallback; in demo mode it polls
+that route every 4 seconds while the tab is visible. The route answers members only.
+
+Tested in PGlite under RLS (membership, the anti-spam rule, blocking both ways, the attendance
+trigger, closed chats, the rate limit, suspension, reports and moderation), for parity with the demo
+store (conversations, unread counts, previews and the can-message matrix for every pair of seed
+users, and account deletion), through the actions and the route, and in a two-browser demo run.
+Realtime itself has not run against a real Supabase project (owner checklist).
+
 ## Data model
 
-`profiles` · `profile_interests` · `interests` · `categories` · `places` · `place_tags` · `place_photos` · `place_ratings` · `saved_places` · `saved_lists` · `saved_list_items` · `events` · `event_tags` · `event_attendees` · `follows` · `reports` · `moderators` · `moderation_actions` · `local_revocations` · `rate_limit_rules` · `rate_limit_counters`
+`profiles` · `profile_interests` · `interests` · `categories` · `places` · `place_tags` · `place_photos` · `place_ratings` · `saved_places` · `saved_lists` · `saved_list_items` · `events` · `event_tags` · `event_attendees` · `follows` · `reports` · `moderators` · `moderation_actions` · `local_revocations` · `rate_limit_rules` · `rate_limit_counters` · `conversations` · `conversation_members` · `messages` · `blocks`
 
 Plus two views for the report read paths: `reports_i_filed` and `reports_about_my_stuff`.
 
@@ -736,4 +784,6 @@ Alternatives considered and deferred:
 
 ## Intentionally deferred
 
-Direct messaging, push notifications, recommendation algorithms, payments, advanced reputation scoring, native apps, analytics, and production deployment. The schema and repository contract are shaped so these can be added without rewrites.
+Push notifications, payments, ads, native apps and production deployment, until their sessions
+land; analytics, reputation, the admin dashboard, recommendations, trip planning and messaging are
+built and sit behind [feature flags](#feature-flags-part-b).

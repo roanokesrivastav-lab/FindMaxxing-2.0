@@ -15,7 +15,7 @@ import { ACTION_LABEL, DATE_TIME, TARGET_LABEL, publicHref, reasonLabel } from "
 export const metadata: Metadata = { title: "Review report" };
 export const dynamic = "force-dynamic";
 
-const TYPES: ReportTargetType[] = ["place", "event", "profile"];
+const TYPES: ReportTargetType[] = ["place", "event", "profile", "message"];
 
 export default async function ModerationTargetPage({ params }: { params: Promise<{ type: string; id: string }> }) {
   const { type, id } = await params;

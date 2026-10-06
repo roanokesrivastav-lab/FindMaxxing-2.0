@@ -31,10 +31,24 @@ export default async function UserPage({ params }: PageProps<"/u/[username]">) {
   const profile = await repo.profiles.getByUsername(username);
   if (!profile) notFound();
   if (viewer && profile.id === viewer.id) redirect("/profile");
-  const [stats, activity, follows] = await Promise.all([
+  const messagingOn = !!viewer && featureEnabled("messaging");
+  const [stats, activity, follows, canMessage, blocked] = await Promise.all([
     repo.profiles.stats(profile.id),
     repo.profiles.activity(profile.id, viewer?.id ?? null),
     viewer ? repo.profiles.isFollowing(viewer.id, profile.id) : Promise.resolve(false),
+    messagingOn ? repo.messaging.canMessage(viewer.id, profile.id) : Promise.resolve(false),
+    messagingOn ? repo.messaging.blocked(viewer.id) : Promise.resolve([]),
   ]);
-  return <ProfileView profile={profile} stats={stats} activity={activity} isSelf={false} viewerSignedIn={!!viewer} viewerFollows={follows} showLevel={featureEnabled("reputation")} />;
+  return (
+    <ProfileView
+      profile={profile}
+      stats={stats}
+      activity={activity}
+      isSelf={false}
+      viewerSignedIn={!!viewer}
+      viewerFollows={follows}
+      showLevel={featureEnabled("reputation")}
+      messaging={messagingOn ? { canMessage, blocked: blocked.some((b) => b.id === profile.id) } : null}
+    />
+  );
 }

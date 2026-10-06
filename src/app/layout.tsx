@@ -4,7 +4,8 @@ import "./globals.css";
 import { AppShell } from "@/components/layout/AppShell";
 import { getViewer } from "@/lib/auth/server";
 import { ToastProvider } from "@/components/ui/Toast";
-import { getDataMode, getSiteUrl } from "@/lib/config";
+import { featureEnabled, getDataMode, getSiteUrl } from "@/lib/config";
+import { getRepository } from "@/lib/data";
 
 const figtree = Figtree({
   variable: "--font-figtree",
@@ -46,11 +47,15 @@ export const viewport: Viewport = {
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const viewer = await getViewer();
+  // Flag-gated rail entries. A failed unread count never breaks the page.
+  const messaging = !!viewer && featureEnabled("messaging");
+  const unread = messaging ? await getRepository().then((r) => r.messaging.unreadTotal(viewer.id)).catch(() => 0) : null;
+  const extras = { plan: !!viewer && featureEnabled("tripPlanning"), unread };
   return (
     <html lang="en" className={`${figtree.variable} ${bricolage.variable} h-full`}>
       <body className="min-h-full flex flex-col">
         <ToastProvider>
-          <AppShell viewer={viewer} dataMode={getDataMode()}>
+          <AppShell viewer={viewer} dataMode={getDataMode()} extras={extras}>
             {children}
           </AppShell>
         </ToastProvider>

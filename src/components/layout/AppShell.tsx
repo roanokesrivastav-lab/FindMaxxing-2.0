@@ -11,7 +11,13 @@ export interface ShellViewer {
   avatarUrl: string | null;
 }
 
-export function AppShell({ viewer, dataMode, children }: { viewer: Viewer | null; dataMode: DataMode; children: ReactNode }) {
+/** Rail entries behind feature flags: the trip planner, and messages with the unread count (null when off). */
+export interface ShellExtras {
+  plan: boolean;
+  unread: number | null;
+}
+
+export function AppShell({ viewer, dataMode, extras = { plan: false, unread: null }, children }: { viewer: Viewer | null; dataMode: DataMode; extras?: ShellExtras; children: ReactNode }) {
   const shellViewer: ShellViewer | null = viewer
     ? {
         id: viewer.id,
@@ -22,7 +28,7 @@ export function AppShell({ viewer, dataMode, children }: { viewer: Viewer | null
     : null;
   return (
     <div className="flex min-h-dvh">
-      <SideRail viewer={shellViewer} dataMode={dataMode} />
+      <SideRail viewer={shellViewer} dataMode={dataMode} extras={extras} />
       <div className="flex-1 min-w-0 flex flex-col">
         <main className="flex-1 min-w-0">{children}</main>
       </div>

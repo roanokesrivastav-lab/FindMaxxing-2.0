@@ -7,7 +7,7 @@ export function reasonLabel(reason: string): string {
   return REPORT_REASONS.find((r) => r.value === reason)?.label ?? reason;
 }
 
-export const TARGET_LABEL: Record<ReportTargetType, string> = { place: "Place", event: "Event", profile: "Profile" };
+export const TARGET_LABEL: Record<ReportTargetType, string> = { place: "Place", event: "Event", profile: "Profile", message: "Message" };
 
 export const ACTION_LABEL: Record<ModerationLogAction, string> = {
   dismiss: "Dismissed the reports",
@@ -26,9 +26,10 @@ export const ACTION_LABEL: Record<ModerationLogAction, string> = {
   taxonomy_restore: "Brought back",
 };
 
-/** Where the target lives for everyone else; profiles link by username. */
+/** Where the target lives for everyone else; profiles link by username. Messages are private: no link. */
 export function publicHref(type: ReportTargetType, id: string, username: string | null): string | null {
   if (type === "place") return `/places/${id}`;
   if (type === "event") return `/events/${id}`;
+  if (type === "message") return null;
   return username ? `/u/${username}` : null;
 }

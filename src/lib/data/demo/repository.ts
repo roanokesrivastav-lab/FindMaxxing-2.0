@@ -25,6 +25,7 @@ import { homeCityCooldownMessage, nextHomeCityChange, sameCity } from "../localT
 import { createHash } from "node:crypto";
 import { LEVEL_RANK, refreshDemoReputation } from "./reputation";
 import { recommendDemoEvents, recommendDemoPlaces } from "./recommend";
+import { createDemoMessaging, dropEventChats, joinEventChat, leaveEventChat } from "./messaging";
 import { LIST_LIMIT_ERROR, MAX_SAVED_LISTS, duplicateListName, listNameKey, normalizeListName } from "../savedLists";
 import { newId } from "@/lib/utils/ids";
 import { neighborhoodKey } from "@/lib/utils/neighborhoods";
@@ -166,7 +167,9 @@ function toReportEntry(state: DemoState, r: ReportRow, withResolution = true): R
       ? (state.places.find((p) => p.id === r.targetId)?.name ?? null)
       : r.targetType === "event"
         ? (state.events.find((e) => e.id === r.targetId)?.title ?? null)
-        : (state.profiles.find((p) => p.id === r.targetId)?.displayName ?? null);
+        : r.targetType === "message"
+          ? null // private: the filer's own list shows no message text
+          : (state.profiles.find((p) => p.id === r.targetId)?.displayName ?? null);
   return {
     id: r.id,
     targetType: r.targetType,
@@ -331,14 +334,25 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
   const targetLabel = (type: ReportRow["targetType"], id: string): string | null =>
     type === "place" ? (state.places.find((p) => p.id === id)?.name ?? null)
       : type === "event" ? (state.events.find((e) => e.id === id)?.title ?? null)
-        : (state.profiles.find((p) => p.id === id)?.displayName ?? null);
+        : type === "message" ? (state.messages.find((m) => m.id === id)?.body.slice(0, 60) ?? null)
+          : (state.profiles.find((p) => p.id === id)?.displayName ?? null);
   const targetStatus = (type: ReportRow["targetType"], id: string): string | null =>
     type === "place" ? (state.places.find((p) => p.id === id)?.status ?? null)
       : type === "event" ? (state.events.find((e) => e.id === id)?.status ?? null)
+        : type === "message" ? messageStatus(id)
         : state.profiles.some((p) => p.id === id) ? (state.localRevocations.some((r) => r.userId === id) ? "revoked" : "active") : null;
+  /** Mirrors message_status(). */
+  function messageStatus(id: string): string | null {
+    const m = state.messages.find((x) => x.id === id);
+    return m ? (m.removedAt ? "removed" : "published") : null;
+  }
   /** Mirrors moderation_target(). */
   const snapshotOf = (type: ReportRow["targetType"], id: string) => {
     const ownerName = (ownerId: string | null) => (ownerId ? (state.profiles.find((p) => p.id === ownerId)?.username ?? null) : null);
+    if (type === "message") {
+      const m = state.messages.find((x) => x.id === id);
+      return m ? { label: m.body.slice(0, 60), status: messageStatus(id)!, visibility: null, city: null, neighborhood: null, body: m.body, extra: null, ownerId: m.senderId, ownerUsername: ownerName(m.senderId), createdAt: m.createdAt } : null;
+    }
     if (type === "place") {
       const p = state.places.find((x) => x.id === id);
       return p ? { label: p.name, status: p.status, visibility: p.visibility, city: p.city, neighborhood: p.neighborhood, body: p.description, extra: p.localTip, ownerId: p.creatorId, ownerUsername: ownerName(p.creatorId), createdAt: p.createdAt } : null;
@@ -775,6 +789,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         for (const t of input.tags) state.eventTags.push({ eventId: row.id, interestSlug: t });
         // Creators attend their own events by default.
         state.eventAttendees.push({ eventId: row.id, userId: creatorId, createdAt: now });
+        joinEventChat(state, row.id, creatorId, now);
         counted();
         persist();
         return toEvent(state, row);
@@ -829,6 +844,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         state.events = state.events.filter((e) => e.id !== id);
         state.eventTags = state.eventTags.filter((t) => t.eventId !== id);
         state.eventAttendees = state.eventAttendees.filter((a) => a.eventId !== id);
+        dropEventChats(state, new Set([id]));
         persist();
       },
       async join(userId, eventId) {
@@ -841,6 +857,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         const count = state.eventAttendees.filter((a) => a.eventId === eventId).length;
         if (ev.capacity !== null && count >= ev.capacity) throw new DataError("This event is full", "full");
         state.eventAttendees.push({ eventId, userId, createdAt: new Date().toISOString() });
+        joinEventChat(state, eventId, userId);
         persist();
       },
       async leave(userId, eventId) {
@@ -848,6 +865,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         const idx = state.eventAttendees.findIndex((a) => a.eventId === eventId && a.userId === userId);
         if (idx >= 0) {
           state.eventAttendees.splice(idx, 1);
+          leaveEventChat(state, eventId, userId);
           persist();
         }
       },
@@ -1124,7 +1142,10 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
             ? state.places.some((p) => p.id === input.targetId)
             : input.targetType === "event"
               ? state.events.some((e) => e.id === input.targetId)
-              : state.profiles.some((p) => p.id === input.targetId);
+              : input.targetType === "message"
+                // Only a member saw it, so only a member can report it (check_report_target).
+                ? state.messages.some((m) => m.id === input.targetId && state.conversationMembers.some((c) => c.conversationId === m.conversationId && c.userId === reporterId))
+                : state.profiles.some((p) => p.id === input.targetId);
         if (!exists) throw new DataError("Target not found", "not_found");
         // One open report per (reporter, target).
         const dup = state.reports.some(
@@ -1239,8 +1260,10 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         const content = targetType === "place"
           ? state.places.find((p) => p.id === targetId)
           : targetType === "event" ? state.events.find((e) => e.id === targetId) : null;
-        if (targetType === "profile" ? !state.profiles.some((p) => p.id === targetId) : !content) throw moderationError("not_found");
-        const before: string | null = content?.status ?? null;
+        const message = targetType === "message" ? state.messages.find((m) => m.id === targetId) : null;
+        const found = targetType === "profile" ? state.profiles.some((p) => p.id === targetId) : targetType === "message" ? !!message : !!content;
+        if (!found) throw moderationError("not_found");
+        const before: string | null = message ? messageStatus(message.id) : (content?.status ?? null);
         let after = before;
         let reportStatus: ReportRow["status"];
         if (action === "remove") {
@@ -1267,6 +1290,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           content.status = after as typeof content.status;
           content.updatedAt = now;
         }
+        if (message && after !== before) message.removedAt = after === "removed" ? now : null;
         state.moderationActions.push({
           id: newId(), moderatorId, action, targetType, targetId, reason: why,
           statusBefore: before, statusAfter: after, resolvedReports: open.length, createdAt: now,
@@ -1483,6 +1507,14 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         persist();
       },
     },
+
+    messaging: createDemoMessaging(state, {
+      persist,
+      assertActive,
+      rateLimit,
+      canViewEvent: (event, viewerId) => canViewEvent(state, event, viewerId),
+      summary: (id) => profileOf(state, id),
+    }),
 
     limits: {
       async consume(userId, action) {

@@ -98,7 +98,7 @@ export function ModerationActions({ targetType, targetId, status, openReports }:
         {copy ? (
           <div className="flex flex-col gap-4 pt-2">
             <p className="text-sm leading-relaxed text-ink-2">{copy.body(openReports)}</p>
-            <FormField label="Reason" htmlFor="moderation-reason" hint={copy.reasonRequired ? "required · the owner sees it" : "optional · kept in the history"} error={error ?? undefined}>
+            <FormField label="Reason" htmlFor="moderation-reason" hint={copy.reasonRequired ? (targetType === "message" ? "required · kept in the history" : "required · the owner sees it") : "optional · kept in the history"} error={error ?? undefined}>
               <Textarea id="moderation-reason" value={reason} onChange={(e) => setReason(e.target.value)} rows={3} maxLength={500} required={copy.reasonRequired} />
             </FormField>
             <div className="flex gap-2">

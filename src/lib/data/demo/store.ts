@@ -27,6 +27,7 @@ import {
 } from "@/lib/seed/seed-data";
 import type { EventStatus, ModerationLogAction, PlaceStatus, ReportReason, ReportStatus, ReportTargetType, ReputationLevel, Visibility } from "../types";
 import { refreshDemoReputation } from "./reputation";
+import { syncAllEventChats } from "./messaging";
 import { CATEGORIES, INTERESTS } from "../taxonomy";
 import { oldEnoughToBeLocal, sameCity } from "../localTier";
 import { newId } from "@/lib/utils/ids";
@@ -179,6 +180,28 @@ export interface DemoState {
   suspensions: { userId: string; reason: string; suspendedBy: string | null; suspendedAt: string }[];
   /** Mirrors the categories and interests tables (admin-editable). */
   taxonomy: TaxonomyRow[];
+  /** Mirrors 0020_messaging.sql. Group chats follow eventAttendees (see ./messaging). */
+  conversations: ConversationRow[];
+  conversationMembers: { conversationId: string; userId: string; joinedAt: string; lastReadAt: string | null }[];
+  messages: MessageRow[];
+  blocks: { blockerId: string; blockedId: string; createdAt: string }[];
+}
+
+export interface ConversationRow {
+  id: string;
+  kind: "direct" | "group";
+  eventId: string | null;
+  directKey: string | null;
+  createdAt: string;
+  lastMessageAt: string | null;
+}
+export interface MessageRow {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  body: string;
+  createdAt: string;
+  removedAt: string | null;
 }
 
 export interface TaxonomyRow {
@@ -208,7 +231,7 @@ export interface SavedListRow {
   updatedAt: string;
 }
 
-export const STATE_VERSION = 8;
+export const STATE_VERSION = 9;
 const DATA_DIR = path.join(process.cwd(), ".data");
 const STATE_FILE = path.join(DATA_DIR, "demo-store.json");
 
@@ -225,6 +248,7 @@ const COLLECTIONS = [
   "authUsers", "profiles", "profileInterests", "places", "placeTags", "placePhotos",
   "placeRatings", "savedPlaces", "savedLists", "savedListItems", "events", "eventTags", "eventAttendees", "follows", "reports",
   "moderators", "moderationActions", "localRevocations", "rateLimits", "admins", "analyticsEvents", "reputationResets", "suspensions", "taxonomy",
+  "conversations", "conversationMembers", "messages", "blocks",
 ] as const;
 
 const LEGACY_PLACE_UPLOAD = /^\/api\/uploads\/(places-[^/]+)$/;
@@ -300,6 +324,15 @@ const MIGRATIONS: Record<number, (state: LooseState) => void> = {
     state.suspensions ??= [];
     state.taxonomy ??= seedTaxonomy();
   },
+  // v8 → v9: messaging. Everyone already going to an event is in its group
+  // chat, as the SQL migration does; nobody has messages or blocks yet.
+  8(state) {
+    state.conversations ??= [];
+    state.conversationMembers ??= [];
+    state.messages ??= [];
+    state.blocks ??= [];
+    syncAllEventChats(state as unknown as DemoState);
+  },
 };
 
 export type MigrationResult =
@@ -369,6 +402,10 @@ export function buildSeedState(now = new Date()): DemoState {
     reputationResets: [],
     suspensions: [],
     taxonomy: seedTaxonomy(),
+    conversations: [],
+    conversationMembers: [],
+    messages: [],
+    blocks: [],
   };
 
   SEED_USERS.forEach((u, i) => {
@@ -464,6 +501,9 @@ export function buildSeedState(now = new Date()): DemoState {
       state.eventAttendees.push({ eventId: ev.id, userId: seedUserByName(a).id, createdAt: daysAgo(7) });
     }
   });
+
+  // Like the event_attendees trigger as the SQL seed inserts attendance.
+  syncAllEventChats(state, now.toISOString());
 
   SEED_REPORTS.forEach((r, i) => {
     const target = r.targetKind === "place" ? seedPlaceByName(r.target).id : r.target;

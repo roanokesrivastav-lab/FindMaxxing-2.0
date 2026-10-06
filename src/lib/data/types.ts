@@ -147,7 +147,7 @@ export interface EventDetail extends Event {
   attendees: ProfileSummary[];
 }
 
-export type ReportTargetType = "place" | "event" | "profile";
+export type ReportTargetType = "place" | "event" | "profile" | "message";
 export type ReportReason =
   | "inaccurate"
   | "closed"
@@ -598,6 +598,45 @@ export interface RecommendOptions {
 }
 
 /** Thrown by repositories for expected, user-facing failures. */
+// ----------------------------------------------------------------------------
+// Messaging
+// ----------------------------------------------------------------------------
+export interface ConversationSummary {
+  id: string;
+  kind: "direct" | "group";
+  /** Group chats belong to one event. */
+  eventId: string | null;
+  eventTitle: string | null;
+  /** The other person in a direct conversation (null once their account is gone). */
+  other: ProfileSummary | null;
+  lastMessageAt: string | null;
+  lastBody: string | null;
+  lastSenderId: string | null;
+  /** Messages from others since the viewer last read the conversation. */
+  unread: number;
+}
+
+export interface ConversationMember {
+  profile: ProfileSummary;
+  lastReadAt: string | null;
+}
+
+export interface ConversationDetail extends ConversationSummary {
+  /** Members the viewer can see (people who blocked the viewer are left out). */
+  members: ConversationMember[];
+  /** Whether the viewer can still post (directs across a block, and chats of events no longer on, are closed). */
+  canSend: boolean;
+}
+
+export interface Message {
+  id: string;
+  conversationId: string;
+  sender: ProfileSummary | null;
+  senderId: string;
+  body: string;
+  createdAt: string;
+}
+
 export class DataError extends Error {
   constructor(
     message: string,
