@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { featureEnabled } from "@/lib/config";
 import type { Metadata } from "next";
 import { getRepository } from "@/lib/data";
 import { getViewer } from "@/lib/auth/server";
@@ -35,5 +36,5 @@ export default async function UserPage({ params }: PageProps<"/u/[username]">) {
     repo.profiles.activity(profile.id, viewer?.id ?? null),
     viewer ? repo.profiles.isFollowing(viewer.id, profile.id) : Promise.resolve(false),
   ]);
-  return <ProfileView profile={profile} stats={stats} activity={activity} isSelf={false} viewerSignedIn={!!viewer} viewerFollows={follows} />;
+  return <ProfileView profile={profile} stats={stats} activity={activity} isSelf={false} viewerSignedIn={!!viewer} viewerFollows={follows} showLevel={featureEnabled("reputation")} />;
 }

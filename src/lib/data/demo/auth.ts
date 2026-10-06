@@ -47,6 +47,7 @@ export function demoSignUp(input: {
     homeCityChangedAt: null,
     onboardedAt: null,
     analyticsOptOut: false,
+    reputationLevel: "new",
     createdAt: now,
     updatedAt: now,
   });

@@ -56,7 +56,7 @@ describe("onboarding actions", async () => {
     const store = createIsolatedStore();
     ctx.repo = createDemoRepository(store);
     newcomer = "00000000-0000-4000-8000-0000000000bb";
-    store.state.profiles.push({ id: newcomer, username: "newcomer", displayName: "New Comer", avatarUrl: null, bio: null, homeCity: null, homeCityChangedAt: null, onboardedAt: null, analyticsOptOut: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    store.state.profiles.push({ id: newcomer, username: "newcomer", displayName: "New Comer", avatarUrl: null, bio: null, homeCity: null, homeCityChangedAt: null, onboardedAt: null, analyticsOptOut: false, reputationLevel: "new", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     ctx.viewer = newcomer;
   });
 

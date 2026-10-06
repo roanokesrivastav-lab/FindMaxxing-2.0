@@ -30,7 +30,7 @@ export const latSchema = z.coerce.number().min(-90).max(90);
 export const lngSchema = z.coerce.number().min(-180).max(180);
 
 export const visibilitySchema = z
-  .enum(["public", "locals"], { message: "Pick who can see this" })
+  .enum(["public", "locals", "trusted", "followers"], { message: "Pick who can see this" })
   .default("public");
 
 export const tagsSchema = z
@@ -176,7 +176,7 @@ export const placeStatusSchema = z.enum(["published", "hidden"], {
   message: "Invalid status",
 });
 
-export const placeVisibilitySchema = z.enum(["public", "locals", "private"], {
+export const placeVisibilitySchema = z.enum(["public", "locals", "trusted", "followers", "private"], {
   message: "Invalid visibility",
 });
 

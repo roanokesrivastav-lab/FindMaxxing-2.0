@@ -219,6 +219,13 @@ export interface DataRepository {
   admin: {
     isAdmin(userId: string | null): Promise<boolean>;
   };
+  /** Levels are cached; refreshAll is the hourly cron, reset is a moderator action. */
+  reputation: {
+    /** Moderators only: signals before now stop counting; recorded in the moderation history. */
+    reset(moderatorId: string, userId: string, reason: string): Promise<void>;
+    /** Service-level: recomputes every level. Returns how many profiles were refreshed. */
+    refreshAll(): Promise<number>;
+  };
   storage: {
     /**
      * Stores an image. Avatars get a public URL; place photos are private and

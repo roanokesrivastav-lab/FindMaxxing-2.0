@@ -67,6 +67,7 @@ interface ProfileRow extends ProfileSummaryRow {
   home_city: string | null;
   home_city_changed_at?: string | null;
   onboarded_at?: string | null;
+  reputation_level?: Profile["reputationLevel"];
   created_at: string;
   updated_at: string;
   profile_interests?: { interest_slug: string }[];
@@ -131,6 +132,7 @@ function mapProfile(r: ProfileRow): Profile {
     homeCity: r.home_city,
     homeCityChangedAt: r.home_city_changed_at ?? null,
     onboardedAt: r.onboarded_at ?? null,
+    reputationLevel: r.reputation_level ?? "new",
     interests: (r.profile_interests ?? []).map((i) => i.interest_slug),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -473,6 +475,7 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
             .select(PLACE_MAP_SELECT)
             .order("rating_count", { ascending: false })
             .order("save_count", { ascending: false })
+            .order("creator_reputation", { ascending: false })
             .order("id", { ascending: true })
             .limit(limit + 1),
         ) as { id: string; name: string; category_slug: string; lat: number; lng: number; rating_avg: number | string; rating_count: number }[];
@@ -1220,6 +1223,18 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
         const out = { community: 0, seed: 0 };
         for (const r of rows) out[r.source] = r.saves;
         return out;
+      },
+    },
+
+    reputation: {
+      async reset(_moderatorId, userId, reason) {
+        unwrap(await supabase.rpc("reset_reputation", { p_user: userId, p_reason: reason }));
+      },
+      async refreshAll() {
+        // Service role only (the cron route uses the admin client).
+        const { data, error } = await supabase.rpc("refresh_all_reputation");
+        if (error) throw translate(error);
+        return Number(data ?? 0);
       },
     },
 

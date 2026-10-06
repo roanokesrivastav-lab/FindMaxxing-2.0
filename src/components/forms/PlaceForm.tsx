@@ -14,7 +14,7 @@ import { useFormSubmit } from "@/lib/forms/useFormSubmit";
 import { PLACE_CATEGORIES } from "@/lib/data/taxonomy";
 import { Lightbulb } from "lucide-react";
 
-export function PlaceForm({ defaultCity, initial, edit = false }: { defaultCity: string; initial?: Place; edit?: boolean }) {
+export function PlaceForm({ defaultCity, initial, edit = false, extendedTiers = false }: { defaultCity: string; initial?: Place; edit?: boolean; extendedTiers?: boolean }) {
   const [state, action, pending] = useActionState(edit ? updatePlaceAction : createPlaceAction, null);
   const errors = state && !state.ok ? (state.fieldErrors ?? {}) : {};
   const value = (v: string | null | undefined) => v ?? "";
@@ -73,7 +73,7 @@ export function PlaceForm({ defaultCity, initial, edit = false }: { defaultCity:
       {!edit ? (
         <>
           <MultiPhotoInput name="photos" error={errors.photos} hint="up to 6" />
-          <VisibilityPicker error={errors.visibility} />
+          <VisibilityPicker error={errors.visibility} extendedTiers={extendedTiers} />
         </>
       ) : (
         <p className="text-xs text-muted">

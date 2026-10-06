@@ -499,3 +499,6 @@ insert into public.follows (follower_id, following_id) values ('f6e4d056-f565-41
 insert into public.follows (follower_id, following_id) values ('f6e4d056-f565-41b4-a2e0-f9347bbf87df', '28572a41-206d-4bd8-a853-31ab1a437aea') on conflict do nothing;
 insert into public.follows (follower_id, following_id) values ('b12fb965-a620-40e9-a0a8-8d379dcbbf40', '28300d2a-8dcf-4599-a2da-9c4bbcd955da') on conflict do nothing;
 insert into public.follows (follower_id, following_id) values ('b12fb965-a620-40e9-a0a8-8d379dcbbf40', 'ee4edfe3-9370-441b-a004-14b4bfff0b9d') on conflict do nothing;
+
+-- Reputation levels from the seeded activity (the hourly cron keeps them current)
+select public.refresh_all_reputation();

@@ -45,6 +45,21 @@ export async function resolveReportsAction(input: {
   }
 }
 
+export async function resetReputationAction(input: { userId: string; reason: string }): Promise<ActionResult> {
+  const viewer = await getViewer();
+  if (!viewer) return fail("Sign in first", undefined, "unauthenticated");
+  const parsed = localStatusSchema.omit({ revoked: true }).safeParse(input);
+  if (!parsed.success) return fail("Check the highlighted fields", fieldErrors(parsed.error));
+  try {
+    const repo = await getRepository();
+    await repo.reputation.reset(viewer.id, parsed.data.userId, parsed.data.reason);
+    revalidateTarget("profile", parsed.data.userId);
+    return succeed(undefined);
+  } catch (err) {
+    return reasonFailure(err);
+  }
+}
+
 export async function setLocalStatusAction(input: { userId: string; revoked: boolean; reason: string }): Promise<ActionResult> {
   const viewer = await getViewer();
   if (!viewer) return fail("Sign in first", undefined, "unauthenticated");

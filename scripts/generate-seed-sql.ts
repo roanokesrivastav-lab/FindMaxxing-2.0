@@ -114,6 +114,9 @@ on conflict (id) do nothing;`);
     out.push(`insert into public.follows (follower_id, following_id) values (${q(seedUserByName(f.follower).id)}, ${q(seedUserByName(f.following).id)}) on conflict do nothing;`);
   }
   out.push("");
+  out.push("-- Reputation levels from the seeded activity (the hourly cron keeps them current)");
+  out.push("select public.refresh_all_reputation();");
+  out.push("");
   return out.join("\n");
 }
 

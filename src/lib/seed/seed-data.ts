@@ -45,7 +45,7 @@ export interface SeedPlace {
   creator: string; // username
   tags: string[];
   /** Defaults to "public". "locals" exercises the trust tier. */
-  visibility?: "public" | "locals";
+  visibility?: "public" | "locals" | "trusted" | "followers";
 }
 
 export interface SeedEvent {

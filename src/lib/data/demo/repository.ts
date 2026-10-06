@@ -23,6 +23,7 @@ import { RATE_LIMITS, rateLimitError, windowStart, type RateLimitAction } from "
 import { MAX_MODERATION_REASON, MODERATION_ACTIONS, REPORT_TARGET_TYPES, compareModerationReports, moderationError, normalizeReason } from "../moderation";
 import { homeCityCooldownMessage, nextHomeCityChange, sameCity } from "../localTier";
 import { createHash } from "node:crypto";
+import { LEVEL_RANK, refreshDemoReputation } from "./reputation";
 import { LIST_LIMIT_ERROR, MAX_SAVED_LISTS, duplicateListName, listNameKey, normalizeListName } from "../savedLists";
 import { newId } from "@/lib/utils/ids";
 import { neighborhoodKey } from "@/lib/utils/neighborhoods";
@@ -72,6 +73,7 @@ function toProfile(state: DemoState, p: ProfileRow): Profile {
     homeCity: p.homeCity,
     homeCityChangedAt: p.homeCityChangedAt,
     onboardedAt: p.onboardedAt,
+    reputationLevel: p.reputationLevel,
     interests: state.profileInterests.filter((x) => x.profileId === p.id).map((x) => x.interestSlug),
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
@@ -134,13 +136,22 @@ function toEvent(state: DemoState, row: EventRow): Event {
 /**
  * Whether a viewer may see a place. Mirrors can_view_place(): creators see
  * their own unless moderators removed it; everyone else needs a published row
- * that is either public, or locals-only with the viewer qualifying as a local.
+ * that is public, locals-only with the viewer a local, trusted-only with the
+ * viewer a trusted local, or followers-only with a mutual follow.
  */
 function canViewPlace(state: DemoState, p: PlaceRow, viewerId: string | null): boolean {
   if (viewerId && p.creatorId === viewerId && p.status !== "removed") return true;
   if (p.status !== "published") return false;
   if (p.visibility === "public") return true;
   if (p.visibility === "locals") return isLocalOfCity(state, viewerId, p.city);
+  if (p.visibility === "trusted") {
+    return isLocalOfCity(state, viewerId, p.city) && state.profiles.find((x) => x.id === viewerId)?.reputationLevel === "trusted";
+  }
+  if (p.visibility === "followers") {
+    return !!viewerId && !!p.creatorId &&
+      state.follows.some((f) => f.followerId === viewerId && f.followingId === p.creatorId) &&
+      state.follows.some((f) => f.followerId === p.creatorId && f.followingId === viewerId);
+  }
   return false;
 }
 
@@ -402,7 +413,8 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         const rows = state.places
           .filter((p) => placeMatches(state, p, f, viewerId))
           .map((p) => ({ p, saves: saves(p.id) }))
-          .sort((a, b) => b.p.ratingCount - a.p.ratingCount || b.saves - a.saves || compareIds(a.p.id, b.p.id));
+          // Ratings, then saves, then the creator's reputation, then id: reputation is one input, never the only one.
+          .sort((a, b) => b.p.ratingCount - a.p.ratingCount || b.saves - a.saves || b.p.creatorReputation - a.p.creatorReputation || compareIds(a.p.id, b.p.id));
         return {
           items: rows.slice(0, limit).map(({ p }) => ({
             id: p.id, name: p.name, categorySlug: p.categorySlug, lat: p.lat, lng: p.lng, ratingAvg: p.ratingAvg, ratingCount: p.ratingCount,
@@ -453,6 +465,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           status: "published",
           visibility: input.visibility ?? "public",
           source: "community",
+          creatorReputation: LEVEL_RANK[requireProfile(creatorId).reputationLevel],
           createdAt: now,
           updatedAt: now,
         };
@@ -1313,6 +1326,31 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
     admin: {
       async isAdmin(userId) {
         return isAdmin(userId);
+      },
+    },
+
+    reputation: {
+      async reset(moderatorId, userId, reason) {
+        if (!isModeratorIn(state, moderatorId)) throw new DataError("Moderators only", "forbidden");
+        const why = normalizeReason(reason);
+        if (!why) throw moderationError("reason_required");
+        if (why.length > MAX_MODERATION_REASON) throw moderationError("reason_too_long");
+        const profile = state.profiles.find((p) => p.id === userId);
+        if (!profile) throw moderationError("not_found");
+        const before = profile.reputationLevel;
+        const now = new Date().toISOString();
+        state.reputationResets = [...state.reputationResets.filter((r) => r.userId !== userId), { userId, resetAt: now, resetBy: moderatorId }];
+        refreshDemoReputation(state, userId);
+        state.moderationActions.push({
+          id: newId(), moderatorId, action: "reset_reputation", targetType: "profile", targetId: userId, reason: why,
+          statusBefore: before, statusAfter: profile.reputationLevel, resolvedReports: 0, createdAt: now,
+        });
+        persist();
+      },
+      async refreshAll() {
+        const n = refreshDemoReputation(state);
+        persist();
+        return n;
       },
     },
 

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LevelBadge } from "./LevelBadge";
 import { Flag, MapPin, Pencil, Settings, ShieldAlert, ShieldCheck } from "lucide-react";
 import type { Profile, ProfileStats, RemovedContent, UserActivity } from "@/lib/data/types";
 import { Avatar } from "@/components/ui/Avatar";
@@ -18,6 +19,7 @@ export function ProfileView({
   viewerFollows,
   removed = [],
   isModerator = false,
+  showLevel = false,
 }: {
   profile: Profile;
   stats: ProfileStats;
@@ -28,6 +30,8 @@ export function ProfileView({
   /** The viewer's own content that moderators removed (self view only). */
   removed?: RemovedContent[];
   isModerator?: boolean;
+  /** Reputation level badge, behind the reputation flag. */
+  showLevel?: boolean;
 }) {
   return (
     <div className="max-w-2xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-nav md:pb-10">
@@ -37,6 +41,7 @@ export function ProfileView({
           <div className="flex-1 min-w-0">
             <h1 className="text-2xl font-bold leading-tight break-words">{profile.displayName}</h1>
             <p className="text-sm text-muted">@{profile.username}</p>
+            {showLevel ? <div className="mt-1.5"><LevelBadge level={profile.reputationLevel} /></div> : null}
             {profile.homeCity ? (
               <p className="text-sm text-ink-2 mt-1 inline-flex items-center gap-1">
                 <MapPin size={13} /> {profile.homeCity}

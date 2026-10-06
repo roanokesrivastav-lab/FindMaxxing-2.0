@@ -139,7 +139,7 @@ function sqlSide(db: PGlite) {
       const limit = clampLimit(opts.limit, DEFAULT_MAP_MARKERS, MAX_MAP_MARKERS);
       const { from, params } = call("discover_places", discoverArgs(normalizeFilters(opts)));
       const rows = await queryAs<{ id: string }>(db, viewer,
-        `select id from ${from} order by rating_count desc, save_count desc, id limit ${limit + 1}`, params);
+        `select id from ${from} order by rating_count desc, save_count desc, creator_reputation desc, id limit ${limit + 1}`, params);
       return { ids: rows.slice(0, limit).map((r) => r.id), truncated: rows.length > limit };
     },
     async eventMap(viewer: string | null, opts: MapQueryOptions) {
@@ -205,6 +205,8 @@ describe("SQL and demo agree", () => {
     for (const p of state.places) await db.query("update public.places set created_at = $2 where id = $1", [p.id, p.createdAt]);
     for (const e of state.events) await db.query("update public.events set starts_at = $2, ends_at = $3 where id = $1", [e.id, e.startsAt, e.endsAt]);
     await db.exec("alter table public.events enable trigger guard_owner_event_change;");
+    // Reputation depends on how old places are; recompute it from the aligned timestamps.
+    await db.query("select public.refresh_all_reputation()");
   });
 
   const demoPlaces = (viewerId: string | null, opts: PlaceSearchOptions) =>

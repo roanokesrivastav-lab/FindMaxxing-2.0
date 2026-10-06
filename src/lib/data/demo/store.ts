@@ -25,7 +25,8 @@ import {
   seedPlaceByName,
   seedUserByName,
 } from "@/lib/seed/seed-data";
-import type { EventStatus, ModerationLogAction, PlaceStatus, ReportReason, ReportStatus, ReportTargetType, Visibility } from "../types";
+import type { EventStatus, ModerationLogAction, PlaceStatus, ReportReason, ReportStatus, ReportTargetType, ReputationLevel, Visibility } from "../types";
+import { refreshDemoReputation } from "./reputation";
 import { oldEnoughToBeLocal, sameCity } from "../localTier";
 import { newId } from "@/lib/utils/ids";
 import { placePhotoReference } from "../photos";
@@ -46,6 +47,7 @@ export interface ProfileRow {
   homeCityChangedAt: string | null;
   onboardedAt: string | null;
   analyticsOptOut: boolean;
+  reputationLevel: ReputationLevel;
   createdAt: string;
   updatedAt: string;
 }
@@ -67,6 +69,8 @@ export interface PlaceRow {
   visibility: Visibility;
   /** Mirrors places.source: seed data, or added by a user. */
   source: "community" | "seed";
+  /** Mirrors places.creator_reputation (0 new, 1 contributor, 2 trusted): one ranking input. */
+  creatorReputation: 0 | 1 | 2;
   createdAt: string;
   updatedAt: string;
 }
@@ -166,6 +170,9 @@ export interface DemoState {
   analyticsEvents: { id: number; actor: string; name: string; props: Record<string, unknown>; createdAt: string }[];
   /** Mirrors analytics_salt. Never leaves the store. */
   analyticsSalt: string;
+  /** Mirrors reputation_cache (admins only). */
+  reputation: Record<string, { score: number; level: ReputationLevel; computedAt: string }>;
+  reputationResets: { userId: string; resetAt: string; resetBy: string | null }[];
 }
 
 export interface SavedListRow {
@@ -176,7 +183,7 @@ export interface SavedListRow {
   updatedAt: string;
 }
 
-export const STATE_VERSION = 6;
+export const STATE_VERSION = 7;
 const DATA_DIR = path.join(process.cwd(), ".data");
 const STATE_FILE = path.join(DATA_DIR, "demo-store.json");
 
@@ -192,7 +199,7 @@ type LooseState = Record<string, unknown> & { version?: unknown };
 const COLLECTIONS = [
   "authUsers", "profiles", "profileInterests", "places", "placeTags", "placePhotos",
   "placeRatings", "savedPlaces", "savedLists", "savedListItems", "events", "eventTags", "eventAttendees", "follows", "reports",
-  "moderators", "moderationActions", "localRevocations", "rateLimits", "admins", "analyticsEvents",
+  "moderators", "moderationActions", "localRevocations", "rateLimits", "admins", "analyticsEvents", "reputationResets",
 ] as const;
 
 const LEGACY_PLACE_UPLOAD = /^\/api\/uploads\/(places-[^/]+)$/;
@@ -252,6 +259,15 @@ const MIGRATIONS: Record<number, (state: LooseState) => void> = {
     state.admins ??= [];
     state.analyticsEvents ??= [];
     state.analyticsSalt ??= randomBytes(32).toString("hex");
+  },
+  // v6 → v7: reputation. Levels are computed once from the existing activity,
+  // as the SQL migration's first cron run would.
+  6(state) {
+    state.reputation ??= {};
+    state.reputationResets ??= [];
+    for (const profile of state.profiles as Partial<ProfileRow>[]) profile.reputationLevel ??= "new";
+    for (const place of state.places as Partial<PlaceRow>[]) place.creatorReputation ??= 0;
+    refreshDemoReputation(state as unknown as DemoState);
   },
 };
 
@@ -318,6 +334,8 @@ export function buildSeedState(now = new Date()): DemoState {
     admins: [],
     analyticsEvents: [],
     analyticsSalt: randomBytes(32).toString("hex"),
+    reputation: {},
+    reputationResets: [],
   };
 
   SEED_USERS.forEach((u, i) => {
@@ -333,6 +351,7 @@ export function buildSeedState(now = new Date()): DemoState {
       homeCityChangedAt: null,
       onboardedAt: created,
       analyticsOptOut: false,
+      reputationLevel: "new",
       createdAt: created,
       updatedAt: created,
     });
@@ -358,6 +377,7 @@ export function buildSeedState(now = new Date()): DemoState {
       status: "published",
       visibility: p.visibility ?? "public",
       source: "seed",
+      creatorReputation: 0,
       createdAt: created,
       updatedAt: created,
     });
@@ -433,6 +453,8 @@ export function buildSeedState(now = new Date()): DemoState {
   for (const username of SEED_ADMINS) {
     state.admins.push({ userId: seedUserByName(username).id, grantedAt: daysAgo(30), grantedBy: null });
   }
+  // Like the SQL seed's final refresh_all_reputation().
+  refreshDemoReputation(state, undefined, now.getTime());
 
   SEED_FOLLOWS.forEach((f, i) => {
     state.follows.push({

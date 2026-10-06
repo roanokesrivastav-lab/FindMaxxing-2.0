@@ -16,6 +16,7 @@ export const ACTION_LABEL: Record<ModerationLogAction, string> = {
   restore: "Restored the content",
   revoke_local: "Revoked local status",
   restore_local: "Restored local status",
+  reset_reputation: "Reset reputation",
 };
 
 /** Where the target lives for everyone else; profiles link by username. */

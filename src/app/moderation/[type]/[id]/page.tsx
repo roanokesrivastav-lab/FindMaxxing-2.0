@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { featureEnabled } from "@/lib/config";
+import { ResetReputationControl } from "@/components/moderation/ResetReputationControl";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { requireViewer } from "@/lib/auth/server";
@@ -26,6 +28,7 @@ export default async function ModerationTargetPage({ params }: { params: Promise
   if (!detail) notFound();
 
   const { snapshot, reports, history } = detail;
+  const level = targetType === "profile" ? (await repo.profiles.getById(id))?.reputationLevel ?? null : null;
   const open = reports.filter((r) => r.status === "open").length;
   const href = snapshot ? publicHref(targetType, id, snapshot.ownerUsername) : null;
 
@@ -66,6 +69,7 @@ export default async function ModerationTargetPage({ params }: { params: Promise
             <div className="flex flex-col gap-3">
               {open ? <ModerationActions targetType={targetType} targetId={id} status={snapshot.status} openReports={open} /> : null}
               <LocalStatusControl userId={id} revoked={snapshot.status === "revoked"} />
+              {featureEnabled("reputation") && level ? <ResetReputationControl userId={id} level={level} /> : null}
             </div>
           ) : (
             <ModerationActions targetType={targetType} targetId={id} status={snapshot.status} openReports={open} />

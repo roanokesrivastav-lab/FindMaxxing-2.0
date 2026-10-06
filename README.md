@@ -81,6 +81,7 @@ The beta's go/no-go list, with the command and current status of each gate, is `
    - `supabase/migrations/0013_discovery_performance.sql` — `pg_trgm` search indexes, row policies that read the row they are given, and the Nearest order
    - `supabase/migrations/0014_onboarding.sql` — first-run onboarding state (existing accounts count as done)
    - `supabase/migrations/0015_analytics.sql` — admins, pseudonymous first-party analytics, place source, metric functions
+   - `supabase/migrations/0016_reputation.sql` — contributor reputation (cached levels, moderator reset) and the trusted-locals and followers visibility tiers
    - `supabase/seed.sql` — optional fictional demo data (generated from `src/lib/seed/seed-data.ts` via `npm run seed:sql`; **do not use the demo users in production**)
 2. In Supabase Auth settings, add `http://localhost:3000/auth/callback` (and your production URL) to the redirect allow-list. Email confirmation is supported: the sign-up flow shows a "check your email" state and `/auth/callback` exchanges the code.
    Under **Authentication → Rate Limits**, keep sign-ups and password-recovery emails low for the beta: 30 sign-ups and 30 token verifications per 5 minutes per IP, and 4 emails per hour (or connect your own SMTP provider and raise it deliberately). Turn on CAPTCHA protection if sign-up spam appears. These sit in front of the app's own per-IP limit (see [Rate limits](#rate-limits)).
@@ -537,6 +538,43 @@ First-party and pseudonymous, with no third-party tracker unless you add one (mi
 - **Forwarding (optional, off):** `POSTHOG_KEY` + `ANALYTICS_FORWARD_SECRET` send each event to
   PostHog with an HMAC of the user id as the distinct id and no IP; `PLAUSIBLE_DOMAIN` sends
   Plausible custom events with no identifier at all.
+
+## Reputation and the extra tiers
+
+**Levels, not scores.** `compute_reputation()` scores what other people do with what you add:
++2 per save and +2 per rating others give your places, +1 per person who joins your events, +3 per
+place still up two weeks after you added it, −10 per place or event moderators removed, +1 / −1 per
+report of yours moderators reviewed / dismissed, all scaled by account age up to 30 days. Your own
+saves, ratings and attendance count for nothing. People only ever see a level: **New**,
+**Contributor** (10+ and a week old) or **Trusted local** (40+, 30 days old, local status not
+revoked). The score is readable by admins only (`reputation_cache`); `/help/reputation` explains how
+levels are earned.
+
+**Cached, refreshed hourly.** Levels live in `reputation_cache`, `profiles.reputation_level` and
+`places.creator_reputation`, refreshed by `/api/cron/refresh-reputation` (Vercel Cron, hourly,
+`CRON_SECRET`), at the end of the seed, and immediately for anyone a moderator resets. Row policies
+read the stored level instead of recomputing it per row. Clients cannot write any of the three.
+
+**Ranking.** The creator's level is one input to map ranking: after rating count and save count,
+before the id tie-break. It never outranks what people actually rate and save.
+
+**Moderator reset.** On a profile's moderation page (behind the `reputation` flag), "Reset
+reputation" requires a reason, makes everything earned so far stop counting, and is recorded in the
+moderation history as `reset_reputation`.
+
+**Two new visibility tiers** for places, on top of public, locals and private:
+
+| Tier | Who sees it |
+| --- | --- |
+| `trusted` | locals of the place's city whose level is Trusted local |
+| `followers` | people the creator follows back (mutual follows) |
+
+The rule is written three times (the places policy, `can_view_place()` for photos, ratings,
+saves, lists, events and Storage, and the text-search helper) and tests hold all three, and the
+demo store, to the same answer for every row and viewer. Events at such a place inherit its
+visibility as before; saved lists show only what their owner can still see, so a place drops out of
+someone's list the moment the creator stops following them back. The add-place form and the owner
+controls offer the two tiers when the `reputation` flag is on.
 
 ## Data model
 

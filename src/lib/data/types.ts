@@ -8,14 +8,22 @@ export type EventStatus = "published" | "cancelled" | "hidden" | "removed";
 /**
  * Trust tiers for a place.
  *   public  — anyone, signed in or not
- *   locals  — only people who count as a local of the place's city
- *   private — only the creator
+ *   locals    — only people who count as a local of the place's city
+ *   trusted   — locals of the city whose reputation level is "trusted"
+ *   followers — people the creator follows back (mutual follows)
+ *   private   — only the creator
  * "Who is a local" is defined once in SQL (public.is_local) and mirrored by the
  * demo store: an account at least LOCAL_MIN_ACCOUNT_AGE_DAYS old, whose local
  * status a moderator has not revoked, whose home city matches or who has
  * contributed a published place there.
  */
-export type Visibility = "public" | "locals" | "private";
+export type Visibility = "public" | "locals" | "trusted" | "followers" | "private";
+
+/**
+ * Contributor reputation as people see it (never a raw score). Computed in SQL
+ * (0016_reputation.sql) and cached; see the README for how levels are earned.
+ */
+export type ReputationLevel = "new" | "contributor" | "trusted";
 
 /** Statuses an owner may set. `pending` and `removed` are reserved for moderation. */
 export const OWNER_SETTABLE_PLACE_STATUSES = ["published", "hidden"] as const;
@@ -43,6 +51,7 @@ export interface Profile extends ProfileSummary {
   homeCityChangedAt: string | null;
   /** When first-run onboarding was finished or skipped; null shows /welcome. */
   onboardedAt: string | null;
+  reputationLevel: ReputationLevel;
   interests: string[];
   createdAt: string;
   updatedAt: string;
@@ -397,7 +406,7 @@ export interface UserActivity {
  * restore publishes removed content again.
  */
 export type ModerationAction = "dismiss" | "review" | "remove" | "restore";
-export type ModerationLogAction = ModerationAction | "revoke_local" | "restore_local";
+export type ModerationLogAction = ModerationAction | "revoke_local" | "restore_local" | "reset_reputation";
 
 /** One target in the queue: its open reports, grouped. */
 export interface ModerationQueueItem {

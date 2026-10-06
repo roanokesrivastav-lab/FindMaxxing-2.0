@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/purge-analytics",
       "schedule": "17 4 * * *"
+    },
+    {
+      "path": "/api/cron/refresh-reputation",
+      "schedule": "0 * * * *"
     }
   ]
 }
