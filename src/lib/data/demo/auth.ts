@@ -46,6 +46,7 @@ export function demoSignUp(input: {
     homeCity: null,
     homeCityChangedAt: null,
     onboardedAt: null,
+    analyticsOptOut: false,
     createdAt: now,
     updatedAt: now,
   });

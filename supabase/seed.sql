@@ -130,155 +130,157 @@ insert into public.profile_interests (profile_id, interest_slug) values ('b12fb9
 
 -- Moderators (granted from SQL: no client can grant the role)
 insert into public.moderators (user_id) values ('1841f2ef-9435-49e0-ab03-f1e4c6744209') on conflict do nothing;
+-- Admins (granted from SQL)
+insert into public.admins (user_id) values ('b2431795-ed35-49ac-a89b-74286bd6feeb') on conflict do nothing;
 
 -- Places
-insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility)
-values ('a383ba25-872d-4154-ae60-51da7901394f', 'Cannon & Crown', 'Neighborhood bar with a wall of screens and a crowd that actually cares about the score. Not fancy, not loud outside of game time, and the kitchen stays open late on Saturdays.', 'Every Ohio State game plays with sound on the main screen. Get there 45 minutes before kickoff or you''re standing.', 'sports-bar', 39.9648, -82.9712, '1210 Oak St', 'Olde Towne East', 'Columbus', '3eb1d493-2346-45eb-ac2f-e4ea355f946a', 'public')
+insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility, source)
+values ('a383ba25-872d-4154-ae60-51da7901394f', 'Cannon & Crown', 'Neighborhood bar with a wall of screens and a crowd that actually cares about the score. Not fancy, not loud outside of game time, and the kitchen stays open late on Saturdays.', 'Every Ohio State game plays with sound on the main screen. Get there 45 minutes before kickoff or you''re standing.', 'sports-bar', 39.9648, -82.9712, '1210 Oak St', 'Olde Towne East', 'Columbus', '3eb1d493-2346-45eb-ac2f-e4ea355f946a', 'public', 'seed')
 on conflict (id) do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('a383ba25-872d-4154-ae60-51da7901394f', 'sports') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('a383ba25-872d-4154-ae60-51da7901394f', 'ohio-state') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('a383ba25-872d-4154-ae60-51da7901394f', 'social') on conflict do nothing;
-insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility)
-values ('3e683576-5d71-4b74-a145-2a9d875afe56', 'Tuttle Lot Fields', 'Two full-size grass pitches behind the parking lot. Nets are usually up, lights until 10pm. This is where the regular Sunday pickup happens.', 'Sunday 10am pickup is all levels; bring a light and a dark shirt. Weekday evenings are quieter if you want touches.', 'pickup-sports', 40.0043, -83.0197, null, 'University District', 'Columbus', '28300d2a-8dcf-4599-a2da-9c4bbcd955da', 'public')
+insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility, source)
+values ('3e683576-5d71-4b74-a145-2a9d875afe56', 'Tuttle Lot Fields', 'Two full-size grass pitches behind the parking lot. Nets are usually up, lights until 10pm. This is where the regular Sunday pickup happens.', 'Sunday 10am pickup is all levels; bring a light and a dark shirt. Weekday evenings are quieter if you want touches.', 'pickup-sports', 40.0043, -83.0197, null, 'University District', 'Columbus', '28300d2a-8dcf-4599-a2da-9c4bbcd955da', 'public', 'seed')
 on conflict (id) do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('3e683576-5d71-4b74-a145-2a9d875afe56', 'pickup-sports') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('3e683576-5d71-4b74-a145-2a9d875afe56', 'sports') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('3e683576-5d71-4b74-a145-2a9d875afe56', 'new-in-town') on conflict do nothing;
-insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility)
-values ('9bfbeec3-4953-4f7b-a0bb-b5eae87a8136', 'Thurman Hollow Courts', 'Two outdoor full courts with decent rims and a resurfaced floor. Runs get competitive after 6pm on weekdays.', 'Winners stay. Show up by 5:45 to get in the first game; after 7 it''s a long wait.', 'pickup-sports', 40.0161, -83.0072, null, 'Old North', 'Columbus', 'f6e4d056-f565-41b4-a2e0-f9347bbf87df', 'public')
+insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility, source)
+values ('9bfbeec3-4953-4f7b-a0bb-b5eae87a8136', 'Thurman Hollow Courts', 'Two outdoor full courts with decent rims and a resurfaced floor. Runs get competitive after 6pm on weekdays.', 'Winners stay. Show up by 5:45 to get in the first game; after 7 it''s a long wait.', 'pickup-sports', 40.0161, -83.0072, null, 'Old North', 'Columbus', 'f6e4d056-f565-41b4-a2e0-f9347bbf87df', 'public', 'seed')
 on conflict (id) do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('9bfbeec3-4953-4f7b-a0bb-b5eae87a8136', 'pickup-sports') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('9bfbeec3-4953-4f7b-a0bb-b5eae87a8136', 'sports') on conflict do nothing;
-insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility)
-values ('949fc154-9b49-4bc6-abe7-fdfa8e05a5f1', 'Ridgeline Loop', 'A 3.4-mile loop along the ravine with two real climbs and a river overlook halfway. Mostly dirt, some roots, very runnable.', 'Go counter-clockwise so the steep bit is a descent. Sunrise from the overlook is the reason people set alarms.', 'outdoors', 40.0325, -83.0231, null, 'Clintonville', 'Columbus', 'f097e035-c64b-499d-a203-345d923f934d', 'locals')
+insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility, source)
+values ('949fc154-9b49-4bc6-abe7-fdfa8e05a5f1', 'Ridgeline Loop', 'A 3.4-mile loop along the ravine with two real climbs and a river overlook halfway. Mostly dirt, some roots, very runnable.', 'Go counter-clockwise so the steep bit is a descent. Sunrise from the overlook is the reason people set alarms.', 'outdoors', 40.0325, -83.0231, null, 'Clintonville', 'Columbus', 'f097e035-c64b-499d-a203-345d923f934d', 'locals', 'seed')
 on conflict (id) do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('949fc154-9b49-4bc6-abe7-fdfa8e05a5f1', 'hiking') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('949fc154-9b49-4bc6-abe7-fdfa8e05a5f1', 'running') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('949fc154-9b49-4bc6-abe7-fdfa8e05a5f1', 'outdoors') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('949fc154-9b49-4bc6-abe7-fdfa8e05a5f1', 'dogs') on conflict do nothing;
-insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility)
-values ('2ec75da8-eeff-459c-acdb-da9200da2e10', 'Little Alley Dumpling', 'Six-seat counter down an alley off High Street. Hand-folded dumplings, one soup, cash preferred. Owner will remember your order.', 'Get the pan-fried pork and the cucumber salad. Twelve dumplings is under ten dollars.', 'food', 39.9803, -83.0059, 'Alley behind 900 N High St', 'Short North', 'Columbus', '28300d2a-8dcf-4599-a2da-9c4bbcd955da', 'public')
+insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility, source)
+values ('2ec75da8-eeff-459c-acdb-da9200da2e10', 'Little Alley Dumpling', 'Six-seat counter down an alley off High Street. Hand-folded dumplings, one soup, cash preferred. Owner will remember your order.', 'Get the pan-fried pork and the cucumber salad. Twelve dumplings is under ten dollars.', 'food', 39.9803, -83.0059, 'Alley behind 900 N High St', 'Short North', 'Columbus', '28300d2a-8dcf-4599-a2da-9c4bbcd955da', 'public', 'seed')
 on conflict (id) do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('2ec75da8-eeff-459c-acdb-da9200da2e10', 'food') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('2ec75da8-eeff-459c-acdb-da9200da2e10', 'cheap-eats') on conflict do nothing;
-insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility)
-values ('e3cfa28d-3ac1-4c8c-ab2a-26a7115891b7', 'The Annex Reading Room', 'The back room of a bookshop that quietly turned into the best study space in the neighborhood. Long tables, outlets at every seat, nobody plays music.', 'Buy a coffee, then take the stairs to the mezzanine. Weeknights after 7 it empties out.', 'coffee-study', 39.9575, -83.0215, '330 W Broad St', 'Franklinton', 'Columbus', 'f097e035-c64b-499d-a203-345d923f934d', 'public')
+insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility, source)
+values ('e3cfa28d-3ac1-4c8c-ab2a-26a7115891b7', 'The Annex Reading Room', 'The back room of a bookshop that quietly turned into the best study space in the neighborhood. Long tables, outlets at every seat, nobody plays music.', 'Buy a coffee, then take the stairs to the mezzanine. Weeknights after 7 it empties out.', 'coffee-study', 39.9575, -83.0215, '330 W Broad St', 'Franklinton', 'Columbus', 'f097e035-c64b-499d-a203-345d923f934d', 'public', 'seed')
 on conflict (id) do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('e3cfa28d-3ac1-4c8c-ab2a-26a7115891b7', 'studying') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('e3cfa28d-3ac1-4c8c-ab2a-26a7115891b7', 'coffee') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('e3cfa28d-3ac1-4c8c-ab2a-26a7115891b7', 'college') on conflict do nothing;
-insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility)
-values ('2a29e970-8465-4211-ade2-d3c580e243ec', 'Boulder & Bramble', 'Bouldering-only gym in a converted warehouse. Friendly setting crew, resets a wall every week, has a real community night on Wednesdays.', 'Wednesday beginner night includes shoes and a 30-minute intro. Go as a stranger, leave with a crew.', 'fitness', 39.9812, -83.0412, '1550 W 3rd Ave', 'Grandview Heights', 'Columbus', '1841f2ef-9435-49e0-ab03-f1e4c6744209', 'public')
+insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility, source)
+values ('2a29e970-8465-4211-ade2-d3c580e243ec', 'Boulder & Bramble', 'Bouldering-only gym in a converted warehouse. Friendly setting crew, resets a wall every week, has a real community night on Wednesdays.', 'Wednesday beginner night includes shoes and a 30-minute intro. Go as a stranger, leave with a crew.', 'fitness', 39.9812, -83.0412, '1550 W 3rd Ave', 'Grandview Heights', 'Columbus', '1841f2ef-9435-49e0-ab03-f1e4c6744209', 'public', 'seed')
 on conflict (id) do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('2a29e970-8465-4211-ade2-d3c580e243ec', 'climbing') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('2a29e970-8465-4211-ade2-d3c580e243ec', 'fitness') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('2a29e970-8465-4211-ade2-d3c580e243ec', 'social') on conflict do nothing;
-insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility)
-values ('52e68e92-83fd-4a4e-a560-4a05b9f3c0e4', 'Brickyard Sunset Steps', 'Wide public steps down to the river, facing west. Bring takeout and watch the skyline turn orange. Free, quiet, and somehow never crowded.', 'Grab dumplings from Little Alley on the way. Arrive 20 minutes before sunset for the good seats.', 'date-spot', 39.9596, -83.0108, null, 'Franklinton', 'Columbus', 'ee4edfe3-9370-441b-a004-14b4bfff0b9d', 'public')
+insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility, source)
+values ('52e68e92-83fd-4a4e-a560-4a05b9f3c0e4', 'Brickyard Sunset Steps', 'Wide public steps down to the river, facing west. Bring takeout and watch the skyline turn orange. Free, quiet, and somehow never crowded.', 'Grab dumplings from Little Alley on the way. Arrive 20 minutes before sunset for the good seats.', 'date-spot', 39.9596, -83.0108, null, 'Franklinton', 'Columbus', 'ee4edfe3-9370-441b-a004-14b4bfff0b9d', 'public', 'seed')
 on conflict (id) do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('52e68e92-83fd-4a4e-a560-4a05b9f3c0e4', 'date-night') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('52e68e92-83fd-4a4e-a560-4a05b9f3c0e4', 'cheap-eats') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('52e68e92-83fd-4a4e-a560-4a05b9f3c0e4', 'outdoors') on conflict do nothing;
-insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility)
-values ('beea2691-9686-47f7-aad9-a615d5a27745', 'Meeple Cellar', 'Basement board game cafe with a library of 600+ games and staff who will teach anything. Table fee is $5, waived if you order food.', 'Thursdays are open-table night: sit down at any table with an empty seat and you''re in.', 'gaming-hobby', 39.9452, -83.0008, '620 S Front St', 'Brewery District', 'Columbus', '1841f2ef-9435-49e0-ab03-f1e4c6744209', 'public')
+insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility, source)
+values ('beea2691-9686-47f7-aad9-a615d5a27745', 'Meeple Cellar', 'Basement board game cafe with a library of 600+ games and staff who will teach anything. Table fee is $5, waived if you order food.', 'Thursdays are open-table night: sit down at any table with an empty seat and you''re in.', 'gaming-hobby', 39.9452, -83.0008, '620 S Front St', 'Brewery District', 'Columbus', '1841f2ef-9435-49e0-ab03-f1e4c6744209', 'public', 'seed')
 on conflict (id) do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('beea2691-9686-47f7-aad9-a615d5a27745', 'board-games') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('beea2691-9686-47f7-aad9-a615d5a27745', 'gaming') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('beea2691-9686-47f7-aad9-a615d5a27745', 'social') on conflict do nothing;
-insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility)
-values ('5759b20e-3cf0-4fef-a0d0-65395e622c35', 'Fourth Street Basement', 'DIY venue under a print shop. Local bands, $10 at the door, all ages until 10. Shows are announced on a chalkboard out front and nowhere else.', 'Walk by on Tuesdays to read the chalkboard for the weekend lineup. Bring cash and earplugs.', 'music', 39.9787, -82.9972, '45 E 4th Ave', 'Italian Village', 'Columbus', 'b2431795-ed35-49ac-a89b-74286bd6feeb', 'locals')
+insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility, source)
+values ('5759b20e-3cf0-4fef-a0d0-65395e622c35', 'Fourth Street Basement', 'DIY venue under a print shop. Local bands, $10 at the door, all ages until 10. Shows are announced on a chalkboard out front and nowhere else.', 'Walk by on Tuesdays to read the chalkboard for the weekend lineup. Bring cash and earplugs.', 'music', 39.9787, -82.9972, '45 E 4th Ave', 'Italian Village', 'Columbus', 'b2431795-ed35-49ac-a89b-74286bd6feeb', 'locals', 'seed')
 on conflict (id) do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('5759b20e-3cf0-4fef-a0d0-65395e622c35', 'music') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('5759b20e-3cf0-4fef-a0d0-65395e622c35', 'nightlife') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('5759b20e-3cf0-4fef-a0d0-65395e622c35', 'art') on conflict do nothing;
-insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility)
-values ('4eab7b3a-cbc3-450b-a6c6-6dd69761f9b5', 'Hollow Oak Print Studio', 'Community screen-printing studio. Open studio hours on weekends, monthly print nights, and a wall of prints from people who learned here.', 'Open studio is $15 for the day including ink. Bring your own blank shirts or totes.', 'arts', 39.977, -82.9955, '51 E 4th Ave', 'Italian Village', 'Columbus', 'b2431795-ed35-49ac-a89b-74286bd6feeb', 'public')
+insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility, source)
+values ('4eab7b3a-cbc3-450b-a6c6-6dd69761f9b5', 'Hollow Oak Print Studio', 'Community screen-printing studio. Open studio hours on weekends, monthly print nights, and a wall of prints from people who learned here.', 'Open studio is $15 for the day including ink. Bring your own blank shirts or totes.', 'arts', 39.977, -82.9955, '51 E 4th Ave', 'Italian Village', 'Columbus', 'b2431795-ed35-49ac-a89b-74286bd6feeb', 'public', 'seed')
 on conflict (id) do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('4eab7b3a-cbc3-450b-a6c6-6dd69761f9b5', 'art') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('4eab7b3a-cbc3-450b-a6c6-6dd69761f9b5', 'social') on conflict do nothing;
-insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility)
-values ('aaac64e4-94fa-4520-ad18-bf10e1ec8dad', 'Grange Night Market', 'Second-Friday evening market in a church parking lot: food stalls, vintage, plants, and a local band. Very easy place to talk to strangers.', 'The dumpling stand sells out by 7:30. Bring a folding chair for the band.', 'community', 39.9662, -82.9378, '2200 E Main St', 'Bexley', 'Columbus', 'b2431795-ed35-49ac-a89b-74286bd6feeb', 'public')
+insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility, source)
+values ('aaac64e4-94fa-4520-ad18-bf10e1ec8dad', 'Grange Night Market', 'Second-Friday evening market in a church parking lot: food stalls, vintage, plants, and a local band. Very easy place to talk to strangers.', 'The dumpling stand sells out by 7:30. Bring a folding chair for the band.', 'community', 39.9662, -82.9378, '2200 E Main St', 'Bexley', 'Columbus', 'b2431795-ed35-49ac-a89b-74286bd6feeb', 'public', 'seed')
 on conflict (id) do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('aaac64e4-94fa-4520-ad18-bf10e1ec8dad', 'social') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('aaac64e4-94fa-4520-ad18-bf10e1ec8dad', 'food') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('aaac64e4-94fa-4520-ad18-bf10e1ec8dad', 'new-in-town') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('aaac64e4-94fa-4520-ad18-bf10e1ec8dad', 'music') on conflict do nothing;
-insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility)
-values ('6c836fab-455f-444a-ae2f-7e5705697e2f', 'Lantern Bowl', 'Six lanes of duckpin bowling in the back of a bar. Cheap games, good jukebox, no shoe rental needed.', 'Lanes are first-come. Put your name on the clipboard and grab a drink; the wait is usually one round.', 'nightlife', 39.9748, -83.0041, '780 N High St', 'Short North', 'Columbus', '3eb1d493-2346-45eb-ac2f-e4ea355f946a', 'public')
+insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility, source)
+values ('6c836fab-455f-444a-ae2f-7e5705697e2f', 'Lantern Bowl', 'Six lanes of duckpin bowling in the back of a bar. Cheap games, good jukebox, no shoe rental needed.', 'Lanes are first-come. Put your name on the clipboard and grab a drink; the wait is usually one round.', 'nightlife', 39.9748, -83.0041, '780 N High St', 'Short North', 'Columbus', '3eb1d493-2346-45eb-ac2f-e4ea355f946a', 'public', 'seed')
 on conflict (id) do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('6c836fab-455f-444a-ae2f-7e5705697e2f', 'nightlife') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('6c836fab-455f-444a-ae2f-7e5705697e2f', 'social') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('6c836fab-455f-444a-ae2f-7e5705697e2f', 'date-night') on conflict do nothing;
-insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility)
-values ('562fc378-af83-4130-af42-843a0c5a1049', 'Copper Kettle Run Club Corner', 'The coffee shop corner where the Thursday run club meets. 5k and 8k routes, walkers welcome, coffee discount after.', 'Meet at 6:20pm for a 6:30 start. The 8k group turns left at the bridge; the 5k group goes right.', 'fitness', 40.0215, -83.0165, '3200 N High St', 'Clintonville', 'Columbus', '28572a41-206d-4bd8-a853-31ab1a437aea', 'public')
+insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility, source)
+values ('562fc378-af83-4130-af42-843a0c5a1049', 'Copper Kettle Run Club Corner', 'The coffee shop corner where the Thursday run club meets. 5k and 8k routes, walkers welcome, coffee discount after.', 'Meet at 6:20pm for a 6:30 start. The 8k group turns left at the bridge; the 5k group goes right.', 'fitness', 40.0215, -83.0165, '3200 N High St', 'Clintonville', 'Columbus', '28572a41-206d-4bd8-a853-31ab1a437aea', 'public', 'seed')
 on conflict (id) do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('562fc378-af83-4130-af42-843a0c5a1049', 'running') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('562fc378-af83-4130-af42-843a0c5a1049', 'fitness') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('562fc378-af83-4130-af42-843a0c5a1049', 'social') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('562fc378-af83-4130-af42-843a0c5a1049', 'coffee') on conflict do nothing;
-insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility)
-values ('f4b42187-458d-4725-a416-4ef90ca25a42', 'Sawmill Disc Golf Meadow', 'Nine-hole disc golf course through a meadow and a stand of pines. Free, rarely busy on weekday mornings.', 'Hole 6 plays over the creek; bring a disc you don''t love. Loaner discs at the shed on weekends.', 'outdoors', 40.0111, -83.0552, null, 'Upper Arlington', 'Columbus', '1841f2ef-9435-49e0-ab03-f1e4c6744209', 'public')
+insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility, source)
+values ('f4b42187-458d-4725-a416-4ef90ca25a42', 'Sawmill Disc Golf Meadow', 'Nine-hole disc golf course through a meadow and a stand of pines. Free, rarely busy on weekday mornings.', 'Hole 6 plays over the creek; bring a disc you don''t love. Loaner discs at the shed on weekends.', 'outdoors', 40.0111, -83.0552, null, 'Upper Arlington', 'Columbus', '1841f2ef-9435-49e0-ab03-f1e4c6744209', 'public', 'seed')
 on conflict (id) do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('f4b42187-458d-4725-a416-4ef90ca25a42', 'outdoors') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('f4b42187-458d-4725-a416-4ef90ca25a42', 'social') on conflict do nothing;
-insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility)
-values ('ca4864c5-2328-449c-a782-1a48653608cd', 'Brightwater Kayak Put-in', 'Gravel ramp with easy parking and a calm two-mile paddle downstream to the next take-out. Rentals nearby on weekends.', 'Paddle upstream first so the return is easy. Sunset paddles are the move in September.', 'outdoors', 39.9532, -83.0166, null, 'Franklinton', 'Columbus', '28572a41-206d-4bd8-a853-31ab1a437aea', 'public')
+insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility, source)
+values ('ca4864c5-2328-449c-a782-1a48653608cd', 'Brightwater Kayak Put-in', 'Gravel ramp with easy parking and a calm two-mile paddle downstream to the next take-out. Rentals nearby on weekends.', 'Paddle upstream first so the return is easy. Sunset paddles are the move in September.', 'outdoors', 39.9532, -83.0166, null, 'Franklinton', 'Columbus', '28572a41-206d-4bd8-a853-31ab1a437aea', 'public', 'seed')
 on conflict (id) do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('ca4864c5-2328-449c-a782-1a48653608cd', 'outdoors') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('ca4864c5-2328-449c-a782-1a48653608cd', 'date-night') on conflict do nothing;
-insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility)
-values ('05693bb3-4b18-4463-aa86-6f0866d70bd7', 'Buckeye Basement Tacos', 'Late-night taco window in the basement of a student building. Three tacos and a drink for $8, open until 2am on weekends.', 'The al pastor runs out by 1am. The line moves fast; the salsa verde does not mess around.', 'food', 39.9968, -83.0075, '1800 N High St', 'University District', 'Columbus', '28300d2a-8dcf-4599-a2da-9c4bbcd955da', 'public')
+insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility, source)
+values ('05693bb3-4b18-4463-aa86-6f0866d70bd7', 'Buckeye Basement Tacos', 'Late-night taco window in the basement of a student building. Three tacos and a drink for $8, open until 2am on weekends.', 'The al pastor runs out by 1am. The line moves fast; the salsa verde does not mess around.', 'food', 39.9968, -83.0075, '1800 N High St', 'University District', 'Columbus', '28300d2a-8dcf-4599-a2da-9c4bbcd955da', 'public', 'seed')
 on conflict (id) do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('05693bb3-4b18-4463-aa86-6f0866d70bd7', 'food') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('05693bb3-4b18-4463-aa86-6f0866d70bd7', 'cheap-eats') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('05693bb3-4b18-4463-aa86-6f0866d70bd7', 'college') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('05693bb3-4b18-4463-aa86-6f0866d70bd7', 'nightlife') on conflict do nothing;
-insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility)
-values ('710b7e58-663b-4419-aea4-dac91a086872', 'Nightowl Study Lounge', '24-hour lounge with booths, whiteboards and a vending wall. Free with a student ID, $3 a day otherwise.', 'The corner booths have the only good outlets. After midnight it''s dead quiet.', 'coffee-study', 39.9992, -83.0121, '1990 N High St', 'University District', 'Columbus', 'f097e035-c64b-499d-a203-345d923f934d', 'public')
+insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility, source)
+values ('710b7e58-663b-4419-aea4-dac91a086872', 'Nightowl Study Lounge', '24-hour lounge with booths, whiteboards and a vending wall. Free with a student ID, $3 a day otherwise.', 'The corner booths have the only good outlets. After midnight it''s dead quiet.', 'coffee-study', 39.9992, -83.0121, '1990 N High St', 'University District', 'Columbus', 'f097e035-c64b-499d-a203-345d923f934d', 'public', 'seed')
 on conflict (id) do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('710b7e58-663b-4419-aea4-dac91a086872', 'studying') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('710b7e58-663b-4419-aea4-dac91a086872', 'college') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('710b7e58-663b-4419-aea4-dac91a086872', 'coffee') on conflict do nothing;
-insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility)
-values ('b1ce24bb-4b5d-463e-a460-f237bf6d472a', 'Riverbend Volleyball Pits', 'Four sand courts by the river with lights until 11. Open play most evenings; leagues take the far two courts on Tuesdays.', 'Courts 1 and 2 are always open play. Bring your own ball and a towel; the sand gets everywhere.', 'pickup-sports', 39.9868, -83.0381, null, 'Grandview Heights', 'Columbus', 'f6e4d056-f565-41b4-a2e0-f9347bbf87df', 'public')
+insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility, source)
+values ('b1ce24bb-4b5d-463e-a460-f237bf6d472a', 'Riverbend Volleyball Pits', 'Four sand courts by the river with lights until 11. Open play most evenings; leagues take the far two courts on Tuesdays.', 'Courts 1 and 2 are always open play. Bring your own ball and a towel; the sand gets everywhere.', 'pickup-sports', 39.9868, -83.0381, null, 'Grandview Heights', 'Columbus', 'f6e4d056-f565-41b4-a2e0-f9347bbf87df', 'public', 'seed')
 on conflict (id) do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('b1ce24bb-4b5d-463e-a460-f237bf6d472a', 'pickup-sports') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('b1ce24bb-4b5d-463e-a460-f237bf6d472a', 'sports') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('b1ce24bb-4b5d-463e-a460-f237bf6d472a', 'social') on conflict do nothing;
-insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility)
-values ('e7fd6465-1870-4bdb-ae5e-f46f72cb2d06', 'Merion Rec Pickleball', 'Six courts at a small rec center. Open play mornings, ladder nights on Mondays, loaner paddles at the desk.', 'Open play 8-11am is beginner friendly. Monday ladder night is where the good players are.', 'pickup-sports', 39.9401, -82.9931, '1100 Parsons Ave', 'Merion Village', 'Columbus', 'f6e4d056-f565-41b4-a2e0-f9347bbf87df', 'public')
+insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility, source)
+values ('e7fd6465-1870-4bdb-ae5e-f46f72cb2d06', 'Merion Rec Pickleball', 'Six courts at a small rec center. Open play mornings, ladder nights on Mondays, loaner paddles at the desk.', 'Open play 8-11am is beginner friendly. Monday ladder night is where the good players are.', 'pickup-sports', 39.9401, -82.9931, '1100 Parsons Ave', 'Merion Village', 'Columbus', 'f6e4d056-f565-41b4-a2e0-f9347bbf87df', 'public', 'seed')
 on conflict (id) do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('e7fd6465-1870-4bdb-ae5e-f46f72cb2d06', 'pickup-sports') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('e7fd6465-1870-4bdb-ae5e-f46f72cb2d06', 'sports') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('e7fd6465-1870-4bdb-ae5e-f46f72cb2d06', 'fitness') on conflict do nothing;
-insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility)
-values ('448ac9a2-5c47-4d61-addd-169244cb30a2', 'Cobblestone Chess Corner', 'Four stone chess tables under a big sycamore. Regulars most afternoons, casual games, blitz on Saturdays.', 'Bring a clock and someone will play you. Saturday blitz starts around 2.', 'gaming-hobby', 39.9735, -83.0027, null, 'Victorian Village', 'Columbus', '1841f2ef-9435-49e0-ab03-f1e4c6744209', 'public')
+insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility, source)
+values ('448ac9a2-5c47-4d61-addd-169244cb30a2', 'Cobblestone Chess Corner', 'Four stone chess tables under a big sycamore. Regulars most afternoons, casual games, blitz on Saturdays.', 'Bring a clock and someone will play you. Saturday blitz starts around 2.', 'gaming-hobby', 39.9735, -83.0027, null, 'Victorian Village', 'Columbus', '1841f2ef-9435-49e0-ab03-f1e4c6744209', 'public', 'seed')
 on conflict (id) do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('448ac9a2-5c47-4d61-addd-169244cb30a2', 'board-games') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('448ac9a2-5c47-4d61-addd-169244cb30a2', 'social') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('448ac9a2-5c47-4d61-addd-169244cb30a2', 'gaming') on conflict do nothing;
-insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility)
-values ('49ebfa09-a751-4e9f-adbb-62441be568ce', 'Wren Street Wine Porch', 'Tiny wine bar with a wraparound porch and $8 glasses. String lights, a record player, and a two-hour table limit nobody enforces.', 'The porch is first-come; Tuesdays and Wednesdays you can always get a spot. Cheese board is big enough for two.', 'date-spot', 39.9483, -82.9902, '215 Thurman Ave', 'German Village', 'Columbus', 'ee4edfe3-9370-441b-a004-14b4bfff0b9d', 'public')
+insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility, source)
+values ('49ebfa09-a751-4e9f-adbb-62441be568ce', 'Wren Street Wine Porch', 'Tiny wine bar with a wraparound porch and $8 glasses. String lights, a record player, and a two-hour table limit nobody enforces.', 'The porch is first-come; Tuesdays and Wednesdays you can always get a spot. Cheese board is big enough for two.', 'date-spot', 39.9483, -82.9902, '215 Thurman Ave', 'German Village', 'Columbus', 'ee4edfe3-9370-441b-a004-14b4bfff0b9d', 'public', 'seed')
 on conflict (id) do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('49ebfa09-a751-4e9f-adbb-62441be568ce', 'date-night') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('49ebfa09-a751-4e9f-adbb-62441be568ce', 'nightlife') on conflict do nothing;
-insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility)
-values ('243e3950-03d9-4e54-a82f-69906ae98ff2', 'The Lumen Rooftop', 'Hotel rooftop that lets non-guests up. No cover, decent view of the skyline, cocktails are fine and the sunset is not.', 'Go on a weeknight at 8; weekends have a line. Take the elevator to 12 then the stairs.', 'nightlife', 39.9622, -82.9993, '70 E Gay St', 'Downtown', 'Columbus', 'ee4edfe3-9370-441b-a004-14b4bfff0b9d', 'public')
+insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility, source)
+values ('243e3950-03d9-4e54-a82f-69906ae98ff2', 'The Lumen Rooftop', 'Hotel rooftop that lets non-guests up. No cover, decent view of the skyline, cocktails are fine and the sunset is not.', 'Go on a weeknight at 8; weekends have a line. Take the elevator to 12 then the stairs.', 'nightlife', 39.9622, -82.9993, '70 E Gay St', 'Downtown', 'Columbus', 'ee4edfe3-9370-441b-a004-14b4bfff0b9d', 'public', 'seed')
 on conflict (id) do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('243e3950-03d9-4e54-a82f-69906ae98ff2', 'nightlife') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('243e3950-03d9-4e54-a82f-69906ae98ff2', 'date-night') on conflict do nothing;
-insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility)
-values ('7000030a-8bcf-4a9e-a24a-b771f4bd4a35', 'Northend Thrift Alley', 'Three thrift shops in a row on one block, plus a record store. Good for furnishing a first apartment on a budget.', 'The middle shop restocks Wednesday mornings. Furniture goes fast.', 'other', 40.0256, -83.0148, '3400 N High St', 'Clintonville', 'Columbus', '28300d2a-8dcf-4599-a2da-9c4bbcd955da', 'public')
+insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility, source)
+values ('7000030a-8bcf-4a9e-a24a-b771f4bd4a35', 'Northend Thrift Alley', 'Three thrift shops in a row on one block, plus a record store. Good for furnishing a first apartment on a budget.', 'The middle shop restocks Wednesday mornings. Furniture goes fast.', 'other', 40.0256, -83.0148, '3400 N High St', 'Clintonville', 'Columbus', '28300d2a-8dcf-4599-a2da-9c4bbcd955da', 'public', 'seed')
 on conflict (id) do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('7000030a-8bcf-4a9e-a24a-b771f4bd4a35', 'new-in-town') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('7000030a-8bcf-4a9e-a24a-b771f4bd4a35', 'cheap-eats') on conflict do nothing;
-insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility)
-values ('2c7ed982-6d16-4005-ad3d-c6cf72ba901e', 'Overpass Skate Bowl', 'Concrete bowl and a small street section under the highway. Covered, so it works in the rain. Friendly to beginners before noon.', 'Mornings are quiet and forgiving. Bring water; there''s no fountain.', 'outdoors', 39.9553, -83.0055, null, 'Franklinton', 'Columbus', 'b2431795-ed35-49ac-a89b-74286bd6feeb', 'public')
+insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility, source)
+values ('2c7ed982-6d16-4005-ad3d-c6cf72ba901e', 'Overpass Skate Bowl', 'Concrete bowl and a small street section under the highway. Covered, so it works in the rain. Friendly to beginners before noon.', 'Mornings are quiet and forgiving. Bring water; there''s no fountain.', 'outdoors', 39.9553, -83.0055, null, 'Franklinton', 'Columbus', 'b2431795-ed35-49ac-a89b-74286bd6feeb', 'public', 'seed')
 on conflict (id) do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('2c7ed982-6d16-4005-ad3d-c6cf72ba901e', 'outdoors') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('2c7ed982-6d16-4005-ad3d-c6cf72ba901e', 'fitness') on conflict do nothing;
-insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility)
-values ('c91aeba1-5c55-41a5-acfb-5c45d52dcab8', 'Hilltop Kickabout', 'Small-sided pitch behind a community center. Wednesday evening 7v7 is a fixture; very mixed levels, very friendly.', 'Wednesday 6:30pm. Someone always brings pinnies. Say hi to whoever has the ball bag.', 'pickup-sports', 39.9622, -83.0648, '2600 W Broad St', 'Hilltop', 'Columbus', '3eb1d493-2346-45eb-ac2f-e4ea355f946a', 'public')
+insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility, source)
+values ('c91aeba1-5c55-41a5-acfb-5c45d52dcab8', 'Hilltop Kickabout', 'Small-sided pitch behind a community center. Wednesday evening 7v7 is a fixture; very mixed levels, very friendly.', 'Wednesday 6:30pm. Someone always brings pinnies. Say hi to whoever has the ball bag.', 'pickup-sports', 39.9622, -83.0648, '2600 W Broad St', 'Hilltop', 'Columbus', '3eb1d493-2346-45eb-ac2f-e4ea355f946a', 'public', 'seed')
 on conflict (id) do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('c91aeba1-5c55-41a5-acfb-5c45d52dcab8', 'pickup-sports') on conflict do nothing;
 insert into public.place_tags (place_id, interest_slug) values ('c91aeba1-5c55-41a5-acfb-5c45d52dcab8', 'sports') on conflict do nothing;

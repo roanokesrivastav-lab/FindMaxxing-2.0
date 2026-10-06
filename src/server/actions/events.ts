@@ -1,5 +1,6 @@
 "use server";
 
+import { track } from "@/server/analytics";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getRepository } from "@/lib/data";
@@ -54,6 +55,7 @@ export async function createEventAction(_prev: ActionResult | null, formData: Fo
     revalidatePath("/");
     revalidatePath("/events");
     revalidatePath("/profile");
+    await track("create_event", { eventId: event.id });
     redirect(`/events/${event.id}?new=1`);
   } catch (err) {
     return toFailure(err);
@@ -117,6 +119,7 @@ export async function toggleAttendanceAction(eventId: string, join: boolean): Pr
     const repo = await getRepository();
     if (join) await repo.events.join(viewer.id, id.data);
     else await repo.events.leave(viewer.id, id.data);
+    if (join) await track("join_event", { eventId: id.data });
     revalidatePath(`/events/${id.data}`);
     revalidatePath("/events");
     revalidatePath("/profile");

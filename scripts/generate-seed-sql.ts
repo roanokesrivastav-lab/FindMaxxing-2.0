@@ -13,6 +13,7 @@ import {
   SEED_EVENTS,
   SEED_FOLLOWS,
   SEED_MODERATORS,
+  SEED_ADMINS,
   SEED_PLACES,
   SEED_RATINGS,
   SEED_REPORTS,
@@ -60,11 +61,15 @@ on conflict (id) do nothing;`);
   for (const m of SEED_MODERATORS) {
     out.push(`insert into public.moderators (user_id) values (${q(seedUserByName(m).id)}) on conflict do nothing;`);
   }
+  out.push("-- Admins (granted from SQL)");
+  for (const a of SEED_ADMINS) {
+    out.push(`insert into public.admins (user_id) values (${q(seedUserByName(a).id)}) on conflict do nothing;`);
+  }
   out.push("");
   out.push("-- Places");
   for (const p of SEED_PLACES) {
-    out.push(`insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility)
-values (${q(p.id)}, ${q(p.name)}, ${q(p.description)}, ${q(p.localTip)}, ${q(p.categorySlug)}, ${p.lat}, ${p.lng}, ${q(p.address)}, ${q(p.neighborhood)}, ${q(p.city)}, ${q(seedUserByName(p.creator).id)}, ${q(p.visibility ?? "public")})
+    out.push(`insert into public.places (id, name, description, local_tip, category_slug, lat, lng, address, neighborhood, city, creator_id, visibility, source)
+values (${q(p.id)}, ${q(p.name)}, ${q(p.description)}, ${q(p.localTip)}, ${q(p.categorySlug)}, ${p.lat}, ${p.lng}, ${q(p.address)}, ${q(p.neighborhood)}, ${q(p.city)}, ${q(seedUserByName(p.creator).id)}, ${q(p.visibility ?? "public")}, 'seed')
 on conflict (id) do nothing;`);
     for (const t of p.tags) out.push(`insert into public.place_tags (place_id, interest_slug) values (${q(p.id)}, ${q(t)}) on conflict do nothing;`);
   }

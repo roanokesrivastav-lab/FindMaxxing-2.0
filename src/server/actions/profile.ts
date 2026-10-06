@@ -1,5 +1,6 @@
 "use server";
 
+import { track } from "@/server/analytics";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getRepository } from "@/lib/data";
@@ -59,6 +60,7 @@ export async function toggleFollowAction(userId: string, follow: boolean): Promi
     const repo = await getRepository();
     if (follow) await repo.profiles.follow(viewer.id, id.data);
     else await repo.profiles.unfollow(viewer.id, id.data);
+    if (follow) await track("follow");
     revalidatePath("/people");
     revalidatePath("/profile");
     return succeed({ following: follow });

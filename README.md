@@ -20,7 +20,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000. The app runs in **demo mode**: a file-backed local store (`.data/demo-store.json`, git-ignored) seeded with fictional Columbus, Ohio data. Sign in from `/auth/sign-in` by tapping a persona, or with any seeded email (e.g. `maya@example.com`) and the password `findmaxxing`. `sam@example.com` is the seeded **moderator**: their profile links to the report queue at `/moderation`. Sign-ups, saves, ratings, events and follows persist across restarts. When the store format changes, the file is migrated forward on startup and the previous copy is kept beside it as `demo-store.v<N>-<timestamp>.bak.json`; an unreadable or newer file is backed up rather than overwritten. Delete `.data/` to reset.
+Open http://localhost:3000. The app runs in **demo mode**: a file-backed local store (`.data/demo-store.json`, git-ignored) seeded with fictional Columbus, Ohio data. Sign in from `/auth/sign-in` by tapping a persona, or with any seeded email (e.g. `maya@example.com`) and the password `findmaxxing`. `sam@example.com` is the seeded **moderator**: their profile links to the report queue at `/moderation`. `dev@example.com` is the seeded **admin** (`/admin/metrics`). Sign-ups, saves, ratings, events and follows persist across restarts. When the store format changes, the file is migrated forward on startup and the previous copy is kept beside it as `demo-store.v<N>-<timestamp>.bak.json`; an unreadable or newer file is backed up rather than overwritten. Delete `.data/` to reset.
 
 ## Checks
 
@@ -80,6 +80,7 @@ The beta's go/no-go list, with the command and current status of each gate, is `
    - `supabase/migrations/0012_account_deletion.sql` — deleting an account takes its places, events and photos with it, and keeps reports it filed with the reporter cleared
    - `supabase/migrations/0013_discovery_performance.sql` — `pg_trgm` search indexes, row policies that read the row they are given, and the Nearest order
    - `supabase/migrations/0014_onboarding.sql` — first-run onboarding state (existing accounts count as done)
+   - `supabase/migrations/0015_analytics.sql` — admins, pseudonymous first-party analytics, place source, metric functions
    - `supabase/seed.sql` — optional fictional demo data (generated from `src/lib/seed/seed-data.ts` via `npm run seed:sql`; **do not use the demo users in production**)
 2. In Supabase Auth settings, add `http://localhost:3000/auth/callback` (and your production URL) to the redirect allow-list. Email confirmation is supported: the sign-up flow shows a "check your email" state and `/auth/callback` exchanges the code.
    Under **Authentication → Rate Limits**, keep sign-ups and password-recovery emails low for the beta: 30 sign-ups and 30 token verifications per 5 minutes per IP, and 4 emails per hour (or connect your own SMTP provider and raise it deliberately). Turn on CAPTCHA protection if sign-up spam appears. These sit in front of the app's own per-IP limit (see [Rate limits](#rate-limits)).
@@ -498,6 +499,44 @@ production numbers.
   flights jump instead of animating. Pinch-zoom is no longer disabled.
 - `npm run a11y` runs axe-core over 15 pages and sheets (with reduced motion on) and fails on serious
   or critical violations. A manual screen-reader pass has not been done yet (see the beta gate).
+
+## Feature flags (Part B)
+
+Everything built after the beta is off until listed in `NEXT_PUBLIC_FEATURES` (comma-separated,
+or `all`): `analytics`, `reputation`, `admin`, `recommendations`, `aiRerank`, `tripPlanning`,
+`messaging`, `notifications`, `push`, `payments`, `ads`, `pwa`. `featureEnabled()` in
+`src/lib/config.ts` is the one switch. Features that call an outside service also need its key
+(`ANTHROPIC_API_KEY`, the VAPID keys, the Stripe keys) and stay off without it, UI included.
+The flag is inlined at build time, so changing it needs a rebuild. The database objects for every
+feature exist regardless (migrations always apply); the flags decide what the app uses and shows.
+
+## Analytics
+
+First-party and pseudonymous, with no third-party tracker unless you add one (migration 0015).
+
+- **What is recorded:** key actions only: view place, save, add to list, add a place, create an
+  event, join an event, follow, rate, a search with no results, and onboarding steps. Each event is a
+  name, a few ids in `props` (at most 1 KB), and a time. No IP address, no user id: the actor is a
+  salted SHA-256 of the user id, and the salt sits in a table no client can read. Signed-out visitors
+  are not recorded.
+- **How it is written:** only through `track_event()` (definer rights). It takes the actor from the
+  session, so nobody can write events as someone else; the event name must be on the list; it is
+  rate-limited (600 an hour); and it does nothing for a user who opted out. The app calls it from
+  `src/server/analytics.ts` after the action succeeds, never letting a failure reach the user, and
+  skips it entirely when the browser sends Do Not Track (`DNT: 1`) or Global Privacy Control
+  (`Sec-GPC: 1`). Settings has a "Share anonymous usage" switch.
+- **Who can read it:** admins only (`public.admins`, granted from SQL like moderators;
+  `dev@example.com` in demo mode). `/admin/metrics` shows the core-loop funnel (distinct people per
+  step over 30 days), weekly active contributors (12 weeks), and the **thesis metric**: the share of
+  saves that went to places people added (`places.source = 'community'`) rather than seed data.
+  That one is computed from the saves themselves, so it is exact and identifies no one. Every place
+  a user creates is `community`; only SQL (seeds, imports) can write `seed`.
+- **Retention:** 180 days. `purge_analytics()` deletes older events; Vercel Cron calls
+  `/api/cron/purge-analytics` daily at 04:17 UTC with `CRON_SECRET` (`vercel.json`). Running it
+  twice deletes nothing the second time.
+- **Forwarding (optional, off):** `POSTHOG_KEY` + `ANALYTICS_FORWARD_SECRET` send each event to
+  PostHog with an HMAC of the user id as the distinct id and no IP; `PLAUSIBLE_DOMAIN` sends
+  Plausible custom events with no identifier at all.
 
 ## Data model
 

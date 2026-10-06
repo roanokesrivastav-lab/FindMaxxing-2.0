@@ -22,6 +22,7 @@ import {
   type ModerationReport,
   type ModerationSnapshot,
   type RemovedContent,
+  type FunnelStep,
 } from "../types";
 import { parseRateLimitMessage } from "@/lib/rateLimits";
 import { compareModerationReports, parseModerationMessage } from "../moderation";
@@ -1191,6 +1192,43 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
           target_type: RemovedContent["targetType"]; target_id: string; label: string; reason: string | null; removed_at: string | null;
         }[];
         return rows.map((r) => ({ targetType: r.target_type, targetId: r.target_id, label: r.label, reason: r.reason, removedAt: r.removed_at }));
+      },
+    },
+
+    analytics: {
+      async track(_userId, name, props = {}) {
+        // The database derives the actor from the session and skips opted-out users.
+        unwrap(await supabase.rpc("track_event", { p_name: name, p_props: props }));
+      },
+      async optedOut(userId) {
+        const row = unwrap(await supabase.from("profiles").select("analytics_opt_out").eq("id", userId).maybeSingle()) as { analytics_opt_out: boolean } | null;
+        return !!row?.analytics_opt_out;
+      },
+      async setOptOut(userId, optOut) {
+        unwrap(await supabase.from("profiles").update({ analytics_opt_out: optOut }).eq("id", userId));
+      },
+      async funnel(_viewerId, from, to) {
+        const rows = unwrap(await supabase.rpc("analytics_funnel", { p_from: from, p_to: to })) as { step: FunnelStep["step"]; actors: number; events: number }[];
+        return rows.map((r) => ({ step: r.step, actors: r.actors, events: r.events }));
+      },
+      async weeklyContributors(_viewerId, weeks) {
+        const rows = unwrap(await supabase.rpc("analytics_weekly_contributors", { p_weeks: weeks })) as { week_start: string; contributors: number }[];
+        return rows.map((r) => ({ weekStart: r.week_start, contributors: r.contributors }));
+      },
+      async saveSources(_viewerId, from, to) {
+        const rows = unwrap(await supabase.rpc("analytics_save_sources", { p_from: from, p_to: to })) as { source: "community" | "seed"; saves: number }[];
+        const out = { community: 0, seed: 0 };
+        for (const r of rows) out[r.source] = r.saves;
+        return out;
+      },
+    },
+
+    admin: {
+      async isAdmin(userId) {
+        if (!userId) return false;
+        const { data, error } = await supabase.rpc("is_admin");
+        if (error) throw translate(error);
+        return data === true;
       },
     },
 

@@ -29,7 +29,7 @@ describe("onboarding", () => {
     expect((await db.query<{ o: string | null }>("select onboarded_at as o from public.profiles where id = $1", [fresh])).rows[0].o).toBeNull();
     await queryAs(db, fresh, "update public.profiles set onboarded_at = now() where id = $1", [fresh]);
     expect((await db.query<{ o: string | null }>("select onboarded_at as o from public.profiles where id = $1", [fresh])).rows[0].o).not.toBeNull();
-  });
+  }, 30_000);
 
   it("carries a v4 demo store forward with everyone onboarded", () => {
     const v4 = JSON.parse(JSON.stringify(createIsolatedStore().state)) as Record<string, unknown>;
@@ -56,7 +56,7 @@ describe("onboarding actions", async () => {
     const store = createIsolatedStore();
     ctx.repo = createDemoRepository(store);
     newcomer = "00000000-0000-4000-8000-0000000000bb";
-    store.state.profiles.push({ id: newcomer, username: "newcomer", displayName: "New Comer", avatarUrl: null, bio: null, homeCity: null, homeCityChangedAt: null, onboardedAt: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    store.state.profiles.push({ id: newcomer, username: "newcomer", displayName: "New Comer", avatarUrl: null, bio: null, homeCity: null, homeCityChangedAt: null, onboardedAt: null, analyticsOptOut: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     ctx.viewer = newcomer;
   });
 

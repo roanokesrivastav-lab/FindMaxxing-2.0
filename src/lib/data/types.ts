@@ -470,6 +470,28 @@ export interface RemovedContent {
   removedAt: string | null;
 }
 
+// ----------------------------------------------------------------------------
+// Analytics (admins only)
+// ----------------------------------------------------------------------------
+export const ANALYTICS_EVENTS = [
+  "view_place", "save_place", "add_to_list", "contribute_place", "create_event",
+  "join_event", "follow", "rate_place", "search_no_results", "onboarding_step",
+] as const;
+export type AnalyticsEventName = (typeof ANALYTICS_EVENTS)[number];
+/** The core loop, in order, as the funnel shows it. */
+export const FUNNEL_STEPS = ["view_place", "save_place", "add_to_list", "contribute_place", "create_event", "join_event", "follow"] as const;
+
+export interface FunnelStep {
+  step: (typeof FUNNEL_STEPS)[number];
+  actors: number;
+  events: number;
+}
+
+export interface SaveSources {
+  community: number;
+  seed: number;
+}
+
 /** Thrown by repositories for expected, user-facing failures. */
 export class DataError extends Error {
   constructor(

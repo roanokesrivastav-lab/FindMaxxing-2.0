@@ -1,5 +1,6 @@
 "use server";
 
+import { track } from "@/server/analytics";
 import { revalidatePath } from "next/cache";
 import { getRepository } from "@/lib/data";
 import { getViewer } from "@/lib/auth/server";
@@ -32,6 +33,7 @@ export async function saveOnboardingStepAction(input: { interests?: string[]; ho
     return toFailure(err);
   }
   revalidatePath("/profile");
+  await track("onboarding_step", { step: input.interests !== undefined ? "interests" : "home_city" });
   return succeed(undefined);
 }
 
@@ -42,6 +44,7 @@ export async function finishOnboardingAction(): Promise<ActionResult<{ interests
   try {
     const repo = await getRepository();
     await repo.profiles.completeOnboarding(viewer.id);
+    await track("onboarding_step", { step: "done" });
     const profile = await repo.profiles.getById(viewer.id);
     revalidatePath("/", "layout");
     return succeed({ interests: profile?.interests ?? [] });

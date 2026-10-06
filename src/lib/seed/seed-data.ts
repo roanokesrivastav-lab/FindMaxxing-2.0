@@ -532,6 +532,9 @@ export const SEED_FOLLOWS: { follower: string; following: string }[] = [
  */
 export const SEED_MODERATORS: string[] = ["sam_k"];
 
+/** Seeded admins (Session 10+): granted from SQL, like moderators. */
+export const SEED_ADMINS: string[] = ["dev"];
+
 /** How long ago each seed account was created: old enough to count as a local. */
 export function seedAccountAgeDays(index: number): number {
   return 90 - index;

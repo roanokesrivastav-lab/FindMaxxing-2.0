@@ -14,6 +14,7 @@ import {
   SEED_EVENTS,
   SEED_FOLLOWS,
   SEED_MODERATORS,
+  SEED_ADMINS,
   SEED_PLACES,
   SEED_RATINGS,
   SEED_REPORTS,
@@ -44,6 +45,7 @@ export interface ProfileRow {
   homeCity: string | null;
   homeCityChangedAt: string | null;
   onboardedAt: string | null;
+  analyticsOptOut: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -63,6 +65,8 @@ export interface PlaceRow {
   ratingCount: number;
   status: PlaceStatus;
   visibility: Visibility;
+  /** Mirrors places.source: seed data, or added by a user. */
+  source: "community" | "seed";
   createdAt: string;
   updatedAt: string;
 }
@@ -157,6 +161,11 @@ export interface DemoState {
   moderationActions: ModerationActionRow[];
   localRevocations: { userId: string; revokedBy: string | null; reason: string; revokedAt: string }[];
   rateLimits: RateLimitRow[];
+  admins: { userId: string; grantedAt: string; grantedBy: string | null }[];
+  /** Mirrors analytics_events: pseudonymous actor, no user id. */
+  analyticsEvents: { id: number; actor: string; name: string; props: Record<string, unknown>; createdAt: string }[];
+  /** Mirrors analytics_salt. Never leaves the store. */
+  analyticsSalt: string;
 }
 
 export interface SavedListRow {
@@ -167,7 +176,7 @@ export interface SavedListRow {
   updatedAt: string;
 }
 
-export const STATE_VERSION = 5;
+export const STATE_VERSION = 6;
 const DATA_DIR = path.join(process.cwd(), ".data");
 const STATE_FILE = path.join(DATA_DIR, "demo-store.json");
 
@@ -183,7 +192,7 @@ type LooseState = Record<string, unknown> & { version?: unknown };
 const COLLECTIONS = [
   "authUsers", "profiles", "profileInterests", "places", "placeTags", "placePhotos",
   "placeRatings", "savedPlaces", "savedLists", "savedListItems", "events", "eventTags", "eventAttendees", "follows", "reports",
-  "moderators", "moderationActions", "localRevocations", "rateLimits",
+  "moderators", "moderationActions", "localRevocations", "rateLimits", "admins", "analyticsEvents",
 ] as const;
 
 const LEGACY_PLACE_UPLOAD = /^\/api\/uploads\/(places-[^/]+)$/;
@@ -232,6 +241,17 @@ const MIGRATIONS: Record<number, (state: LooseState) => void> = {
   // as onboarded, as in the SQL migration, so nobody is sent back through it.
   4(state) {
     for (const profile of state.profiles as Partial<ProfileRow>[]) profile.onboardedAt ??= profile.createdAt ?? new Date().toISOString();
+  },
+  // v5 → v6: analytics. Seed places (recognised by their stable ids) are
+  // marked as seed data so the save-source metric is right; everything users
+  // added is community. Nobody is opted out; there are no events yet.
+  5(state) {
+    const seedIds = new Set(SEED_PLACES.map((p) => p.id));
+    for (const place of state.places as Partial<PlaceRow>[]) place.source ??= place.id && seedIds.has(place.id) ? "seed" : "community";
+    for (const profile of state.profiles as Partial<ProfileRow>[]) profile.analyticsOptOut ??= false;
+    state.admins ??= [];
+    state.analyticsEvents ??= [];
+    state.analyticsSalt ??= randomBytes(32).toString("hex");
   },
 };
 
@@ -295,6 +315,9 @@ export function buildSeedState(now = new Date()): DemoState {
     moderationActions: [],
     localRevocations: [],
     rateLimits: [],
+    admins: [],
+    analyticsEvents: [],
+    analyticsSalt: randomBytes(32).toString("hex"),
   };
 
   SEED_USERS.forEach((u, i) => {
@@ -309,6 +332,7 @@ export function buildSeedState(now = new Date()): DemoState {
       homeCity: u.homeCity,
       homeCityChangedAt: null,
       onboardedAt: created,
+      analyticsOptOut: false,
       createdAt: created,
       updatedAt: created,
     });
@@ -333,6 +357,7 @@ export function buildSeedState(now = new Date()): DemoState {
       ratingCount: 0,
       status: "published",
       visibility: p.visibility ?? "public",
+      source: "seed",
       createdAt: created,
       updatedAt: created,
     });
@@ -404,6 +429,9 @@ export function buildSeedState(now = new Date()): DemoState {
 
   for (const username of SEED_MODERATORS) {
     state.moderators.push({ userId: seedUserByName(username).id, grantedAt: daysAgo(30), grantedBy: null });
+  }
+  for (const username of SEED_ADMINS) {
+    state.admins.push({ userId: seedUserByName(username).id, grantedAt: daysAgo(30), grantedBy: null });
   }
 
   SEED_FOLLOWS.forEach((f, i) => {

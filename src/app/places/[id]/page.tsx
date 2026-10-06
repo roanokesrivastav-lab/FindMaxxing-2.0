@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { featureEnabled } from "@/lib/config";
+import { TrackPlaceView } from "@/components/analytics/TrackPlaceView";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { CalendarPlus, MapPin, Navigation, Lightbulb, Bookmark } from "lucide-react";
@@ -60,6 +62,7 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
 
   return (
     <article className="pb-nav md:pb-10">
+      {viewer && featureEnabled("analytics") ? <TrackPlaceView placeId={place.id} /> : null}
       {/* Hero */}
       <div className="relative h-[260px] md:h-[360px] md:mx-6 md:mt-6 md:rounded-3xl overflow-hidden">
         <PlaceCover photoUrl={place.photos[0]?.url} categorySlug={place.categorySlug} name={place.name} emojiSize={72} layout="hero" priority />

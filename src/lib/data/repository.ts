@@ -30,6 +30,9 @@ import type {
   PageRequest,
   RemovedContent,
   ReportTargetType,
+  AnalyticsEventName,
+  FunnelStep,
+  SaveSources,
   SavedList,
   StoredImage,
   TagCounts,
@@ -198,6 +201,23 @@ export interface DataRepository {
     localRevoked(userId: string): Promise<boolean>;
     /** The viewer's own places and events that moderators removed, with the reason. */
     myRemovedContent(userId: string): Promise<RemovedContent[]>;
+  };
+  /**
+   * First-party analytics. track() records an event for the user under a
+   * pseudonymous actor, and does nothing for users who opted out. The
+   * metric reads return nothing for anyone but admins.
+   */
+  analytics: {
+    track(userId: string, name: AnalyticsEventName, props?: Record<string, string | number | boolean | null>): Promise<void>;
+    optedOut(userId: string): Promise<boolean>;
+    setOptOut(userId: string, optOut: boolean): Promise<void>;
+    funnel(viewerId: string, from: string, to: string): Promise<FunnelStep[]>;
+    weeklyContributors(viewerId: string, weeks: number): Promise<{ weekStart: string; contributors: number }[]>;
+    /** Saves made in the window, by where the saved place came from (the thesis metric). */
+    saveSources(viewerId: string, from: string, to: string): Promise<SaveSources>;
+  };
+  admin: {
+    isAdmin(userId: string | null): Promise<boolean>;
   };
   storage: {
     /**

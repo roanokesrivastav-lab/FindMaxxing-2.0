@@ -1,5 +1,6 @@
 "use server";
 
+import { track } from "@/server/analytics";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getRepository } from "@/lib/data";
@@ -64,6 +65,7 @@ export async function createPlaceAction(_prev: ActionResult | null, formData: Fo
   }
   revalidatePath("/");
   revalidatePath("/profile");
+  await track("contribute_place", { placeId });
   redirect(`/places/${placeId}?new=1`);
 }
 
@@ -139,6 +141,7 @@ export async function toggleSaveAction(placeId: string, save: boolean): Promise<
     const repo = await getRepository();
     if (save) await repo.places.save(viewer.id, id.data);
     else await repo.places.unsave(viewer.id, id.data);
+    if (save) await track("save_place", { placeId: id.data });
     revalidatePath(`/places/${id.data}`);
     // Unsaving also takes the place out of every list page under /saved.
     revalidatePath("/saved", "layout");
@@ -158,6 +161,7 @@ export async function ratePlaceAction(
   try {
     const repo = await getRepository();
     const agg = await repo.places.rate(viewer.id, parsed.data.placeId, parsed.data.score, parsed.data.note);
+    await track("rate_place", { placeId: parsed.data.placeId, score: parsed.data.score });
     revalidatePath(`/places/${parsed.data.placeId}`);
     revalidatePath("/");
     return succeed({ ...agg, score: parsed.data.score });

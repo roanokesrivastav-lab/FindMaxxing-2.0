@@ -16,11 +16,13 @@ import {
   type ModerationQueueItem,
   type ReportReason,
   type RemovedContent,
+  FUNNEL_STEPS,
 } from "../types";
 import { getDemoStore, isLocalOfCity, isModeratorIn, recomputeRating, type DemoState, type EventRow, type PlaceRow, type ProfileRow, type ReportRow, type SavedListRow, type StoreHandle } from "./store";
 import { RATE_LIMITS, rateLimitError, windowStart, type RateLimitAction } from "@/lib/rateLimits";
 import { MAX_MODERATION_REASON, MODERATION_ACTIONS, REPORT_TARGET_TYPES, compareModerationReports, moderationError, normalizeReason } from "../moderation";
 import { homeCityCooldownMessage, nextHomeCityChange, sameCity } from "../localTier";
+import { createHash } from "node:crypto";
 import { LIST_LIMIT_ERROR, MAX_SAVED_LISTS, duplicateListName, listNameKey, normalizeListName } from "../savedLists";
 import { newId } from "@/lib/utils/ids";
 import { neighborhoodKey } from "@/lib/utils/neighborhoods";
@@ -295,6 +297,8 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || compareIds(a.placeId, b.placeId))
       .map((i) => state.places.find((p) => p.id === i.placeId))
       .filter((p): p is PlaceRow => !!p && p.status === "published" && canViewPlace(state, p, list.ownerId));
+  const isAdmin = (userId: string | null) => !!userId && state.admins.some((a) => a.userId === userId);
+
   const targetLabel = (type: ReportRow["targetType"], id: string): string | null =>
     type === "place" ? (state.places.find((p) => p.id === id)?.name ?? null)
       : type === "event" ? (state.events.find((e) => e.id === id)?.title ?? null)
@@ -448,6 +452,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           ratingCount: 0,
           status: "published",
           visibility: input.visibility ?? "public",
+          source: "community",
           createdAt: now,
           updatedAt: now,
         };
@@ -1248,6 +1253,66 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
             (a.removedAt === null ? 1 : 0) - (b.removedAt === null ? 1 : 0) ||
             (a.removedAt && b.removedAt ? compareTimestamps(b.removedAt, a.removedAt) : 0) ||
             compareIds(a.targetId, b.targetId));
+      },
+    },
+
+    analytics: {
+      async track(userId, name, props = {}) {
+        const profile = state.profiles.find((p) => p.id === userId);
+        // Mirrors track_event(): silent without a profile or when opted out.
+        if (!profile || profile.analyticsOptOut) return;
+        const counted = rateLimit(userId, "analytics");
+        const actor = createHash("sha256").update(`${state.analyticsSalt}:${userId}`).digest("hex");
+        const id = (state.analyticsEvents.at(-1)?.id ?? 0) + 1;
+        state.analyticsEvents.push({ id, actor, name, props, createdAt: new Date().toISOString() });
+        counted();
+        persist();
+      },
+      async optedOut(userId) {
+        return !!state.profiles.find((p) => p.id === userId)?.analyticsOptOut;
+      },
+      async setOptOut(userId, optOut) {
+        requireProfile(userId).analyticsOptOut = optOut;
+        persist();
+      },
+      async funnel(viewerId, from, to) {
+        if (!isAdmin(viewerId)) return [];
+        const inWindow = state.analyticsEvents.filter((e) => compareTimestamps(e.createdAt, from) >= 0 && compareTimestamps(e.createdAt, to) < 0);
+        return FUNNEL_STEPS.map((step) => {
+          const events = inWindow.filter((e) => e.name === step);
+          return { step, actors: new Set(events.map((e) => e.actor)).size, events: events.length };
+        });
+      },
+      async weeklyContributors(viewerId, weeks) {
+        if (!isAdmin(viewerId)) return [];
+        // ISO weeks (Monday) in UTC, like date_trunc('week', now()) in Postgres.
+        const now = new Date();
+        const monday = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - ((now.getUTCDay() + 6) % 7));
+        const contributing = state.analyticsEvents.filter((e) => e.name === "contribute_place" || e.name === "create_event" || e.name === "rate_place");
+        return Array.from({ length: weeks }, (_, i) => {
+          const start = monday - (weeks - 1 - i) * 7 * 86_400_000;
+          const actors = new Set(contributing.filter((e) => {
+            const t = new Date(e.createdAt).getTime();
+            return t >= start && t < start + 7 * 86_400_000;
+          }).map((e) => e.actor));
+          return { weekStart: new Date(start).toISOString().slice(0, 10), contributors: actors.size };
+        });
+      },
+      async saveSources(viewerId, from, to) {
+        if (!isAdmin(viewerId)) return { community: 0, seed: 0 };
+        const out = { community: 0, seed: 0 };
+        for (const s of state.savedPlaces) {
+          if (compareTimestamps(s.createdAt, from) < 0 || compareTimestamps(s.createdAt, to) >= 0) continue;
+          const place = state.places.find((p) => p.id === s.placeId);
+          if (place) out[place.source] += 1;
+        }
+        return out;
+      },
+    },
+
+    admin: {
+      async isAdmin(userId) {
+        return isAdmin(userId);
       },
     },
 
