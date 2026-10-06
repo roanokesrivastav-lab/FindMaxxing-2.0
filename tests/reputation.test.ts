@@ -13,7 +13,6 @@ import { SEED_USERS, stableId } from "../src/lib/seed/seed-data";
 
 const user = (u: string) => SEED_USERS.find((x) => x.username === u)!.id;
 const [maya, theo, jules, sam, priya, dev, lena, nina] = ["maya_r", "theo", "jules", "sam_k", "priya", "dev", "lena", "nina"].map(user);
-const place = (n: string) => stableId(`place:${n}`);
 
 describe("reputation in the database", () => {
   let db: PGlite;

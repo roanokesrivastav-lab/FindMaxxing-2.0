@@ -31,6 +31,8 @@ import type {
   RemovedContent,
   ReportTargetType,
   AnalyticsEventName,
+  Recommendation,
+  RecommendOptions,
   AdminContentItem,
   AdminHistoryEntry,
   AdminUser,
@@ -239,6 +241,16 @@ export interface DataRepository {
     taxonomy(viewerId: string): Promise<TaxonomyEntry[]>;
     upsertTaxonomy(adminId: string, entry: Omit<TaxonomyEntry, "retired">, reason: string): Promise<void>;
     setTaxonomyRetired(adminId: string, kind: TaxonomyEntry["kind"], slug: string, retired: boolean, reason: string): Promise<void>;
+  };
+  /**
+   * "For you": rule-based, explained recommendations for the signed-in
+   * viewer, computed under the same visibility rules as everything else (see
+   * 0018_recommendations.sql). Strongest first; empty for nobody signed in.
+   */
+  recommendations: {
+    places(viewerId: string, opts?: RecommendOptions): Promise<Recommendation<Place>[]>;
+    /** `now` pins the clock (tests); defaults to the current time. */
+    events(viewerId: string, opts?: RecommendOptions & { now?: string }): Promise<Recommendation<Event>[]>;
   };
   /** Levels are cached; refreshAll is the hourly cron, reset is a moderator action. */
   reputation: {

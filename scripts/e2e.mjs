@@ -153,7 +153,9 @@ await step("save it to a new list", async () => {
   const list = page.locator('a[href^="/saved/"]').filter({ hasText: "E2E picks" }).first();
   await list.click();
   await page.waitForURL("**/saved/**");
-  check("save it to a new list", (await page.locator(`a[href="${placeUrl}"]`).count()) > 0);
+  // Wait for the list to render rather than counting on first paint.
+  await page.locator(`a[href="${placeUrl}"]`).first().waitFor({ timeout: 15_000 });
+  check("save it to a new list", true);
   await snap(page, "list");
 });
 

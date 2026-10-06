@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import { forYouPlaces } from "@/server/recommendations";
+import { ForYouRail } from "@/components/recommendations/ForYouRail";
 import { getRepository } from "@/lib/data";
 import { getViewer } from "@/lib/auth/server";
 import { INTEREST_MAP } from "@/lib/data/taxonomy";
@@ -27,17 +29,19 @@ export default async function ExplorePage({ searchParams }: PageProps<"/">) {
   const tags = typeof sp.tags === "string" ? sp.tags.split(",").filter((t) => t in INTEREST_MAP).slice(0, 8) : [];
   const request: DiscoveryRequest = { ...INITIAL_REQUEST, tags };
   const filters = { bounds: request.bounds, tags, viewerId };
-  const [placeMarkers, eventMarkers, places, events] = await Promise.all([
+  const [placeMarkers, eventMarkers, places, events, forYou] = await Promise.all([
     repo.places.mapMarkers(filters),
     repo.events.mapMarkers(filters),
     repo.places.search({ ...filters, limit: PLACE_PAGE }),
     repo.events.search({ ...filters, limit: EVENT_PAGE }),
+    forYouPlaces(repo, viewer),
   ]);
   return (
     <ExploreClient
       initial={{ placeMarkers, eventMarkers, places, events }}
       initialRequest={request}
       welcome={sp.welcome === "1" && !!viewer}
+      forYou={<ForYouRail places={forYou} />}
       viewer={viewer ? { displayName: viewer.profile.displayName, avatarUrl: viewer.profile.avatarUrl, interests: viewer.profile.interests } : null}
     />
   );

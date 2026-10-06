@@ -44,12 +44,15 @@ export function ExploreClient({
   initialRequest,
   viewer,
   welcome = false,
+  forYou = null,
 }: {
   initial: DiscoveryResults;
   initialRequest: DiscoveryRequest;
   viewer: ExploreViewer | null;
   /** Just finished onboarding: nudge toward a first save. */
   welcome?: boolean;
+  /** Server-rendered "For you" rail, shown while browsing (not during a search). */
+  forYou?: React.ReactNode;
 }) {
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
@@ -380,6 +383,7 @@ export function ExploreClient({
                 </button>
               </div>
             ) : null}
+            {!searching ? forYou : null}
             {totalResults === 0 && discovery.status === "loading" ? (
               <p className="text-sm text-muted text-center py-6">Searching…</p>
             ) : null}

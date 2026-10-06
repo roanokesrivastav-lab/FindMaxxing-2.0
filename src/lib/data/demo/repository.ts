@@ -24,6 +24,7 @@ import { MAX_MODERATION_REASON, MODERATION_ACTIONS, REPORT_TARGET_TYPES, SUSPEND
 import { homeCityCooldownMessage, nextHomeCityChange, sameCity } from "../localTier";
 import { createHash } from "node:crypto";
 import { LEVEL_RANK, refreshDemoReputation } from "./reputation";
+import { recommendDemoEvents, recommendDemoPlaces } from "./recommend";
 import { LIST_LIMIT_ERROR, MAX_SAVED_LISTS, duplicateListName, listNameKey, normalizeListName } from "../savedLists";
 import { newId } from "@/lib/utils/ids";
 import { neighborhoodKey } from "@/lib/utils/neighborhoods";
@@ -1480,6 +1481,22 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         row.retired = retired;
         audit(adminId, retired ? "taxonomy_retire" : "taxonomy_restore", kind, { key: slug }, why, was ? "retired" : "active", retired ? "retired" : "active");
         persist();
+      },
+    },
+
+    recommendations: {
+      async places(viewerId, opts = {}) {
+        if (!state.profiles.some((p) => p.id === viewerId)) return [];
+        const limit = clampLimit(opts.limit, 12, 50);
+        return recommendDemoPlaces(state, viewerId, (p) => canViewPlace(state, p, viewerId), validateNear(opts.near), limit)
+          .map((r) => ({ item: toPlace(state, r.place), score: r.score, reason: r.reason }));
+      },
+      async events(viewerId, opts = {}) {
+        if (!state.profiles.some((p) => p.id === viewerId)) return [];
+        const limit = clampLimit(opts.limit, 12, 50);
+        const now = opts.now ? new Date(opts.now).getTime() : Date.now();
+        return recommendDemoEvents(state, viewerId, (e) => canViewEvent(state, e, viewerId), validateNear(opts.near), limit, now)
+          .map((r) => ({ item: toEvent(state, r.event), score: r.score, reason: r.reason }));
       },
     },
 

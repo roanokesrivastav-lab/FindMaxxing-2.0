@@ -332,6 +332,8 @@ export function upcomingCutoff(includePast: boolean | undefined): string | null 
   return includePast ? null : new Date(Date.now() - UPCOMING_GRACE_MS).toISOString();
 }
 
+type RecRow<K extends string> = { [key in K]: string } & { score: number | string; reason_kind: string; reason_text: string; reason_ref: string | null };
+
 interface QueueRow {
   target_type: ModerationQueueItem["targetType"];
   target_id: string;
@@ -1225,6 +1227,34 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
         const out = { community: 0, seed: 0 };
         for (const r of rows) out[r.source] = r.saves;
         return out;
+      },
+    },
+
+    recommendations: {
+      async places(_viewerId, opts = {}) {
+        const near = validateNear(opts.near);
+        // Ids in order, under RLS; then the full rows (still under RLS) by id.
+        const ranked = unwrap(await supabase.rpc("recommend_places", { p_lat: near?.lat ?? null, p_lng: near?.lng ?? null, p_limit: clampLimit(opts.limit, 12, 50) })) as RecRow<"place_id">[];
+        if (!ranked.length) return [];
+        const rows = unwrap(await supabase.from("places").select(PLACE_SELECT).in("id", ranked.map((r) => r.place_id))) as PlaceRow[];
+        const byId = new Map(rows.map((r) => [r.id, r]));
+        return ranked.flatMap((r) => {
+          const row = byId.get(r.place_id);
+          return row ? [{ item: mapPlace(row), score: Number(r.score), reason: { kind: r.reason_kind, text: r.reason_text, ref: r.reason_ref } }] : [];
+        });
+      },
+      async events(_viewerId, opts = {}) {
+        const near = validateNear(opts.near);
+        const ranked = unwrap(await supabase.rpc("recommend_events", {
+          p_lat: near?.lat ?? null, p_lng: near?.lng ?? null, p_limit: clampLimit(opts.limit, 12, 50), p_now: opts.now ?? new Date().toISOString(),
+        })) as RecRow<"event_id">[];
+        if (!ranked.length) return [];
+        const rows = unwrap(await supabase.from("events").select(EVENT_SELECT).in("id", ranked.map((r) => r.event_id))) as EventRow[];
+        const byId = new Map(rows.map((r) => [r.id, r]));
+        return ranked.flatMap((r) => {
+          const row = byId.get(r.event_id);
+          return row ? [{ item: mapEvent(row), score: Number(r.score), reason: { kind: r.reason_kind, text: r.reason_text, ref: r.reason_ref } }] : [];
+        });
       },
     },
 

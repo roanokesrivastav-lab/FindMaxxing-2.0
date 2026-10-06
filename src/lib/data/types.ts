@@ -573,6 +573,30 @@ export interface AdminHistoryEntry {
   moderatorUsername: string | null;
 }
 
+// ----------------------------------------------------------------------------
+// Recommendations ("For you")
+// ----------------------------------------------------------------------------
+export interface RecommendationReason {
+  /** Which signal explains it: followed_added, liked_similar, interest, saved_place, … */
+  kind: string;
+  /** Shown under the card: "Because you saved Meeple Cellar". */
+  text: string;
+  /** What the reason points at (a place id, a username, an interest slug), when it points at something. */
+  ref: string | null;
+}
+
+export interface Recommendation<T> {
+  item: T;
+  score: number;
+  reason: RecommendationReason;
+}
+
+export interface RecommendOptions {
+  near?: { lat: number; lng: number } | null;
+  /** Clamped to [1, 50]; defaults to 12. */
+  limit?: number;
+}
+
 /** Thrown by repositories for expected, user-facing failures. */
 export class DataError extends Error {
   constructor(

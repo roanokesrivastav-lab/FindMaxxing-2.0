@@ -82,6 +82,7 @@ The beta's go/no-go list, with the command and current status of each gate, is `
    - `supabase/migrations/0014_onboarding.sql` — first-run onboarding state (existing accounts count as done)
    - `supabase/migrations/0015_analytics.sql` — admins, pseudonymous first-party analytics, place source, metric functions
    - `supabase/migrations/0017_admin.sql` — admins above moderators, suspension (every write refused in the database), audited moderator grants and taxonomy edits, paged admin reads
+   - `supabase/migrations/0018_recommendations.sql` — rule-based, explained "For you" recommendations for places and events, computed under RLS
    - `supabase/migrations/0016_reputation.sql` — contributor reputation (cached levels, moderator reset) and the trusted-locals and followers visibility tiers
    - `supabase/seed.sql` — optional fictional demo data (generated from `src/lib/seed/seed-data.ts` via `npm run seed:sql`; **do not use the demo users in production**)
 2. In Supabase Auth settings, add `http://localhost:3000/auth/callback` (and your production URL) to the redirect allow-list. Email confirmation is supported: the sign-up flow shows a "check your email" state and `/auth/callback` exchanges the code.
@@ -590,6 +591,50 @@ can still sign in and browse. Their existing content is not hidden; moderators r
 items. **Taxonomy:** the database is the live vocabulary (editable, retirable, audited by slug);
 the app's pickers come from `src/lib/data/taxonomy.ts` at build, so `scripts/pull-taxonomy.ts`
 plus a deploy brings edits into the UI.
+
+## Recommendations ("For you")
+
+Behind the `recommendations` flag, signed-in people get a "For you" rail on Explore (while browsing,
+not during a search) and on the Events page. Every card says why it is there.
+
+**Rule-based, in SQL, under RLS.** `recommend_places()` and `recommend_events()` are invoker-rights,
+so every candidate passes the same row policies as the rest of the app: a locals-only, trusted or
+followers place can only be recommended to someone who could already open it. They use only signals
+the viewer may read: their own interests, saves, ratings and joined events, and public activity of
+people they follow (places those people added or rated highly, events they host or joined). Other
+people's saves stay private and are never a signal. The viewer's own places, and anything they already
+saved, rated or joined, are left out.
+
+| Places | Weight | Explanation |
+| --- | --- | --- |
+| added by someone you follow | +4 | Added by @x, who you follow |
+| rated 4+ by someone you follow | +3 | Rated highly by @x |
+| shares a tag with a place you saved or rated 4+ | +3 | Because you saved X |
+| each tag matching your interests | +2 | Matches your interest in Hiking |
+| same category as events you join | +1 | Like the events you join |
+| nearby (with a location) | up to +2, fading over ~3 km | |
+
+Events score +4 at a place you saved, +4 hosted by someone you follow, +2 if someone you follow is
+going, +2 per interest tag, +1 on the weekday you usually go out (Columbus time), up to +1.5 for
+starting soon and +2 for being nearby. The strongest signal is the explanation.
+
+**Diversity, so it is not the most-saved list again:** places get +1.5 when a person added them (not
+seed data) and +1.5 / (1 + saves), so lesser-known places get the most lift; small events (under five
+going) get +0.5. Popularity is never a positive signal. The demo store
+(`src/lib/data/demo/recommend.ts`) uses the same weights, rounding and order, and a parity test
+compares every seeded user's places and events, scores and reasons, with and without a location. It
+runs live; at beta scale that is fast enough (it reads the viewer's own rows plus candidate places).
+
+**Optional AI rerank** (`aiRerank` flag plus `ANTHROPIC_API_KEY`): Claude reorders the top 20 and
+rewrites the reason lines, through the official SDK, server-side only (`src/server/recommendations/rerank.ts`).
+Model `claude-sonnet-5` by default, set with `RECOMMENDATIONS_MODEL`; low effort; the static system
+prompt is cached; structured output (a zod schema); a 4-second timeout and no retries. It sends only
+the viewer's interests, the names of places they saved, and each candidate's public fields (name,
+category, neighborhood, tags, local tip, rating): no usernames and nothing about anyone else, so the
+rule-based reason texts (which can name people you follow) are not sent. The answer is trusted for
+nothing: unknown or repeated ids are dropped, missing ones keep their rule order, and a timeout, API
+error, refusal or unparsable answer falls back to the rule-based order. Only mocked in tests (no key
+was available); see the owner checklist.
 
 ## Data model
 
