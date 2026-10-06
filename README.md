@@ -83,6 +83,7 @@ The beta's go/no-go list, with the command and current status of each gate, is `
    - `supabase/migrations/0015_analytics.sql` — admins, pseudonymous first-party analytics, place source, metric functions
    - `supabase/migrations/0017_admin.sql` — admins above moderators, suspension (every write refused in the database), audited moderator grants and taxonomy edits, paged admin reads
    - `supabase/migrations/0018_recommendations.sql` — rule-based, explained "For you" recommendations for places and events, computed under RLS
+   - `supabase/migrations/0019_trip_planning.sql` — the daily limit on AI trip plans
    - `supabase/migrations/0016_reputation.sql` — contributor reputation (cached levels, moderator reset) and the trusted-locals and followers visibility tiers
    - `supabase/seed.sql` — optional fictional demo data (generated from `src/lib/seed/seed-data.ts` via `npm run seed:sql`; **do not use the demo users in production**)
 2. In Supabase Auth settings, add `http://localhost:3000/auth/callback` (and your production URL) to the redirect allow-list. Email confirmation is supported: the sign-up flow shows a "check your email" state and `/auth/callback` exchanges the code.
@@ -635,6 +636,36 @@ rule-based reason texts (which can name people you follow) are not sent. The ans
 nothing: unknown or repeated ids are dropped, missing ones keep their rule order, and a timeout, API
 error, refusal or unparsable answer falls back to the rule-based order. Only mocked in tests (no key
 was available); see the owner checklist.
+
+## AI trip planning ("Plan my day")
+
+Behind the `tripPlanning` flag, and only when `ANTHROPIC_API_KEY` is set (otherwise `/plan` and its
+API return 404). The person gives a day and time window, a vibe, interests, a budget and a starting
+point; `/api/trip-plan` streams progress ("Searching places…") and then the plan, as
+newline-delimited JSON.
+
+**How it works** (`src/server/trips/`): a server-side Claude agent, a manual tool loop on the
+official SDK, model `claude-opus-5-5` by default (`TRIP_PLANNER_MODEL`), medium effort, the static
+system prompt cached, and server-side refusal fallbacks on (`fallbacks: "default"`, beta
+`server-side-fallback-2026-07-01`). Its tools are all read-only and all run as the signed-in viewer:
+`search_places`, `get_place`, `upcoming_events`, `my_saved` (their own saves and list names) and
+`distance`. The viewer id comes from the session, never from the model, and every read goes through
+the repository, so RLS decides what the model can see. It can never read anyone else's saves, lists
+or private places. Inputs are validated with zod; a bad call comes back as an error result.
+
+**Limits:** at most 10 tool rounds, 90 seconds overall, and 10 plans per person per day
+(`trip_plans` in `rate_limit_rules`, counted before Claude is called).
+
+**Only real places:** the plan arrives through a strict `submit_plan` tool. Every stop is looked up
+again as the viewer, and unknown, invisible, repeated or malformed stops are dropped (the page says
+how many). Places and events are linked to their real pages.
+
+**Afterwards:** "Save as a list" creates a list (and saves the places) through the normal list rules;
+each place stop has "Make it an event", which opens the event form with the place linked.
+
+Tested with a mocked Anthropic client only: tool permissions, validation, the loop's caps and
+failure paths, the request shape, and the limit. Running it for real needs an API key (owner
+checklist).
 
 ## Data model
 

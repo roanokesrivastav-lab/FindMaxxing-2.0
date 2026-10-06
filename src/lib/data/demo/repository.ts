@@ -1484,6 +1484,14 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
       },
     },
 
+    limits: {
+      async consume(userId, action) {
+        assertActive(userId);
+        rateLimit(userId, action)();
+        persist();
+      },
+    },
+
     recommendations: {
       async places(viewerId, opts = {}) {
         if (!state.profiles.some((p) => p.id === viewerId)) return [];

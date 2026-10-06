@@ -5,7 +5,7 @@
  */
 import { DataError } from "@/lib/data/types";
 
-export type RateLimitAction = "places" | "events" | "ratings" | "lists" | "reports" | "photos" | "avatars" | "analytics";
+export type RateLimitAction = "places" | "events" | "ratings" | "lists" | "reports" | "photos" | "avatars" | "analytics" | "trip_plans";
 
 export interface RateLimitRule {
   max: number;
@@ -26,6 +26,7 @@ export const RATE_LIMITS: Record<RateLimitAction, RateLimitRule> = {
   photos: { max: 60, windowSeconds: HOUR, label: "photo uploads" },
   avatars: { max: 20, windowSeconds: HOUR, label: "avatar uploads" },
   analytics: { max: 600, windowSeconds: HOUR, label: "analytics events" },
+  trip_plans: { max: 10, windowSeconds: DAY, label: "trip plans" },
 };
 
 /** Start of the fixed window containing `now`, the same rounding as check_rate_limit(). */

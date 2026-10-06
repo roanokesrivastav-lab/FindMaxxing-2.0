@@ -1230,6 +1230,13 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
       },
     },
 
+    limits: {
+      async consume(_userId, action) {
+        // Its own transaction: the count sticks even though nothing else is written.
+        unwrap(await supabase.rpc("check_rate_limit", { p_action: action }));
+      },
+    },
+
     recommendations: {
       async places(_viewerId, opts = {}) {
         const near = validateNear(opts.near);

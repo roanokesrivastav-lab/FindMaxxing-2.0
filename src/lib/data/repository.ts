@@ -252,6 +252,11 @@ export interface DataRepository {
     /** `now` pins the clock (tests); defaults to the current time. */
     events(viewerId: string, opts?: RecommendOptions & { now?: string }): Promise<Recommendation<Event>[]>;
   };
+  /** Limits on actions that write no row of their own (an AI plan). */
+  limits: {
+    /** Counts one use against the user's limit, or throws rate_limited. */
+    consume(userId: string, action: "trip_plans"): Promise<void>;
+  };
   /** Levels are cached; refreshAll is the hourly cron, reset is a moderator action. */
   reputation: {
     /** Moderators only: signals before now stop counting; recorded in the moderation history. */
