@@ -406,7 +406,18 @@ export interface UserActivity {
  * restore publishes removed content again.
  */
 export type ModerationAction = "dismiss" | "review" | "remove" | "restore";
-export type ModerationLogAction = ModerationAction | "revoke_local" | "restore_local" | "reset_reputation";
+export type ModerationLogAction =
+  | ModerationAction
+  | "revoke_local"
+  | "restore_local"
+  | "reset_reputation"
+  | "suspend"
+  | "unsuspend"
+  | "grant_moderator"
+  | "revoke_moderator"
+  | "taxonomy_upsert"
+  | "taxonomy_retire"
+  | "taxonomy_restore";
 
 /** One target in the queue: its open reports, grouped. */
 export interface ModerationQueueItem {
@@ -499,6 +510,67 @@ export interface FunnelStep {
 export interface SaveSources {
   community: number;
   seed: number;
+}
+
+// ----------------------------------------------------------------------------
+// Admin dashboard
+// ----------------------------------------------------------------------------
+export interface AdminUser {
+  id: string;
+  username: string;
+  displayName: string;
+  homeCity: string | null;
+  createdAt: string;
+  reputationLevel: ReputationLevel;
+  isModerator: boolean;
+  isAdmin: boolean;
+  suspended: boolean;
+  places: number;
+  events: number;
+  reportsAgainst: number;
+}
+
+export interface AdminContentItem {
+  kind: "place" | "event";
+  id: string;
+  label: string;
+  status: string;
+  visibility: string | null;
+  city: string | null;
+  creatorId: string | null;
+  creatorUsername: string | null;
+  createdAt: string;
+  openReports: number;
+  actions: number;
+}
+
+export interface RateLimitHit {
+  action: string;
+  usersAtLimit: number;
+  maxCount: number;
+  windowSeconds: number;
+}
+
+export interface TaxonomyEntry {
+  kind: "category" | "interest";
+  slug: string;
+  label: string;
+  emoji: string;
+  sortOrder: number;
+  retired: boolean;
+  /** Categories only. */
+  color?: string;
+  scope?: "place" | "event" | "both";
+}
+
+export interface AdminHistoryEntry {
+  id: string;
+  action: ModerationLogAction;
+  reason: string | null;
+  statusBefore: string | null;
+  statusAfter: string | null;
+  createdAt: string;
+  moderatorUsername: string | null;
 }
 
 /** Thrown by repositories for expected, user-facing failures. */

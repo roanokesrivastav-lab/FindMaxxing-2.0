@@ -81,6 +81,7 @@ The beta's go/no-go list, with the command and current status of each gate, is `
    - `supabase/migrations/0013_discovery_performance.sql` — `pg_trgm` search indexes, row policies that read the row they are given, and the Nearest order
    - `supabase/migrations/0014_onboarding.sql` — first-run onboarding state (existing accounts count as done)
    - `supabase/migrations/0015_analytics.sql` — admins, pseudonymous first-party analytics, place source, metric functions
+   - `supabase/migrations/0017_admin.sql` — admins above moderators, suspension (every write refused in the database), audited moderator grants and taxonomy edits, paged admin reads
    - `supabase/migrations/0016_reputation.sql` — contributor reputation (cached levels, moderator reset) and the trusted-locals and followers visibility tiers
    - `supabase/seed.sql` — optional fictional demo data (generated from `src/lib/seed/seed-data.ts` via `npm run seed:sql`; **do not use the demo users in production**)
 2. In Supabase Auth settings, add `http://localhost:3000/auth/callback` (and your production URL) to the redirect allow-list. Email confirmation is supported: the sign-up flow shows a "check your email" state and `/auth/callback` exchanges the code.
@@ -575,6 +576,20 @@ demo store, to the same answer for every row and viewer. Events at such a place 
 visibility as before; saved lists show only what their owner can still see, so a place drops out of
 someone's list the moment the creator stops following them back. The add-place form and the owner
 controls offer the two tiers when the `reputation` flag is on.
+
+## Admin dashboard
+
+`/admin` (admins only, `admin` flag on; 404 otherwise): People (search, suspend / lift, grant /
+revoke moderator), Content (any status, filters, links to each item's moderation history), the
+report queue, Metrics (plus rate-limit hits right now), and Categories and interests. Admins count as
+moderators. Every admin write needs a reason and lands in `moderation_actions`.
+
+**Decision: suspension stops writes, content stays up** (pending owner confirmation). A trigger on
+every user-writable table, and the upload policy, refuse any write from a suspended account; they
+can still sign in and browse. Their existing content is not hidden; moderators remove individual
+items. **Taxonomy:** the database is the live vocabulary (editable, retirable, audited by slug);
+the app's pickers come from `src/lib/data/taxonomy.ts` at build, so `scripts/pull-taxonomy.ts`
+plus a deploy brings edits into the UI.
 
 ## Data model
 

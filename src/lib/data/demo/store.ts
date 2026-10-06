@@ -27,6 +27,7 @@ import {
 } from "@/lib/seed/seed-data";
 import type { EventStatus, ModerationLogAction, PlaceStatus, ReportReason, ReportStatus, ReportTargetType, ReputationLevel, Visibility } from "../types";
 import { refreshDemoReputation } from "./reputation";
+import { CATEGORIES, INTERESTS } from "../taxonomy";
 import { oldEnoughToBeLocal, sameCity } from "../localTier";
 import { newId } from "@/lib/utils/ids";
 import { placePhotoReference } from "../photos";
@@ -127,8 +128,10 @@ export interface ModerationActionRow {
   id: string;
   moderatorId: string | null;
   action: ModerationLogAction;
-  targetType: ReportTargetType;
-  targetId: string;
+  targetType: ReportTargetType | "category" | "interest";
+  /** Null for taxonomy entries, which use targetKey (their slug). */
+  targetId: string | null;
+  targetKey?: string | null;
   reason: string | null;
   statusBefore: string | null;
   statusAfter: string | null;
@@ -173,6 +176,28 @@ export interface DemoState {
   /** Mirrors reputation_cache (admins only). */
   reputation: Record<string, { score: number; level: ReputationLevel; computedAt: string }>;
   reputationResets: { userId: string; resetAt: string; resetBy: string | null }[];
+  suspensions: { userId: string; reason: string; suspendedBy: string | null; suspendedAt: string }[];
+  /** Mirrors the categories and interests tables (admin-editable). */
+  taxonomy: TaxonomyRow[];
+}
+
+export interface TaxonomyRow {
+  kind: "category" | "interest";
+  slug: string;
+  label: string;
+  emoji: string;
+  sortOrder: number;
+  retired: boolean;
+  color?: string;
+  scope?: "place" | "event" | "both";
+}
+
+/** The seed taxonomy, as the SQL seed writes it. */
+export function seedTaxonomy(): TaxonomyRow[] {
+  return [
+    ...CATEGORIES.map((c, i): TaxonomyRow => ({ kind: "category", slug: c.slug, label: c.label, emoji: c.emoji, sortOrder: i, retired: false, color: c.color, scope: c.scope })),
+    ...INTERESTS.map((t, i): TaxonomyRow => ({ kind: "interest", slug: t.slug, label: t.label, emoji: t.emoji, sortOrder: i, retired: false })),
+  ];
 }
 
 export interface SavedListRow {
@@ -183,7 +208,7 @@ export interface SavedListRow {
   updatedAt: string;
 }
 
-export const STATE_VERSION = 7;
+export const STATE_VERSION = 8;
 const DATA_DIR = path.join(process.cwd(), ".data");
 const STATE_FILE = path.join(DATA_DIR, "demo-store.json");
 
@@ -199,7 +224,7 @@ type LooseState = Record<string, unknown> & { version?: unknown };
 const COLLECTIONS = [
   "authUsers", "profiles", "profileInterests", "places", "placeTags", "placePhotos",
   "placeRatings", "savedPlaces", "savedLists", "savedListItems", "events", "eventTags", "eventAttendees", "follows", "reports",
-  "moderators", "moderationActions", "localRevocations", "rateLimits", "admins", "analyticsEvents", "reputationResets",
+  "moderators", "moderationActions", "localRevocations", "rateLimits", "admins", "analyticsEvents", "reputationResets", "suspensions", "taxonomy",
 ] as const;
 
 const LEGACY_PLACE_UPLOAD = /^\/api\/uploads\/(places-[^/]+)$/;
@@ -269,6 +294,12 @@ const MIGRATIONS: Record<number, (state: LooseState) => void> = {
     for (const place of state.places as Partial<PlaceRow>[]) place.creatorReputation ??= 0;
     refreshDemoReputation(state as unknown as DemoState);
   },
+  // v7 → v8: the admin dashboard. Nobody is suspended; the taxonomy table
+  // starts as the built-in one.
+  7(state) {
+    state.suspensions ??= [];
+    state.taxonomy ??= seedTaxonomy();
+  },
 };
 
 export type MigrationResult =
@@ -336,6 +367,8 @@ export function buildSeedState(now = new Date()): DemoState {
     analyticsSalt: randomBytes(32).toString("hex"),
     reputation: {},
     reputationResets: [],
+    suspensions: [],
+    taxonomy: seedTaxonomy(),
   };
 
   SEED_USERS.forEach((u, i) => {
@@ -484,8 +517,9 @@ export function isLocalOfCity(state: DemoState, userId: string | null, city: str
   return state.places.some((p) => p.creatorId === userId && p.status === "published" && sameCity(p.city, city));
 }
 
+/** Mirrors is_moderator(): moderators, and admins (who rank above them). */
 export function isModeratorIn(state: DemoState, userId: string | null): boolean {
-  return !!userId && state.moderators.some((m) => m.userId === userId);
+  return !!userId && (state.moderators.some((m) => m.userId === userId) || (state.admins ?? []).some((a) => a.userId === userId));
 }
 
 /** Mirrors the Postgres trigger that maintains places.rating_avg / rating_count. */

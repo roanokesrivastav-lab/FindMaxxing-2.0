@@ -8,6 +8,7 @@ import { compareTimestamps } from "./discovery";
 import { DataError, type ModerationAction, type ReportTargetType } from "./types";
 
 export const MAX_MODERATION_REASON = 500;
+export const SUSPENDED_MESSAGE = "Your account is suspended, so you can't add or change anything right now.";
 export const MODERATION_ACTIONS: readonly ModerationAction[] = ["dismiss", "review", "remove", "restore"];
 export const REPORT_TARGET_TYPES: readonly ReportTargetType[] = ["place", "event", "profile"];
 
@@ -22,6 +23,9 @@ const ERRORS = {
   not_removed: ["Only removed content can be restored", "conflict"],
   nothing_open: ["There are no open reports to resolve", "conflict"],
   no_change: ["Nothing to change", "conflict"],
+  self: ["You can't do that to your own account", "invalid"],
+  bad_slug: ["Slugs are lowercase words joined by hyphens, up to 40 characters", "invalid"],
+  bad_label: ["Check the label, emoji, colour and scope", "invalid"],
 } as const satisfies Record<string, readonly [string, DataError["code"]]>;
 
 export type ModerationErrorKey = keyof typeof ERRORS;
@@ -31,9 +35,10 @@ export function moderationError(key: ModerationErrorKey): DataError {
   return new DataError(message, code);
 }
 
-/** Maps "moderation:<key>" from a database error message, or null for anything else. */
+/** Maps "moderation:<key>" or "admin:<key>" from a database error message, or null for anything else. */
 export function parseModerationMessage(message: string): DataError | null {
-  const m = /moderation:([a-z_]+)/.exec(message);
+  if (/account_suspended/.test(message)) return new DataError(SUSPENDED_MESSAGE, "forbidden");
+  const m = /(?:moderation|admin):([a-z_]+)/.exec(message);
   return m && m[1] in ERRORS ? moderationError(m[1] as ModerationErrorKey) : null;
 }
 

@@ -17,6 +17,13 @@ export const ACTION_LABEL: Record<ModerationLogAction, string> = {
   revoke_local: "Revoked local status",
   restore_local: "Restored local status",
   reset_reputation: "Reset reputation",
+  suspend: "Suspended the account",
+  unsuspend: "Lifted the suspension",
+  grant_moderator: "Made a moderator",
+  revoke_moderator: "Removed as moderator",
+  taxonomy_upsert: "Edited",
+  taxonomy_retire: "Retired",
+  taxonomy_restore: "Brought back",
 };
 
 /** Where the target lives for everyone else; profiles link by username. */

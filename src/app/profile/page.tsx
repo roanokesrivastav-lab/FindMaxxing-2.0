@@ -45,6 +45,7 @@ export default async function MyProfilePage() {
     repo.moderation.myRemovedContent(viewer.id),
     repo.moderation.isModerator(viewer.id),
   ]);
+  const suspended = await repo.admin.isSuspended(viewer.id);
   return (
     <ProfileView
       profile={viewer.profile}
@@ -56,6 +57,7 @@ export default async function MyProfilePage() {
       removed={removed}
       isModerator={isModerator}
       showLevel={featureEnabled("reputation")}
+      suspended={suspended}
     />
   );
 }

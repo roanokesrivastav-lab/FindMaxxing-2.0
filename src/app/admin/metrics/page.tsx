@@ -52,10 +52,11 @@ export default async function MetricsPage() {
   if (!(await repo.admin.isAdmin(viewer.id))) notFound();
   const to = new Date();
   const from = new Date(to.getTime() - 30 * 86_400_000);
-  const [funnel, weekly, sources] = await Promise.all([
+  const [funnel, weekly, sources, hits] = await Promise.all([
     repo.analytics.funnel(viewer.id, from.toISOString(), to.toISOString()),
     repo.analytics.weeklyContributors(viewer.id, 12),
     repo.analytics.saveSources(viewer.id, from.toISOString(), to.toISOString()),
+    repo.admin.rateLimitHits(viewer.id),
   ]);
   const totalSaves = sources.community + sources.seed;
   const share = totalSaves ? Math.round((sources.community / totalSaves) * 100) : null;
@@ -86,6 +87,12 @@ export default async function MetricsPage() {
         <h2 id="weekly-heading" className="font-bold mb-2">Weekly active contributors</h2>
         <p className="text-xs text-muted mb-2">People who added a place, created an event or rated, per week (Monday start).</p>
         <BarTable caption="Weekly active contributors" unit="Contributors" rows={weekly.map((w) => ({ label: `Week of ${w.weekStart}`, value: w.contributors }))} />
+      </section>
+
+      <section className="card p-5 mt-5" aria-labelledby="limits-heading">
+        <h2 id="limits-heading" className="font-bold mb-2">Rate-limit hits right now</h2>
+        <p className="text-xs text-muted mb-2">People who have used up the current window for each kind of write. A steady number here is a limit set too low, or someone hammering it.</p>
+        <BarTable caption="People at their rate limit" unit="People" rows={hits.map((h) => ({ label: h.action, value: h.usersAtLimit, detail: `limit ${h.maxCount} per ${h.windowSeconds >= 86400 ? "day" : "hour"}` }))} />
       </section>
     </div>
   );

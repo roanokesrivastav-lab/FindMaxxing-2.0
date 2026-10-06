@@ -20,6 +20,7 @@ export function ProfileView({
   removed = [],
   isModerator = false,
   showLevel = false,
+  suspended = false,
 }: {
   profile: Profile;
   stats: ProfileStats;
@@ -32,6 +33,8 @@ export function ProfileView({
   isModerator?: boolean;
   /** Reputation level badge, behind the reputation flag. */
   showLevel?: boolean;
+  /** The viewer's own account is suspended (self view only). */
+  suspended?: boolean;
 }) {
   return (
     <div className="max-w-2xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-nav md:pb-10">
@@ -108,6 +111,12 @@ export function ProfileView({
           })}
         </ul>
       </div>
+
+      {isSelf && suspended ? (
+        <p className="mt-5 card p-4 text-sm border-danger/40" role="status">
+          <b>Your account is suspended.</b> You can still browse, but you can&apos;t add or change anything until an admin lifts it.
+        </p>
+      ) : null}
 
       {isSelf && removed.length ? (
         <section className="mt-5 card p-5 border-danger/40" aria-labelledby="removed-heading">

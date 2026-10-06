@@ -31,6 +31,11 @@ import type {
   RemovedContent,
   ReportTargetType,
   AnalyticsEventName,
+  AdminContentItem,
+  AdminHistoryEntry,
+  AdminUser,
+  RateLimitHit,
+  TaxonomyEntry,
   FunnelStep,
   SaveSources,
   SavedList,
@@ -216,8 +221,24 @@ export interface DataRepository {
     /** Saves made in the window, by where the saved place came from (the thesis metric). */
     saveSources(viewerId: string, from: string, to: string): Promise<SaveSources>;
   };
+  /**
+   * The admin dashboard. Reads return nothing (and writes are refused) for
+   * anyone who is not an admin; every write is recorded in the moderation
+   * history.
+   */
   admin: {
     isAdmin(userId: string | null): Promise<boolean>;
+    isSuspended(userId: string): Promise<boolean>;
+    users(viewerId: string, opts?: PageRequest & { query?: string | null }): Promise<Page<AdminUser>>;
+    content(viewerId: string, opts?: PageRequest & { kind?: "place" | "event"; status?: string | null; query?: string | null; creatorId?: string | null }): Promise<Page<AdminContentItem>>;
+    rateLimitHits(viewerId: string): Promise<RateLimitHit[]>;
+    /** Audit entries for one target, newest first (every page). */
+    history(viewerId: string, target: { type: "place" | "event" | "profile" | "category" | "interest"; id?: string; key?: string }): Promise<AdminHistoryEntry[]>;
+    setSuspended(adminId: string, userId: string, suspended: boolean, reason: string): Promise<void>;
+    setModerator(adminId: string, userId: string, moderator: boolean, reason: string): Promise<void>;
+    taxonomy(viewerId: string): Promise<TaxonomyEntry[]>;
+    upsertTaxonomy(adminId: string, entry: Omit<TaxonomyEntry, "retired">, reason: string): Promise<void>;
+    setTaxonomyRetired(adminId: string, kind: TaxonomyEntry["kind"], slug: string, retired: boolean, reason: string): Promise<void>;
   };
   /** Levels are cached; refreshAll is the hourly cron, reset is a moderator action. */
   reputation: {

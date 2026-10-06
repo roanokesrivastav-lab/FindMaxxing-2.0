@@ -23,6 +23,8 @@ import {
   type ModerationSnapshot,
   type RemovedContent,
   type FunnelStep,
+  type AdminHistoryEntry,
+  type AdminUser,
 } from "../types";
 import { parseRateLimitMessage } from "@/lib/rateLimits";
 import { compareModerationReports, parseModerationMessage } from "../moderation";
@@ -1244,6 +1246,82 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
         const { data, error } = await supabase.rpc("is_admin");
         if (error) throw translate(error);
         return data === true;
+      },
+      async isSuspended(userId) {
+        const rows = unwrap(await supabase.from("suspensions").select("user_id").eq("user_id", userId)) as { user_id: string }[];
+        return rows.length > 0;
+      },
+      async users(_viewerId, opts = {}) {
+        const limit = clampLimit(opts.limit, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
+        const after = decodeCursor(opts.cursor);
+        const rows = unwrap(await supabase.rpc("admin_users", { p_query: opts.query || null, p_after_created: after?.key ?? null, p_after_id: after?.id ?? null, p_limit: limit + 1 })) as {
+          id: string; username: string; display_name: string; home_city: string | null; created_at: string; reputation_level: AdminUser["reputationLevel"];
+          is_moderator: boolean; is_admin: boolean; suspended: boolean; places: number; events: number; reports_against: number;
+        }[];
+        return toPage(rows, limit, (r) => ({
+          id: r.id, username: r.username, displayName: r.display_name, homeCity: r.home_city, createdAt: r.created_at, reputationLevel: r.reputation_level,
+          isModerator: r.is_moderator, isAdmin: r.is_admin, suspended: r.suspended, places: r.places, events: r.events, reportsAgainst: r.reports_against,
+        }), (r) => ({ key: r.created_at, id: r.id }));
+      },
+      async content(_viewerId, opts = {}) {
+        const limit = clampLimit(opts.limit, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
+        const after = decodeCursor(opts.cursor);
+        const rows = unwrap(await supabase.rpc("admin_content", {
+          p_kind: opts.kind ?? "place", p_status: opts.status || null, p_query: opts.query || null, p_creator: opts.creatorId || null,
+          p_after_created: after?.key ?? null, p_after_id: after?.id ?? null, p_limit: limit + 1,
+        })) as { kind: "place" | "event"; id: string; label: string; status: string; visibility: string | null; city: string | null; creator_id: string | null; creator_username: string | null; created_at: string; open_reports: number; actions: number }[];
+        return toPage(rows, limit, (r) => ({
+          kind: r.kind, id: r.id, label: r.label, status: r.status, visibility: r.visibility, city: r.city, creatorId: r.creator_id,
+          creatorUsername: r.creator_username, createdAt: r.created_at, openReports: r.open_reports, actions: r.actions,
+        }), (r) => ({ key: r.created_at, id: r.id }));
+      },
+      async rateLimitHits() {
+        const rows = unwrap(await supabase.rpc("admin_rate_limit_hits")) as { action: string; users_at_limit: number; max_count: number; window_seconds: number }[];
+        return rows.map((r) => ({ action: r.action, usersAtLimit: r.users_at_limit, maxCount: r.max_count, windowSeconds: r.window_seconds }));
+      },
+      async history(_viewerId, target) {
+        const all: AdminHistoryEntry[] = [];
+        let after: { key: string; id: string } | null = null;
+        // Every page, 200 at a time, on (created_at, id).
+        for (;;) {
+          const rows = unwrap(await supabase.rpc("admin_history", {
+            p_target_type: target.type, p_target_id: target.id ?? null, p_target_key: target.key ?? null,
+            p_after_created: after?.key ?? null, p_after_id: after?.id ?? null, p_limit: 200,
+          })) as { id: string; action: AdminHistoryEntry["action"]; reason: string | null; status_before: string | null; status_after: string | null; created_at: string; moderator_username: string | null }[];
+          all.push(...rows.map((r) => ({ id: r.id, action: r.action, reason: r.reason, statusBefore: r.status_before, statusAfter: r.status_after, createdAt: r.created_at, moderatorUsername: r.moderator_username })));
+          if (rows.length < 200) return all;
+          const last = rows[rows.length - 1];
+          after = { key: last.created_at, id: last.id };
+        }
+      },
+      async setSuspended(_adminId, userId, suspended, reason) {
+        unwrap(await supabase.rpc("admin_set_suspended", { p_user: userId, p_suspended: suspended, p_reason: reason }));
+      },
+      async setModerator(_adminId, userId, moderator, reason) {
+        unwrap(await supabase.rpc("admin_set_moderator", { p_user: userId, p_moderator: moderator, p_reason: reason }));
+      },
+      async taxonomy() {
+        const [cats, ints] = await Promise.all([
+          supabase.from("categories").select("slug, label, emoji, color, scope, sort_order, retired").order("sort_order").order("slug"),
+          supabase.from("interests").select("slug, label, emoji, sort_order, retired").order("sort_order").order("slug"),
+        ]);
+        if (cats.error) throw translate(cats.error);
+        if (ints.error) throw translate(ints.error);
+        return [
+          ...((cats.data ?? []) as { slug: string; label: string; emoji: string; color: string; scope: "place" | "event" | "both"; sort_order: number; retired: boolean }[])
+            .map((c) => ({ kind: "category" as const, slug: c.slug, label: c.label, emoji: c.emoji, sortOrder: c.sort_order, retired: c.retired, color: c.color, scope: c.scope })),
+          ...((ints.data ?? []) as { slug: string; label: string; emoji: string; sort_order: number; retired: boolean }[])
+            .map((t) => ({ kind: "interest" as const, slug: t.slug, label: t.label, emoji: t.emoji, sortOrder: t.sort_order, retired: t.retired })),
+        ];
+      },
+      async upsertTaxonomy(_adminId, entry, reason) {
+        unwrap(await supabase.rpc("admin_upsert_taxonomy", {
+          p_kind: entry.kind, p_slug: entry.slug, p_label: entry.label, p_emoji: entry.emoji, p_sort_order: entry.sortOrder,
+          p_color: entry.color ?? null, p_scope: entry.scope ?? null, p_reason: reason,
+        }));
+      },
+      async setTaxonomyRetired(_adminId, kind, slug, retired, reason) {
+        unwrap(await supabase.rpc("admin_set_taxonomy_retired", { p_kind: kind, p_slug: slug, p_retired: retired, p_reason: reason }));
       },
     },
 
