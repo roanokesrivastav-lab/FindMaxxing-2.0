@@ -21,7 +21,7 @@ vi.mock("server-only", () => ({}));
 const { handleStripeEvent } = await import("../src/server/payments/webhook");
 
 const user = (u: string) => SEED_USERS.find((x) => x.username === u)!.id;
-const [maya, theo, lena, dev, nina] = ["maya_r", "theo", "lena", "dev", "nina"].map(user); // dev is an admin
+const [maya, lena, dev, nina] = ["maya_r", "lena", "dev", "nina"].map(user); // dev is an admin
 const DAY = 86_400_000;
 const COLUMBUS = { north: 40.1, south: 39.85, east: -82.85, west: -83.15 };
 const FAR_AWAY = { north: 41.6, south: 41.4, east: -87.5, west: -87.8 }; // Chicago

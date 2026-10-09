@@ -9,6 +9,42 @@ export interface PushSender {
   send(device: PushDevice, payload: string): Promise<{ ok: true } | { ok: false; gone: boolean }>;
 }
 
+/**
+ * The mobile app's devices: Expo's push service. Needs no key (an access
+ * token is optional, EXPO_ACCESS_TOKEN); `DeviceNotRegistered` means gone.
+ */
+export function expoPushSender(env: Record<string, string | undefined> = process.env, fetcher: typeof fetch = fetch): PushSender {
+  return {
+    async send(device, payload) {
+      const { title, body, url } = JSON.parse(payload) as { title: string; body: string; url: string };
+      try {
+        const res = await fetcher("https://exp.host/--/api/v2/push/send", {
+          method: "POST",
+          headers: { "content-type": "application/json", accept: "application/json", ...(env.EXPO_ACCESS_TOKEN ? { authorization: `Bearer ${env.EXPO_ACCESS_TOKEN}` } : {}) },
+          body: JSON.stringify({ to: device.endpoint, title, body, data: { url }, sound: "default" }),
+          signal: AbortSignal.timeout(10_000),
+        });
+        const json = (await res.json().catch(() => ({}))) as { data?: { status?: string; details?: { error?: string } } };
+        if (res.ok && json.data?.status === "ok") return { ok: true };
+        return { ok: false, gone: json.data?.details?.error === "DeviceNotRegistered" };
+      } catch {
+        return { ok: false, gone: false };
+      }
+    },
+  };
+}
+
+/** Routes each device to its service: web push for browsers, Expo for the app. Null when neither can send. */
+export function combinedSender(web: PushSender | null, expo: PushSender | null): PushSender | null {
+  if (!web && !expo) return null;
+  return {
+    async send(device, payload) {
+      const sender = device.kind === "expo" ? expo : web;
+      return sender ? sender.send(device, payload) : { ok: false, gone: false };
+    },
+  };
+}
+
 /** web-push with the VAPID keys from the environment, or null when they are not set. */
 export async function webPushSender(env: Record<string, string | undefined> = process.env): Promise<PushSender | null> {
   const publicKey = env.VAPID_PUBLIC_KEY;
@@ -20,7 +56,7 @@ export async function webPushSender(env: Record<string, string | undefined> = pr
     async send(device, payload) {
       try {
         await webpush.sendNotification(
-          { endpoint: device.endpoint, keys: { p256dh: device.p256dh, auth: device.auth } },
+          { endpoint: device.endpoint, keys: { p256dh: device.p256dh ?? "", auth: device.auth ?? "" } },
           payload,
           { vapidDetails: { subject, publicKey, privateKey }, TTL: 12 * 3600, timeout: 10_000 },
         );

@@ -1422,7 +1422,8 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
         if (res.error) throw translate(res.error);
       },
       async addDevice(_userId, device) {
-        unwrap(await supabase.rpc("save_push_subscription", { p_endpoint: device.endpoint, p_p256dh: device.p256dh, p_auth: device.auth }));
+        if (device.kind === "expo") unwrap(await supabase.rpc("save_expo_push_token", { p_token: device.endpoint }));
+        else unwrap(await supabase.rpc("save_push_subscription", { p_endpoint: device.endpoint, p_p256dh: device.p256dh, p_auth: device.auth }));
       },
       async removeDevice(userId, endpoint) {
         unwrap(await supabase.from("push_subscriptions").delete().eq("user_id", userId).eq("endpoint", endpoint));

@@ -192,7 +192,7 @@ export interface DemoState {
   /** Mirrors 0021_notifications.sql (see ./notifications). */
   notifications: NotificationRow[];
   notificationSettings: ({ userId: string; updatedAt: string } & NotificationSettings)[];
-  pushSubscriptions: { id: string; userId: string; endpoint: string; p256dh: string; auth: string; createdAt: string }[];
+  pushSubscriptions: { id: string; userId: string; kind?: "web" | "expo"; endpoint: string; p256dh: string | null; auth: string | null; createdAt: string }[];
   pushLog: { userId: string; notificationId: string; sentAt: string }[];
   /** Mirrors 0022_payments.sql (see ./payments). No money moves in demo mode. */
   tickets: TicketRow[];

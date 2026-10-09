@@ -176,7 +176,7 @@ describe("notifications in the database", () => {
     const first = await claim(new Date().toISOString());
     const theoClaims = first.filter((c) => c.user_id === theo);
     expect(theoClaims.length).toBeGreaterThan(0); // theo has a device (earlier test)
-    expect(theoClaims[0].devices).toEqual([{ endpoint: "https://push.example.test/theo", p256dh: "k", auth: "a" }]);
+    expect(theoClaims[0].devices).toEqual([{ kind: "web", endpoint: "https://push.example.test/theo", p256dh: "k", auth: "a" }]);
     expect(first.every((c) => c.user_id === theo)).toBe(true);
     expect(await claim(new Date().toISOString())).toEqual([]); // nothing twice
     expect((await db.query("select 1 from public.notifications where push_state = 'pending'")).rows).toEqual([]);
@@ -443,5 +443,57 @@ describe("notification actions and the cron route", async () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ claimed: 0, sent: 0 });
     vi.unstubAllEnvs();
+  });
+});
+
+// ----------------------------------------------------------------------------
+// The mobile app's devices (Session 19): Expo push tokens in the same table
+// ----------------------------------------------------------------------------
+describe("Expo push tokens", async () => {
+  const { expoPushSender, combinedSender } = await import("../src/server/notifications/push");
+  const token = "ExponentPushToken[abc123_DEF-4]";
+
+  it("are stored like web subscriptions, private, valid only in Expo's format, and claimed with their kind", async () => {
+    const db = await createSeededDb();
+    await queryAs(db, theo, "select public.save_expo_push_token($1)", [token]);
+    await expect(queryAs(db, theo, "select public.save_expo_push_token('not-a-token')")).rejects.toThrow(/check constraint/);
+    await expect(queryAs(db, theo, "insert into public.push_subscriptions (user_id, kind, endpoint) values (auth.uid(), 'expo', $1)", ["ExponentPushToken[x]"])).rejects.toThrow(/permission denied/);
+    expect(await queryAs(db, nina, "select * from public.push_subscriptions")).toEqual([]);
+    // The token moves to whoever signs in on the phone next.
+    await queryAs(db, nina, "select public.save_expo_push_token($1)", [token]);
+    expect((await db.query("select user_id, kind from public.push_subscriptions where endpoint = $1", [token])).rows).toEqual([{ user_id: nina, kind: "expo" }]);
+    await queryAs(db, maya, "insert into public.follows (follower_id, following_id) values (auth.uid(), $1)", [nina]).catch(() => {});
+    await queryAs(db, theo, "insert into public.follows (follower_id, following_id) values (auth.uid(), $1)", [nina]);
+    await db.exec("set role service_role");
+    const claims = (await db.query<{ devices: PushDevice[] }>("select * from public.claim_push_batch(now(), 100, 5)")).rows;
+    await db.exec("reset role");
+    expect(claims.flatMap((c) => c.devices)).toContainEqual({ kind: "expo", endpoint: token, p256dh: null, auth: null });
+  });
+
+  it("go to Expo's push service; browsers to web push; a gone token is reported", async () => {
+    const sent: { url: string; body: Record<string, unknown> }[] = [];
+    const fetcher = (async (url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body));
+      sent.push({ url, body });
+      const status = body.to.includes("gone") ? { status: "error", details: { error: "DeviceNotRegistered" } } : { status: "ok" };
+      return new Response(JSON.stringify({ data: status }), { status: 200 });
+    }) as typeof fetch;
+    const expo = expoPushSender({}, fetcher);
+    const web = { send: vi.fn(async () => ({ ok: true as const })) };
+    const sender = combinedSender(web, expo)!;
+    const payload = JSON.stringify({ title: "FindMaxxing", body: "@maya_r followed you", url: "/u/maya_r", tag: "x" });
+    expect(await sender.send({ kind: "expo", endpoint: token, p256dh: null, auth: null }, payload)).toEqual({ ok: true });
+    expect(sent[0]).toEqual({ url: "https://exp.host/--/api/v2/push/send", body: { to: token, title: "FindMaxxing", body: "@maya_r followed you", data: { url: "/u/maya_r" }, sound: "default" } });
+    expect(await sender.send({ kind: "expo", endpoint: "ExponentPushToken[gone]", p256dh: null, auth: null }, payload)).toEqual({ ok: false, gone: true });
+    expect(await sender.send(device(1), payload)).toEqual({ ok: true });
+    expect(web.send).toHaveBeenCalledTimes(1);
+    expect(combinedSender(null, null)).toBeNull();
+  });
+
+  it("are accepted by the demo store too", async () => {
+    const repo = createDemoRepository(createIsolatedStore());
+    await repo.notifications.addDevice(theo, { kind: "expo", endpoint: token, p256dh: null, auth: null });
+    await expect(repo.notifications.addDevice(theo, { kind: "expo", endpoint: "nope", p256dh: null, auth: null })).rejects.toMatchObject({ code: "invalid" });
+    expect(await repo.notifications.deviceCount(theo)).toBe(1);
   });
 });

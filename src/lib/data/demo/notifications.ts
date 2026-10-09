@@ -5,7 +5,7 @@
  * (reminders, push claims, retention).
  */
 import type { DataRepository } from "../repository";
-import { DataError, type AppNotification, type NotificationSettings, type NotificationType, type PushClaim } from "../types";
+import { DataError, EXPO_PUSH_TOKEN, type AppNotification, type NotificationSettings, type NotificationType, type PushClaim } from "../types";
 import { clampLimit, compareTimestamps, decodeCursor, toPage } from "../discovery";
 import { ALL_NOTIFICATION_TYPES, DEFAULT_NOTIFICATION_SETTINGS } from "@/lib/notifications";
 import { newId } from "@/lib/utils/ids";
@@ -174,7 +174,7 @@ export function claimDemoPushes(state: DemoState, now: string, limit = 100, dail
     const devices = state.pushSubscriptions
       .filter((d) => d.userId === n.userId)
       .sort((a, b) => compareTimestamps(a.createdAt, b.createdAt) || compareIds(a.id, b.id))
-      .map((d) => ({ endpoint: d.endpoint, p256dh: d.p256dh, auth: d.auth }));
+      .map((d) => ({ kind: d.kind ?? "web", endpoint: d.endpoint, p256dh: d.p256dh, auth: d.auth }));
     if ((s && !s.pushTypes.includes(n.type)) || !devices.length || Date.parse(n.createdAt) < at - 24 * HOUR) {
       n.pushState = "skipped";
       continue;
@@ -264,13 +264,15 @@ export function createDemoNotifications(state: DemoState, h: { persist(): void; 
       h.persist();
     },
     async addDevice(userId, device) {
-      if (!/^https:\/\//.test(device.endpoint) || device.endpoint.length > 1000 || !device.p256dh || device.p256dh.length > 200 || !device.auth || device.auth.length > 100) {
-        throw new DataError("Invalid push subscription", "invalid");
-      }
+      const kind = device.kind ?? "web";
+      const ok = kind === "expo"
+        ? EXPO_PUSH_TOKEN.test(device.endpoint)
+        : /^https:\/\//.test(device.endpoint) && device.endpoint.length <= 1000 && !!device.p256dh && device.p256dh.length <= 200 && !!device.auth && device.auth.length <= 100;
+      if (!ok) throw new DataError("Invalid push subscription", "invalid");
       state.pushSubscriptions = state.pushSubscriptions.filter((d) => d.endpoint !== device.endpoint);
       const mine = state.pushSubscriptions.filter((d) => d.userId === userId).sort((a, b) => compareTimestamps(a.createdAt, b.createdAt) || compareIds(a.id, b.id));
       if (mine.length >= 10) state.pushSubscriptions = state.pushSubscriptions.filter((d) => d.id !== mine[0].id);
-      state.pushSubscriptions.push({ id: newId(), userId, ...device, createdAt: stamp() });
+      state.pushSubscriptions.push({ id: newId(), userId, kind, endpoint: device.endpoint, p256dh: kind === "expo" ? null : device.p256dh, auth: kind === "expo" ? null : device.auth, createdAt: stamp() });
       h.persist();
     },
     async removeDevice(userId, endpoint) {

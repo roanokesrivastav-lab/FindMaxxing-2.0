@@ -10,6 +10,8 @@ if (process.env.VERCEL) {
 }
 
 const nextConfig: NextConfig = {
+  // Shared TypeScript source (types, taxonomy, validation) used by the mobile app too.
+  transpilePackages: ["@findmaxxing/shared"],
   typedRoutes: false,
   agentRules: false,
   experimental: {

@@ -31,6 +31,8 @@ jobs:
 
       # typecheck, lint, unit + database tests, production build
       - run: npm run check
+      - name: Type-check the mobile app
+        run: npm run typecheck --workspace @findmaxxing/mobile
 
       - name: Install the Playwright browser
         run: npx playwright-core install --with-deps chromium

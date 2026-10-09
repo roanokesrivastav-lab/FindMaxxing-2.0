@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { featureEnabled, getDataMode } from "@/lib/config";
 import { reportError } from "@/lib/observability";
 import type { DataRepository } from "@/lib/data/repository";
-import { runNotificationJobs, webPushSender } from "@/server/notifications/push";
+import { combinedSender, expoPushSender, runNotificationJobs, webPushSender } from "@/server/notifications/push";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +25,8 @@ export async function GET(req: Request) {
       repo = createDemoRepository();
     }
     const now = new Date();
-    const sender = featureEnabled("push") ? await webPushSender() : null;
+    // Browsers need the push flag and VAPID keys; the mobile app's devices go through Expo.
+    const sender = featureEnabled("push") ? combinedSender(await webPushSender(), expoPushSender()) : null;
     const result = await runNotificationJobs(repo, sender, now.toISOString());
     // Retention once a day, on the first run after 04:00 UTC.
     const purged = now.getUTCHours() === 4 && now.getUTCMinutes() < 15 ? await repo.notifications.purge(now.toISOString()) : 0;

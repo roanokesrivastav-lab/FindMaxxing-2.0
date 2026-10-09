@@ -894,6 +894,27 @@ of the production build: install, saved places offline, the offline page and its
 cache gone after signing out. On iPhone, installing is "Add to Home Screen" (Safari has no install
 prompt); push needs the installed app there (iOS 16.4+).
 
+## Mobile app (Expo) and the shared package
+
+The repository is an npm-workspaces monorepo:
+
+- `packages/shared` (`@findmaxxing/shared`): the domain types, taxonomy, validation schemas,
+  timestamp checks and notification wording, as TypeScript source with no Node or browser APIs. The
+  web app's old modules (`src/lib/data/types.ts`, `taxonomy.ts`, `src/lib/validation/schemas.ts`,
+  `src/lib/notifications.ts`) re-export it, so web imports did not change; Next compiles it
+  (`transpilePackages`).
+- `apps/mobile` (`@findmaxxing/mobile`): an Expo Router app (Expo SDK 57) for the core loop: map
+  and places in view, place and event details, save and save to lists, add a place with a camera
+  photo, create and join events, messages, notifications, profile. It uses Supabase directly with the
+  anon key and the user's session, so RLS and triggers enforce every rule, as they do for the web.
+  Phones register Expo push tokens in `push_subscriptions` (`0024_expo_push.sql`), and the
+  notification cron sends to them through Expo's push service under the same rules as web push. See
+  `apps/mobile/README.md` to run it.
+
+Verified by type-checking and by an Expo web export rendered in a browser (unconfigured, and signed
+out against a placeholder backend). No iOS simulator or Android emulator was available here, so the
+native builds, the camera, location and push on a device have not been run (owner checklist).
+
 ## Data model
 
 `profiles` · `profile_interests` · `interests` · `categories` · `places` · `place_tags` · `place_photos` · `place_ratings` · `saved_places` · `saved_lists` · `saved_list_items` · `events` · `event_tags` · `event_attendees` · `follows` · `reports` · `moderators` · `moderation_actions` · `local_revocations` · `rate_limit_rules` · `rate_limit_counters` · `conversations` · `conversation_members` · `messages` · `blocks` · `notifications` · `notification_settings` · `push_subscriptions` · `push_log` · `tickets` · `entitlements` · `host_accounts` · `stripe_customers` · `stripe_events` · `ad_campaigns` · `ad_impressions`
