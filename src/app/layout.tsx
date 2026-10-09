@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Figtree } from "next/font/google";
 import "./globals.css";
 import { AppShell } from "@/components/layout/AppShell";
+import { RegisterServiceWorker } from "@/components/pwa/RegisterServiceWorker";
 import { getViewer } from "@/lib/auth/server";
 import { ToastProvider } from "@/components/ui/Toast";
 import { featureEnabled, getDataMode, getSiteUrl } from "@/lib/config";
@@ -35,6 +36,7 @@ export const metadata: Metadata = {
   openGraph: { type: "website", siteName: "FindMaxxing", title: "FindMaxxing", description: DESCRIPTION },
   twitter: { card: "summary", title: "FindMaxxing", description: DESCRIPTION },
   appleWebApp: { capable: true, title: "FindMaxxing", statusBarStyle: "default" },
+  icons: { apple: "/icons/apple-touch-icon.png" },
 };
 
 export const viewport: Viewport = {
@@ -62,6 +64,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           <AppShell viewer={viewer} dataMode={getDataMode()} extras={extras}>
             {children}
           </AppShell>
+          {featureEnabled("pwa") ? <RegisterServiceWorker /> : null}
         </ToastProvider>
       </body>
     </html>

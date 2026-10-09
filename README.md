@@ -872,6 +872,28 @@ pacing, budget, pausing, privacy of campaigns and delivery, service-only serving
 store, through the webhook with fixture events, through the endpoint and actions (including the Plus
 opt-out and the per-IP cap), and in the browser in demo mode.
 
+## Installable app (PWA)
+
+Behind the `pwa` flag. `src/app/manifest.ts` makes the site installable (standalone, scoped to `/`,
+192 and 512 PNG icons plus a maskable one and an Apple touch icon, all rendered from
+`src/app/icon.svg` by `node scripts/generate-icons.mjs`, and shortcuts to Saved and Events). The
+service worker (`public/sw.js`, shared with web push) caches deliberately little:
+
+- `/_next/static/*` and the icons, cache-first (their names change when their content does);
+- the offline page and its scripts, fetched at install **without cookies**, so the copy is anonymous;
+- the saved pages (`/saved`, `/saved/<list>`), network-first: the last copy you opened is kept, so
+  your saved places and lists open with no connection;
+- nothing else: no API responses, server actions, uploads or other pages. Offline, any other page
+  shows `/offline`, which lists the saved pages this device has.
+
+Saved pages are private, so signing out and deleting the account tell the worker to forget them
+(and clear the cache from the page as well). The worker only registers in production builds.
+
+Tested with a unit test (manifest, icons at their stated sizes, the caching rules) and a browser run
+of the production build: install, saved places offline, the offline page and its contents, and the
+cache gone after signing out. On iPhone, installing is "Add to Home Screen" (Safari has no install
+prompt); push needs the installed app there (iOS 16.4+).
+
 ## Data model
 
 `profiles` · `profile_interests` · `interests` · `categories` · `places` · `place_tags` · `place_photos` · `place_ratings` · `saved_places` · `saved_lists` · `saved_list_items` · `events` · `event_tags` · `event_attendees` · `follows` · `reports` · `moderators` · `moderation_actions` · `local_revocations` · `rate_limit_rules` · `rate_limit_counters` · `conversations` · `conversation_members` · `messages` · `blocks` · `notifications` · `notification_settings` · `push_subscriptions` · `push_log` · `tickets` · `entitlements` · `host_accounts` · `stripe_customers` · `stripe_events` · `ad_campaigns` · `ad_impressions`
