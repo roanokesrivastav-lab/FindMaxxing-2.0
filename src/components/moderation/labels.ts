@@ -24,6 +24,8 @@ export const ACTION_LABEL: Record<ModerationLogAction, string> = {
   taxonomy_upsert: "Edited",
   taxonomy_retire: "Retired",
   taxonomy_restore: "Brought back",
+  approve_ad: "Approved the campaign",
+  reject_ad: "Rejected the campaign",
 };
 
 /** Where the target lives for everyone else; profiles link by username. Messages are private: no link. */

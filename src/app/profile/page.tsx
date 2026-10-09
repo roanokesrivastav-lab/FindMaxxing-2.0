@@ -63,6 +63,7 @@ export default async function MyProfilePage() {
       messaging={unread === null ? null : { unread }}
       notificationsUnread={notificationsUnread}
       payments={!!paymentsMode()}
+      ads={!!paymentsMode() && featureEnabled("ads")}
     />
   );
 }

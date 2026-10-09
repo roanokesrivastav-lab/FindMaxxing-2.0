@@ -1,5 +1,9 @@
 import type {
   ConnectionEntry,
+  AdCampaign,
+  GeoBounds,
+  NewCampaignInput,
+  SponsoredCard,
   Entitlement,
   Ticket,
   TicketReservation,
@@ -352,6 +356,25 @@ export interface DataRepository {
     setHostAccount(userId: string, accountId: string, chargesEnabled: boolean): Promise<void>;
     /** Service: true the first time a Stripe event id is seen. */
     recordStripeEvent(id: string, type: string, objectId: string | null): Promise<boolean>;
+  };
+  /**
+   * Sponsored cards (0023_ads.sql): local, labeled, contextual, never
+   * personal, never part of the organic results. Advertisers promote their
+   * own public place or upcoming event; admins review; payment activates.
+   */
+  ads: {
+    create(advertiserId: string, input: NewCampaignInput): Promise<string>;
+    /** The advertiser's campaigns, newest first, with delivery. */
+    mine(advertiserId: string): Promise<AdCampaign[]>;
+    setPaused(advertiserId: string, campaignId: string, paused: boolean): Promise<void>;
+    /** Admins only: campaigns waiting for review, oldest first (empty for anyone else). */
+    reviewQueue(viewerId: string): Promise<AdCampaign[]>;
+    review(adminId: string, campaignId: string, approve: boolean, note: string | null): Promise<void>;
+    /** Service: the campaign for a checkout, the payment that activates it, serving, expiry. */
+    attachCheckout(campaignId: string, sessionId: string): Promise<void>;
+    activate(sessionId: string, amountCents: number): Promise<"active" | "duplicate" | "mismatch" | "unknown">;
+    serve(slot: "places" | "events", context: { bounds: GeoBounds | null; categorySlug: string | null }, now?: string): Promise<SponsoredCard | null>;
+    endFinished(now?: string): Promise<number>;
   };
   /** Limits on actions that write no row of their own (an AI plan). */
   limits: {

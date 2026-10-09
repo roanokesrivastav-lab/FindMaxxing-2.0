@@ -4,7 +4,7 @@ import { ForYouRail } from "@/components/recommendations/ForYouRail";
 import { getRepository } from "@/lib/data";
 import { getViewer } from "@/lib/auth/server";
 import { INTEREST_MAP } from "@/lib/data/taxonomy";
-import { DEFAULT_CENTER } from "@/lib/config";
+import { DEFAULT_CENTER, featureEnabled } from "@/lib/config";
 import { ExploreClient } from "@/components/explore/ExploreClient";
 import { EVENT_PAGE, PLACE_PAGE, type DiscoveryRequest } from "@/components/explore/discoveryRequest";
 
@@ -42,6 +42,7 @@ export default async function ExplorePage({ searchParams }: PageProps<"/">) {
       initialRequest={request}
       welcome={sp.welcome === "1" && !!viewer}
       forYou={<ForYouRail places={forYou} />}
+      ads={featureEnabled("ads") && !(viewer && (await repo.payments.isPlus(viewer.id)))}
       viewer={viewer ? { displayName: viewer.profile.displayName, avatarUrl: viewer.profile.avatarUrl, interests: viewer.profile.interests } : null}
     />
   );

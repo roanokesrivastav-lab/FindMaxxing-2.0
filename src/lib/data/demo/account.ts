@@ -65,6 +65,11 @@ export function deleteDemoAccount(handle: StoreHandle, userId: string): DeletedO
   state.entitlements = state.entitlements.filter((e) => e.userId !== userId);
   state.stripeCustomers = state.stripeCustomers.filter((c) => c.userId !== userId);
   state.hostAccounts = state.hostAccounts.filter((a) => a.userId !== userId);
+  // Their campaigns go (with the places and events they promoted).
+  const campaigns = new Set(state.adCampaigns.filter((c) => c.advertiserId === userId || (c.placeId && ownPlaces.has(c.placeId)) || (c.eventId && ownEvents.has(c.eventId))).map((c) => c.id));
+  state.adCampaigns = state.adCampaigns.filter((c) => !campaigns.has(c.id));
+  state.adImpressions = state.adImpressions.filter((i) => !campaigns.has(i.campaignId));
+  for (const c of state.adCampaigns) if (c.reviewedBy === userId) c.reviewedBy = null;
   state.eventTags = state.eventTags.filter((t) => !ownEvents.has(t.eventId));
   state.eventAttendees = state.eventAttendees.filter((a) => a.userId !== userId && !ownEvents.has(a.eventId));
   for (const event of state.events) if (event.placeId && ownPlaces.has(event.placeId)) event.placeId = null;

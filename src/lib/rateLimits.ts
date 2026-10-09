@@ -5,7 +5,7 @@
  */
 import { DataError } from "@/lib/data/types";
 
-export type RateLimitAction = "places" | "events" | "ratings" | "lists" | "reports" | "photos" | "avatars" | "analytics" | "trip_plans" | "messages" | "trip_plans_plus" | "tickets";
+export type RateLimitAction = "places" | "events" | "ratings" | "lists" | "reports" | "photos" | "avatars" | "analytics" | "trip_plans" | "messages" | "trip_plans_plus" | "tickets" | "ad_campaigns";
 
 export interface RateLimitRule {
   max: number;
@@ -30,6 +30,7 @@ export const RATE_LIMITS: Record<RateLimitAction, RateLimitRule> = {
   messages: { max: 60, windowSeconds: HOUR, label: "messages" },
   trip_plans_plus: { max: 30, windowSeconds: DAY, label: "trip plans" },
   tickets: { max: 20, windowSeconds: HOUR, label: "ticket checkouts" },
+  ad_campaigns: { max: 10, windowSeconds: DAY, label: "ad campaigns" },
 };
 
 /** Start of the fixed window containing `now`, the same rounding as check_rate_limit(). */
@@ -72,6 +73,8 @@ export interface MemoryLimit {
 
 export const SIGN_UP_LIMIT: MemoryLimit = { max: 5, windowSeconds: HOUR };
 export const PASSWORD_RESET_LIMIT: MemoryLimit = { max: 5, windowSeconds: HOUR };
+/** Sponsored cards served per IP, so nobody burns an advertiser's budget by reloading. */
+export const AD_SERVE_LIMIT: MemoryLimit = { max: 120, windowSeconds: HOUR };
 
 /** At most this many keys are tracked; the oldest are dropped first. */
 const MAX_KEYS = 10_000;

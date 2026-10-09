@@ -133,7 +133,7 @@ export interface ModerationActionRow {
   id: string;
   moderatorId: string | null;
   action: ModerationLogAction;
-  targetType: ReportTargetType | "category" | "interest";
+  targetType: ReportTargetType | "category" | "interest" | "campaign";
   /** Null for taxonomy entries, which use targetKey (their slug). */
   targetId: string | null;
   targetKey?: string | null;
@@ -200,6 +200,31 @@ export interface DemoState {
   entitlements: { userId: string; status: EntitlementStatus; currentPeriodEnd: string | null; subscriptionId: string | null; updatedAt: string }[];
   stripeCustomers: { userId: string; customerId: string }[];
   stripeEvents: { id: string; type: string; objectId: string | null; receivedAt: string }[];
+  /** Mirrors 0023_ads.sql (see ./ads). Impressions are aggregated: no user. */
+  adCampaigns: AdCampaignRow[];
+  adImpressions: { campaignId: string; day: string; slot: "places" | "events"; count: number }[];
+}
+
+export interface AdCampaignRow {
+  id: string;
+  advertiserId: string;
+  kind: "place" | "event";
+  placeId: string | null;
+  eventId: string | null;
+  headline: string;
+  body: string | null;
+  bounds: { north: number; south: number; east: number; west: number } | null;
+  categorySlug: string | null;
+  startsAt: string;
+  endsAt: string;
+  budgetCents: number;
+  status: "pending_review" | "rejected" | "awaiting_payment" | "active" | "paused" | "ended";
+  reviewNote: string | null;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  checkoutSessionId: string | null;
+  paidCents: number | null;
+  createdAt: string;
 }
 
 export interface TicketRow {
@@ -279,7 +304,7 @@ export interface SavedListRow {
   updatedAt: string;
 }
 
-export const STATE_VERSION = 11;
+export const STATE_VERSION = 12;
 const DATA_DIR = path.join(process.cwd(), ".data");
 const STATE_FILE = path.join(DATA_DIR, "demo-store.json");
 
@@ -299,6 +324,7 @@ const COLLECTIONS = [
   "conversations", "conversationMembers", "messages", "blocks",
   "notifications", "notificationSettings", "pushSubscriptions", "pushLog",
   "tickets", "hostAccounts", "entitlements", "stripeCustomers", "stripeEvents",
+  "adCampaigns", "adImpressions",
 ] as const;
 
 const LEGACY_PLACE_UPLOAD = /^\/api\/uploads\/(places-[^/]+)$/;
@@ -398,6 +424,11 @@ const MIGRATIONS: Record<number, (state: LooseState) => void> = {
     state.stripeCustomers ??= [];
     state.stripeEvents ??= [];
   },
+  // v11 → v12: sponsored cards. No campaigns yet.
+  11(state) {
+    state.adCampaigns ??= [];
+    state.adImpressions ??= [];
+  },
 };
 
 export type MigrationResult =
@@ -480,6 +511,8 @@ export function buildSeedState(now = new Date()): DemoState {
     entitlements: [],
     stripeCustomers: [],
     stripeEvents: [],
+    adCampaigns: [],
+    adImpressions: [],
   };
 
   SEED_USERS.forEach((u, i) => {

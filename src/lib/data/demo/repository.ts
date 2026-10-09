@@ -27,6 +27,7 @@ import { LEVEL_RANK, refreshDemoReputation } from "./reputation";
 import { recommendDemoEvents, recommendDemoPlaces } from "./recommend";
 import { createDemoMessaging, dropEventChats, joinEventChat, leaveEventChat } from "./messaging";
 import { createDemoNotifications, notifyOn } from "./notifications";
+import { createDemoAds } from "./ads";
 import { createDemoPayments, isPlusIn, needsTicket, refundOnCancel } from "./payments";
 import { PLUS_LIST_CAP, paymentsError } from "../payments";
 import { LIST_LIMIT_ERROR, MAX_SAVED_LISTS, duplicateListName, listNameKey, normalizeListName } from "../savedLists";
@@ -1531,6 +1532,8 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
     },
 
     notifications: createDemoNotifications(state, { persist, summary: (id) => profileOf(state, id) }),
+
+    ads: createDemoAds(state, { persist, assertActive, rateLimit, isAdmin }),
 
     payments: createDemoPayments(state, { persist, assertActive, rateLimit, canViewEvent: (event, viewerId) => canViewEvent(state, event, viewerId) }),
 

@@ -421,7 +421,9 @@ export type ModerationLogAction =
   | "revoke_moderator"
   | "taxonomy_upsert"
   | "taxonomy_retire"
-  | "taxonomy_restore";
+  | "taxonomy_restore"
+  | "approve_ad"
+  | "reject_ad";
 
 /** One target in the queue: its open reports, grouped. */
 export interface ModerationQueueItem {
@@ -748,6 +750,54 @@ export interface TicketSummary {
   pending: number;
   refunded: number;
   revenueCents: number;
+}
+
+// ----------------------------------------------------------------------------
+// Sponsored cards
+// ----------------------------------------------------------------------------
+export type CampaignStatus = "pending_review" | "rejected" | "awaiting_payment" | "active" | "paused" | "ended";
+
+export interface NewCampaignInput {
+  kind: "place" | "event";
+  targetId: string;
+  headline: string;
+  body: string | null;
+  /** Contextual targeting only. */
+  bounds: GeoBounds | null;
+  categorySlug: string | null;
+  startsAt: string;
+  endsAt: string;
+  budgetCents: number;
+}
+
+export interface AdCampaign {
+  id: string;
+  advertiserId: string;
+  kind: "place" | "event";
+  targetId: string;
+  targetLabel: string | null;
+  headline: string;
+  body: string | null;
+  bounds: GeoBounds | null;
+  categorySlug: string | null;
+  startsAt: string;
+  endsAt: string;
+  budgetCents: number;
+  status: CampaignStatus;
+  reviewNote: string | null;
+  createdAt: string;
+  /** Impressions so far, and how many the budget buys. */
+  delivered: number;
+  impressionBudget: number;
+}
+
+/** A served card: always shown labeled "Sponsored". */
+export interface SponsoredCard {
+  campaignId: string;
+  kind: "place" | "event";
+  targetId: string;
+  headline: string;
+  body: string | null;
 }
 
 export class DataError extends Error {

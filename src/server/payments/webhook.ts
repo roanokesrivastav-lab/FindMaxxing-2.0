@@ -27,7 +27,14 @@ export async function handleStripeEvent(event: Stripe.Event, repo: DataRepositor
     case "checkout.session.completed": {
       const s = event.data.object;
       objectId = s.id;
-      if (s.mode === "payment" && s.metadata?.ticket_id) {
+      if (s.mode === "payment" && s.metadata?.campaign_id) {
+        outcome = `campaign_${await repo.ads.activate(s.id, s.amount_total ?? -1)}`;
+        const pi = idOf(s.payment_intent);
+        // Paid for something that cannot run (a replaced checkout, a different amount): refund it.
+        if (pi && (outcome === "campaign_unknown" || outcome === "campaign_mismatch")) {
+          await stripe.refunds.create({ payment_intent: pi }, { idempotencyKey: `refund:campaign:${s.id}` });
+        }
+      } else if (s.mode === "payment" && s.metadata?.ticket_id) {
         const pi = idOf(s.payment_intent);
         if (!pi) break;
         outcome = await repo.payments.confirmTicket(s.id, pi, s.amount_total ?? -1);

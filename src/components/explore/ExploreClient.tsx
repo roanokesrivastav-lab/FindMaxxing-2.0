@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronDown, List, Loader2, LocateFixed, Map as MapIcon, PanelLeftClose, PanelLeftOpen, RotateCw, Search, SlidersHorizontal, X } from "lucide-react";
 import type { Event, GeoBounds, Place } from "@/lib/data/types";
@@ -13,6 +13,8 @@ import { useGeolocation } from "@/lib/map/useGeolocation";
 import { Chip, ChipRow } from "@/components/ui/Chip";
 import { PlaceCard } from "@/components/places/PlaceCard";
 import { EventCard } from "@/components/events/EventCard";
+import { SponsoredSlot } from "@/components/ads/SponsoredSlot";
+import { AD_POSITION } from "@/lib/data/ads";
 import { PreviewCard } from "./PreviewCard";
 import { boundsFromPoints, distanceMeters } from "@/lib/utils/geo";
 import { sameBounds } from "@/lib/map/bounds";
@@ -45,6 +47,7 @@ export function ExploreClient({
   viewer,
   welcome = false,
   forYou = null,
+  ads = false,
 }: {
   initial: DiscoveryResults;
   initialRequest: DiscoveryRequest;
@@ -53,6 +56,8 @@ export function ExploreClient({
   welcome?: boolean;
   /** Server-rendered "For you" rail, shown while browsing (not during a search). */
   forYou?: React.ReactNode;
+  /** Sponsored cards (ads flag on, viewer not on Plus): one per list, labeled, never in place of a result. */
+  ads?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
@@ -415,8 +420,11 @@ export function ExploreClient({
                 />
                 {eventsOpen ? (
                   <>
-                    {(kind === "events" ? events : events.slice(0, EVENTS_PREVIEW)).map((e) => (
-                      <EventCard key={e.id} event={e} compact onHover={() => setSelected({ kind: "event", item: e })} />
+                    {(kind === "events" ? events : events.slice(0, EVENTS_PREVIEW)).map((e, i, shown) => (
+                      <Fragment key={e.id}>
+                        <EventCard event={e} compact onHover={() => setSelected({ kind: "event", item: e })} />
+                        {ads && i === Math.min(AD_POSITION.events, shown.length) - 1 ? <SponsoredSlot slot="events" bounds={request.bounds} category={category} /> : null}
+                      </Fragment>
                     ))}
                     {kind === "all" && eventCount > EVENTS_PREVIEW ? (
                       <Link href="/events" className="text-sm font-semibold text-pulse text-center py-1">
@@ -455,8 +463,11 @@ export function ExploreClient({
                 </div>
                 {placesOpen ? (
                   <>
-                    {places.map((p) => (
-                      <PlaceCard key={p.id} place={p} compact distanceMeters={geo.location ? distanceMeters(geo.location, p) : null} onHover={() => setSelected({ kind: "place", item: p })} />
+                    {places.map((p, i) => (
+                      <Fragment key={p.id}>
+                        <PlaceCard place={p} compact distanceMeters={geo.location ? distanceMeters(geo.location, p) : null} onHover={() => setSelected({ kind: "place", item: p })} />
+                        {ads && i === Math.min(AD_POSITION.places, places.length) - 1 ? <SponsoredSlot slot="places" bounds={request.bounds} category={category} /> : null}
+                      </Fragment>
                     ))}
                     {results.places.nextCursor ? (
                       <LoadMore loading={discovery.loadingMore === "places"} onClick={() => discovery.loadMore("places")} label="More places" />

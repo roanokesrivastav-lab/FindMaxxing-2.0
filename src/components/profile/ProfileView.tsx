@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { LevelBadge } from "./LevelBadge";
-import { Bell, Flag, Heart, MapPin, MessageCircle, Pencil, Settings, ShieldAlert, ShieldCheck, Ticket } from "lucide-react";
+import { Bell, Flag, Heart, MapPin, Megaphone, MessageCircle, Pencil, Settings, ShieldAlert, ShieldCheck, Ticket } from "lucide-react";
 import type { Profile, ProfileStats, RemovedContent, UserActivity } from "@/lib/data/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { getInterest } from "@/lib/data/taxonomy";
@@ -25,6 +25,7 @@ export function ProfileView({
   messaging = null,
   notificationsUnread = null,
   payments = false,
+  ads = false,
 }: {
   profile: Profile;
   stats: ProfileStats;
@@ -49,6 +50,8 @@ export function ProfileView({
   notificationsUnread?: number | null;
   /** Self view: tickets and Plus links (payments flag). */
   payments?: boolean;
+  /** Self view: the advertiser page (ads flag). */
+  ads?: boolean;
 }) {
   return (
     <div className="max-w-2xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-nav md:pb-10">
@@ -176,6 +179,7 @@ export function ProfileView({
               <>
                 <Link href="/profile/tickets" className="chip"><Ticket size={14} /> Tickets</Link>
                 <Link href="/plus" className="chip"><Heart size={14} /> Plus</Link>
+                {ads ? <Link href="/ads" className="chip"><Megaphone size={14} /> Sponsored cards</Link> : null}
               </>
             ) : null}
             {notificationsUnread !== null ? (

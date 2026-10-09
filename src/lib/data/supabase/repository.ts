@@ -33,9 +33,11 @@ import {
   type PushClaim,
   type Ticket,
   type Entitlement,
+  type AdCampaign,
 } from "../types";
 import { DEFAULT_NOTIFICATION_SETTINGS } from "@/lib/notifications";
 import { parsePaymentsMessage } from "../payments";
+import { impressionBudget, parseAdsMessage, validateCampaign } from "../ads";
 import { MESSAGE_PAGE_SIZE, messagingError, normalizeMessageBody, parseMessagingMessage } from "../messaging";
 import { parseRateLimitMessage } from "@/lib/rateLimits";
 import { compareModerationReports, parseModerationMessage } from "../moderation";
@@ -209,7 +211,7 @@ export function translate(error: PostgrestError): DataError {
     case "FM429": // check_rate_limit()
       return parseRateLimitMessage(error.message) ?? new DataError("Too many requests. Try again later.", "rate_limited");
     case "P0002": // no_data_found, raised by our functions for a missing target
-      return parseModerationMessage(error.message) ?? parseMessagingMessage(error.message) ?? parsePaymentsMessage(error.message) ?? new DataError("Not found", "not_found");
+      return parseModerationMessage(error.message) ?? parseMessagingMessage(error.message) ?? parsePaymentsMessage(error.message) ?? parseAdsMessage(error.message) ?? new DataError("Not found", "not_found");
     case "23505":
       return new DataError("That already exists", "conflict");
     case "23503":
@@ -220,7 +222,7 @@ export function translate(error: PostgrestError): DataError {
     case "22008": // datetime_field_overflow
       return new DataError("Invalid date or time", "invalid");
     case "P0001": { // raise exception from our triggers
-      const moderation = parseModerationMessage(error.message) ?? parseMessagingMessage(error.message) ?? parsePaymentsMessage(error.message);
+      const moderation = parseModerationMessage(error.message) ?? parseMessagingMessage(error.message) ?? parsePaymentsMessage(error.message) ?? parseAdsMessage(error.message);
       if (moderation) return moderation;
       const cooldown = /home_city_cooldown:(\S+)/.exec(error.message);
       if (cooldown) return new DataError(homeCityCooldownMessage(cooldown[1]), "rate_limited");
@@ -327,6 +329,45 @@ async function readReports(supabase: SupabaseClient, view: "reports_i_filed" | "
     resolvedAt: r.resolved_at ?? null,
     targetLabel: labels.get(r.target_id) ?? null,
   }));
+}
+
+const CAMPAIGN_SELECT = "*, place:places!ad_campaigns_place_id_fkey(name), event:events!ad_campaigns_event_id_fkey(title), impressions:ad_impressions(impressions)";
+
+interface CampaignDbRow {
+  id: string;
+  advertiser_id: string;
+  kind: "place" | "event";
+  place_id: string | null;
+  event_id: string | null;
+  headline: string;
+  body: string | null;
+  north: number | null;
+  south: number | null;
+  east: number | null;
+  west: number | null;
+  category_slug: string | null;
+  starts_at: string;
+  ends_at: string;
+  budget_cents: number;
+  status: AdCampaign["status"];
+  review_note: string | null;
+  created_at: string;
+  place: { name: string } | null;
+  event: { title: string } | null;
+  impressions: { impressions: number }[];
+}
+
+function mapCampaign(r: CampaignDbRow): AdCampaign {
+  return {
+    id: r.id, advertiserId: r.advertiser_id, kind: r.kind, targetId: (r.place_id ?? r.event_id)!,
+    targetLabel: r.place?.name ?? r.event?.title ?? null, headline: r.headline, body: r.body,
+    bounds: r.north === null ? null : { north: Number(r.north), south: Number(r.south), east: Number(r.east), west: Number(r.west) },
+    categorySlug: r.category_slug, startsAt: r.starts_at, endsAt: r.ends_at, budgetCents: r.budget_cents, status: r.status,
+    reviewNote: r.review_note, createdAt: r.created_at,
+    // The embedded rows are the per-day counts; their sum is what was delivered.
+    delivered: (r.impressions ?? []).reduce((n, i) => n + Number(i.impressions), 0),
+    impressionBudget: impressionBudget(r.budget_cents),
+  };
 }
 
 interface TicketDbRow {
@@ -1491,6 +1532,54 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
           .order("created_at", { ascending: false })
           .order("blocked_id", { ascending: true })) as unknown as { profile: ProfileSummaryRow | null }[];
         return rows.map((r) => mapSummary(r.profile)).filter((p): p is ProfileSummary => !!p);
+      },
+    },
+
+    ads: {
+      async create(_advertiserId, input) {
+        validateCampaign(input);
+        const b = input.bounds;
+        return unwrap(await supabase.rpc("create_ad_campaign", {
+          p_kind: input.kind, p_target: input.targetId, p_headline: input.headline, p_body: input.body, p_category: input.categorySlug,
+          p_north: b?.north ?? null, p_south: b?.south ?? null, p_east: b?.east ?? null, p_west: b?.west ?? null,
+          p_starts_at: input.startsAt, p_ends_at: input.endsAt, p_budget_cents: input.budgetCents,
+        })) as string;
+      },
+      async mine(advertiserId) {
+        const rows = unwrap(await supabase.from("ad_campaigns").select(CAMPAIGN_SELECT).eq("advertiser_id", advertiserId)
+          .order("created_at", { ascending: false }).order("id", { ascending: false })) as unknown as CampaignDbRow[];
+        return rows.map(mapCampaign);
+      },
+      async setPaused(_advertiserId, campaignId, paused) {
+        unwrap(await supabase.rpc("set_ad_campaign_paused", { p_campaign: campaignId, p_paused: paused }));
+      },
+      async reviewQueue() {
+        // RLS: admins read every campaign; anyone else only their own (none pending here are theirs to review).
+        if (!(unwrap(await supabase.rpc("is_admin")) as boolean)) return [];
+        const rows = unwrap(await supabase.from("ad_campaigns").select(CAMPAIGN_SELECT).eq("status", "pending_review")
+          .order("created_at", { ascending: true }).order("id", { ascending: true })) as unknown as CampaignDbRow[];
+        return rows.map(mapCampaign);
+      },
+      async review(_adminId, campaignId, approve, note) {
+        unwrap(await supabase.rpc("review_ad_campaign", { p_campaign: campaignId, p_approve: approve, p_note: note }));
+      },
+      async attachCheckout(campaignId, sessionId) {
+        unwrap(await supabase.rpc("attach_ad_checkout", { p_campaign: campaignId, p_session: sessionId }));
+      },
+      async activate(sessionId, amountCents) {
+        return unwrap(await supabase.rpc("activate_ad_campaign", { p_session: sessionId, p_amount: amountCents })) as "active" | "duplicate" | "mismatch" | "unknown";
+      },
+      async serve(slot, context, now = new Date().toISOString()) {
+        const b = context.bounds;
+        const rows = unwrap(await supabase.rpc("serve_ad", {
+          p_slot: slot, p_north: b?.north ?? null, p_south: b?.south ?? null, p_east: b?.east ?? null, p_west: b?.west ?? null,
+          p_category: context.categorySlug, p_now: now,
+        })) as { campaign_id: string; kind: "place" | "event"; target_id: string; headline: string; body: string | null }[];
+        const r = rows[0];
+        return r ? { campaignId: r.campaign_id, kind: r.kind, targetId: r.target_id, headline: r.headline, body: r.body } : null;
+      },
+      async endFinished(now = new Date().toISOString()) {
+        return Number(unwrap(await supabase.rpc("end_finished_ad_campaigns", { p_now: now })) ?? 0);
       },
     },
 

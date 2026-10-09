@@ -17,7 +17,25 @@ export default async function DemoCheckoutPage({ searchParams }: PageProps<"/che
   const viewer = await requireViewer("/checkout/demo");
   const ticketId = typeof sp.ticket === "string" ? sp.ticket : null;
   const plan = sp.plan === "plus" || sp.plan === "manage" ? sp.plan : null;
-  const ticket = ticketId ? (await (await getRepository()).payments.myTickets(viewer.id)).find((t) => t.id === ticketId && t.status === "pending") : null;
+  const repo = await getRepository();
+  const ticket = ticketId ? (await repo.payments.myTickets(viewer.id)).find((t) => t.id === ticketId && t.status === "pending") : null;
+  const campaign = typeof sp.campaign === "string" ? (await repo.ads.mine(viewer.id)).find((c) => c.id === sp.campaign && c.status === "awaiting_payment") : null;
+  if (campaign) {
+    return (
+      <div className="max-w-md mx-auto px-4 pt-8 pb-nav md:pb-10">
+        <div role="note" className="rounded-2xl border-2 border-dashed border-pulse bg-pulse-50 px-4 py-3 text-sm flex gap-2">
+          <FlaskConical size={18} className="text-pulse shrink-0 mt-0.5" />
+          <span><b>Demo checkout.</b> This is demo mode: nothing is charged and no money moves. With Stripe set up, this step is Stripe Checkout.</span>
+        </div>
+        <div className="card p-5 mt-4">
+          <h1 className="text-xl font-bold">Sponsored card: {campaign.headline}</h1>
+          <p className="text-2xl font-bold mt-2">{formatPrice(campaign.budgetCents)}</p>
+          <p className="text-sm text-muted mt-1">About {campaign.impressionBudget.toLocaleString("en-US")} views.</p>
+          <DemoCheckout kind="campaign" campaignId={campaign.id} />
+        </div>
+      </div>
+    );
+  }
   if (!ticket && !plan) notFound();
   return (
     <div className="max-w-md mx-auto px-4 pt-8 pb-nav md:pb-10">

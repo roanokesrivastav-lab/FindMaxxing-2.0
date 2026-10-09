@@ -4,16 +4,21 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/Toast";
 import { demoCancelCheckoutAction, demoPayTicketAction, demoSetPlusAction } from "@/server/actions/payments";
+import { demoPayCampaignAction } from "@/server/actions/ads";
 
 /** The buttons of the labeled demo checkout. Nothing here touches money. */
-export function DemoCheckout({ kind, ticketId, eventId }: { kind: "ticket" | "plus" | "manage"; ticketId?: string; eventId?: string | null }) {
+export function DemoCheckout({ kind, ticketId, eventId, campaignId }: { kind: "ticket" | "plus" | "manage" | "campaign"; ticketId?: string; eventId?: string | null; campaignId?: string }) {
   const [pending, start] = useTransition();
   const router = useRouter();
   const { toast } = useToast();
-  const back = kind === "ticket" ? (eventId ? `/events/${eventId}` : "/profile/tickets") : "/plus";
+  const back = kind === "ticket" ? (eventId ? `/events/${eventId}` : "/profile/tickets") : kind === "campaign" ? "/ads" : "/plus";
   const pay = () =>
     start(async () => {
-      if (kind === "ticket") {
+      if (kind === "campaign") {
+        const res = await demoPayCampaignAction(campaignId!);
+        if (!res.ok) return toast(res.error, "error");
+        router.push("/ads?paid=1");
+      } else if (kind === "ticket") {
         const res = await demoPayTicketAction(ticketId!);
         if (!res.ok) return toast(res.error, "error");
         router.push(res.data.outcome === "confirmed" ? `${back}?ticket=success` : `${back}?ticket=refunded`);

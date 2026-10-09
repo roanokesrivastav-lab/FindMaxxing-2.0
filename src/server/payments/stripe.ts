@@ -43,6 +43,20 @@ export async function createTicketCheckout(stripe: StripeLike, r: TicketReservat
   return { id: session.id, url: session.url };
 }
 
+/** Pays a reviewed campaign's whole budget up front. */
+export async function createCampaignCheckout(stripe: StripeLike, c: { id: string; headline: string; budgetCents: number }, opts: { userId: string; origin: string; email?: string | null }): Promise<{ id: string; url: string }> {
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    line_items: [{ quantity: 1, price_data: { currency: "usd", unit_amount: c.budgetCents, product_data: { name: `Sponsored card: ${c.headline}` } } }],
+    customer_email: opts.email ?? undefined,
+    metadata: { campaign_id: c.id, user_id: opts.userId },
+    success_url: `${opts.origin}/ads?paid=1`,
+    cancel_url: `${opts.origin}/ads`,
+  });
+  if (!session.url) throw new Error("Stripe returned no checkout URL");
+  return { id: session.id, url: session.url };
+}
+
 /** Plus checkout, for an existing or new Stripe customer. */
 export async function createPlusCheckout(stripe: StripeLike, repo: DataRepository, opts: { userId: string; email: string | null; priceId: string; origin: string }): Promise<string> {
   let customer = await repo.payments.customerOf(opts.userId);

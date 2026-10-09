@@ -303,6 +303,8 @@ does not use up the allowance. Sessions without a user (seeds, SQL, the service 
 | Pushes received | 5 a day per person | `claim_push_batch()`; the rest stay in-app |
 | Ticket checkouts | 20 an hour | `reserve_ticket()` |
 | AI trip plans with Plus | 30 a day | `consume_trip_plan()` |
+| Ad campaigns | 10 a day | `create_ad_campaign()` |
+| Sponsored cards served | 120 an hour per IP | `/api/ads` (in-memory, per instance), so reloading can't burn a budget |
 | Sign-ups | 5 an hour per IP | the sign-up server action |
 
 The numbers live in one table, `rate_limit_rules`, mirrored by `RATE_LIMITS` in
@@ -828,9 +830,51 @@ client, through the route with real signature verification (a test secret, no ne
 browser in demo mode. No real Stripe request was made; see the owner checklist. PGlite runs one
 connection at a time, so the concurrency guarantee rests on the row lock rather than a parallel test.
 
+## Sponsored cards (local, labeled)
+
+Behind the `ads` flag, and paid for through payments (so the `payments` flag too: Stripe with
+Supabase, the labeled demo checkout in demo mode). Schema in `0023_ads.sql`.
+
+**What it is.** Local businesses and organizers promote **their own** public place or upcoming event
+(nobody else's, nothing private, nothing that isn't a listing). The card shows the advertiser's
+headline and a line of text, the listing's name and area, and the word **Sponsored**. It links to the
+listing's normal page.
+
+**Where (pending owner confirmation): one card per list, per search.** In Explore it sits after the
+4th place in the places list and after the 2nd event in the events list (`AD_POSITION`), never first,
+never more than one per list. It is fetched on its own from `/api/ads` and inserted between results;
+the discovery queries, ratings, saves, recommendations and visibility rules don't know ads exist. The
+required test (`tests/ads.test.ts`, "organic results with and without sponsored campaigns") runs every
+organic read (discovery, map pins, ratings, recommendations) for several viewers before and after
+campaigns run and are served, in SQL and in the demo store, and asserts they are identical.
+
+**No tracking.** Cards are chosen from the request's context alone: the map area, the category being
+browsed, and the date. No cookies, profiles, history or location are used, and Plus members are never
+served one. Impressions are counted per campaign, day and slot (`ad_impressions` has no column that
+could hold a person); clicks are not recorded. No third-party ad network or pixel is involved.
+
+**Budgets and pacing.** A budget ($20 to $1,000, paid up front) buys impressions at $5 per 1,000.
+`serve_ad` paces each campaign with a daily cap (the impressions spread evenly over its run, at most 60
+days), prefers the campaign least shown today (ties by id, no randomness), counts the impression under
+a per-campaign lock, and ends the campaign when the budget is spent. Campaigns whose listing stops
+being public (or whose event ends) stop serving. Serving runs with the service role only; clients
+cannot call it, or write campaigns or impressions.
+
+**Review and billing.** `/ads` is the self-serve form (the listing, headline, text, "near the listing"
+or anywhere, "only in its category", dates and budget). Each campaign waits in the admin review queue
+(`/admin/ads`); approving or rejecting (with a reason) is recorded in the moderation history. Once
+approved, the advertiser pays through Stripe Checkout (the webhook activates it, idempotently; a
+payment that can't run is refunded) or the demo checkout. Advertisers can pause and resume, and see
+delivery.
+
+Tested in PGlite under RLS (who may advertise what, review and audit, activation, context matching,
+pacing, budget, pausing, privacy of campaigns and delivery, service-only serving), against the demo
+store, through the webhook with fixture events, through the endpoint and actions (including the Plus
+opt-out and the per-IP cap), and in the browser in demo mode.
+
 ## Data model
 
-`profiles` · `profile_interests` · `interests` · `categories` · `places` · `place_tags` · `place_photos` · `place_ratings` · `saved_places` · `saved_lists` · `saved_list_items` · `events` · `event_tags` · `event_attendees` · `follows` · `reports` · `moderators` · `moderation_actions` · `local_revocations` · `rate_limit_rules` · `rate_limit_counters` · `conversations` · `conversation_members` · `messages` · `blocks` · `notifications` · `notification_settings` · `push_subscriptions` · `push_log` · `tickets` · `entitlements` · `host_accounts` · `stripe_customers` · `stripe_events`
+`profiles` · `profile_interests` · `interests` · `categories` · `places` · `place_tags` · `place_photos` · `place_ratings` · `saved_places` · `saved_lists` · `saved_list_items` · `events` · `event_tags` · `event_attendees` · `follows` · `reports` · `moderators` · `moderation_actions` · `local_revocations` · `rate_limit_rules` · `rate_limit_counters` · `conversations` · `conversation_members` · `messages` · `blocks` · `notifications` · `notification_settings` · `push_subscriptions` · `push_log` · `tickets` · `entitlements` · `host_accounts` · `stripe_customers` · `stripe_events` · `ad_campaigns` · `ad_impressions`
 
 Plus two views for the report read paths: `reports_i_filed` and `reports_about_my_stuff`.
 
@@ -897,6 +941,6 @@ Alternatives considered and deferred:
 
 ## Intentionally deferred
 
-Ads, native apps and production deployment, until their sessions land; analytics, reputation, the
-admin dashboard, recommendations, trip planning, messaging, notifications and payments are built and
-sit behind [feature flags](#feature-flags-part-b).
+Native apps and production deployment, until their sessions land; analytics, reputation, the admin
+dashboard, recommendations, trip planning, messaging, notifications, payments and sponsored cards are
+built and sit behind [feature flags](#feature-flags-part-b).

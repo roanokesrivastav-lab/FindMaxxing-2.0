@@ -18,6 +18,7 @@ export async function GET(req: Request) {
   if (!mode) return NextResponse.json({ requested: 0, failed: 0 });
   try {
     const repo = await serviceRepository();
+    await repo.ads.endFinished();
     if (mode === "demo") {
       const due = await repo.payments.ticketsToRefund();
       for (const t of due) await repo.payments.markRefunded(t.paymentIntentId);
