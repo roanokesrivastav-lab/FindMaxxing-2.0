@@ -94,6 +94,18 @@ export function featureEnabled(feature: Feature, env: Record<string, string | un
   return (requiredKeys[feature] ?? []).every((key) => !!env[key]);
 }
 
+/**
+ * How payments run. "stripe": the payments flag and the Stripe keys, with
+ * Supabase. "demo": the flag in demo mode, where a clearly labeled fake
+ * checkout stands in and no money moves. null: payments are off.
+ */
+export function paymentsMode(env: Record<string, string | undefined> = process.env): "stripe" | "demo" | null {
+  const listed = listedFeatures(env);
+  if (!listed.has("all") && !listed.has("payments")) return null;
+  if (getDataMode() === "demo") return "demo";
+  return featureEnabled("payments", env) ? "stripe" : null;
+}
+
 /** Default map center: Columbus, Ohio (where the demo data lives). */
 export const DEFAULT_CENTER = { lat: 39.9686, lng: -83.0037 } as const;
 export const DEFAULT_ZOOM = 12.4;

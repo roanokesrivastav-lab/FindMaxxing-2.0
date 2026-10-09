@@ -301,6 +301,8 @@ does not use up the allowance. Sessions without a user (seeds, SQL, the service 
 | AI trip plans | 10 a day | `check_rate_limit('trip_plans')`, called before Claude is |
 | Messages | 60 an hour | trigger on `messages` |
 | Pushes received | 5 a day per person | `claim_push_batch()`; the rest stay in-app |
+| Ticket checkouts | 20 an hour | `reserve_ticket()` |
+| AI trip plans with Plus | 30 a day | `consume_trip_plan()` |
 | Sign-ups | 5 an hour per IP | the sign-up server action |
 
 The numbers live in one table, `rate_limit_rules`, mirrored by `RATE_LIMITS` in
@@ -772,9 +774,63 @@ notifications, unread counts, reminders and claims), through the pipeline with a
 the cron route and the actions, and in the browser in demo mode. No push has been delivered through a
 real push service (owner checklist).
 
+## Payments: tickets and Plus
+
+Behind the `payments` flag. With Supabase it also needs Stripe keys (test mode: `STRIPE_SECRET_KEY`,
+`STRIPE_WEBHOOK_SECRET`, and `STRIPE_PLUS_PRICE_ID` for Plus); without them payments stay off. In
+demo mode a clearly labeled fake checkout stands in: it asks for no card and no money moves. Schema
+in `0022_payments.sql`.
+
+**What is paid** (proposal, pending owner confirmation):
+
+- **Tickets.** A host can put a price ($1 to $500) on an event before anyone else is going, once
+  they have set up payouts (Stripe Connect Express, "Set up payouts" on the event). Buyers pay through
+  Stripe Checkout; the money goes to the host's account as a destination charge, with an optional
+  platform fee (`TICKET_PLATFORM_FEE_BPS`, default 0). The host goes free.
+- **FindMaxxing Plus**, proposed at $4 a month: up to 1,000 lists (instead of 100), 30 AI day plans a
+  day (instead of 10), a supporter badge, and no sponsored cards. Convenience and support only: Plus
+  never buys visibility, ranking, reach or anything in discovery.
+
+**Tickets and capacity.** "Buy ticket" calls `reserve_ticket`, which takes the event row lock (the
+same lock `check_event_join` takes in `0001_init.sql`) and counts attendees *plus* unexpired holds
+against capacity, then holds a spot for 30 minutes (reusing the buyer's existing hold). Holds that
+lapse stop counting. A paid event cannot be joined directly: `check_event_join` now requires a paid
+ticket (the host excepted). When Stripe reports the payment (`checkout.session.completed`),
+`confirm_ticket` marks the ticket paid and adds the buyer to the attendees (and so to the group chat).
+It is idempotent; a payment that cannot become a ticket (wrong amount, the event filled up after a
+lapsed hold, or it closed) is queued for refund instead, and a payment through a replaced checkout
+session is refunded straight from the webhook.
+
+**Refunds.** Cancelling (or a moderator removing) an event ends its holds and queues every paid ticket
+for refund. `/api/cron/payments` (every 15 minutes, `CRON_SECRET`) asks Stripe for each refund with an
+idempotency key per ticket, so retries are harmless; `charge.refunded` marks the ticket refunded and
+frees the place. Leaving a paid event does not refund it (the ticket still lets the buyer back in).
+
+**Webhooks** (`/api/stripe/webhook`): the signature is verified against `STRIPE_WEBHOOK_SECRET` over
+the raw body before anything is read. Handled: `checkout.session.completed` / `.expired`,
+`customer.subscription.created` / `.updated` / `.deleted` (the Plus entitlement and badge),
+`charge.refunded`, and `account.updated` (whether a host can take payments). Every branch is
+idempotent and the event id is recorded in `stripe_events` (type and object id only, no payload).
+
+**Privacy.** Tickets, entitlements, Stripe customers and payout accounts are owner-only under RLS,
+and clients cannot write any of them: only the service role does (webhooks, checkout, the cron). A host
+sees totals for their own event (`event_ticket_summary`), never who paid beyond the attendee list. The
+supporter badge comes from the entitlement; nobody can set it on their own profile. When a buyer
+deletes their account, their tickets stay as anonymized money records.
+
+**Pages:** the price panel and sales on the host's event page, "Buy ticket" for everyone else,
+`/plus`, `/profile/tickets`, and `/checkout/demo` (demo mode only).
+
+Tested in PGlite under RLS (pricing rules, holds against capacity and their expiry, the ticket
+requirement, confirmation and its refusals, cancellation refunds, privacy, Plus perks and expiry),
+for parity with the demo store, through the webhook handler with fixture events and a mocked Stripe
+client, through the route with real signature verification (a test secret, no network), and in the
+browser in demo mode. No real Stripe request was made; see the owner checklist. PGlite runs one
+connection at a time, so the concurrency guarantee rests on the row lock rather than a parallel test.
+
 ## Data model
 
-`profiles` · `profile_interests` · `interests` · `categories` · `places` · `place_tags` · `place_photos` · `place_ratings` · `saved_places` · `saved_lists` · `saved_list_items` · `events` · `event_tags` · `event_attendees` · `follows` · `reports` · `moderators` · `moderation_actions` · `local_revocations` · `rate_limit_rules` · `rate_limit_counters` · `conversations` · `conversation_members` · `messages` · `blocks` · `notifications` · `notification_settings` · `push_subscriptions` · `push_log`
+`profiles` · `profile_interests` · `interests` · `categories` · `places` · `place_tags` · `place_photos` · `place_ratings` · `saved_places` · `saved_lists` · `saved_list_items` · `events` · `event_tags` · `event_attendees` · `follows` · `reports` · `moderators` · `moderation_actions` · `local_revocations` · `rate_limit_rules` · `rate_limit_counters` · `conversations` · `conversation_members` · `messages` · `blocks` · `notifications` · `notification_settings` · `push_subscriptions` · `push_log` · `tickets` · `entitlements` · `host_accounts` · `stripe_customers` · `stripe_events`
 
 Plus two views for the report read paths: `reports_i_filed` and `reports_about_my_stuff`.
 
@@ -841,6 +897,6 @@ Alternatives considered and deferred:
 
 ## Intentionally deferred
 
-Payments, ads, native apps and production deployment, until their sessions land; analytics,
-reputation, the admin dashboard, recommendations, trip planning, messaging and notifications are
-built and sit behind [feature flags](#feature-flags-part-b).
+Ads, native apps and production deployment, until their sessions land; analytics, reputation, the
+admin dashboard, recommendations, trip planning, messaging, notifications and payments are built and
+sit behind [feature flags](#feature-flags-part-b).

@@ -27,6 +27,8 @@ import { LEVEL_RANK, refreshDemoReputation } from "./reputation";
 import { recommendDemoEvents, recommendDemoPlaces } from "./recommend";
 import { createDemoMessaging, dropEventChats, joinEventChat, leaveEventChat } from "./messaging";
 import { createDemoNotifications, notifyOn } from "./notifications";
+import { createDemoPayments, isPlusIn, needsTicket, refundOnCancel } from "./payments";
+import { PLUS_LIST_CAP, paymentsError } from "../payments";
 import { LIST_LIMIT_ERROR, MAX_SAVED_LISTS, duplicateListName, listNameKey, normalizeListName } from "../savedLists";
 import { newId } from "@/lib/utils/ids";
 import { neighborhoodKey } from "@/lib/utils/neighborhoods";
@@ -80,6 +82,7 @@ function toProfile(state: DemoState, p: ProfileRow): Profile {
     interests: state.profileInterests.filter((x) => x.profileId === p.id).map((x) => x.interestSlug),
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
+    supporter: !!p.supporter,
   };
 }
 
@@ -133,6 +136,7 @@ function toEvent(state: DemoState, row: EventRow): Event {
     tags: state.eventTags.filter((t) => t.eventId === row.id).map((t) => t.interestSlug),
     status: row.status,
     createdAt: row.createdAt,
+    priceCents: row.priceCents ?? null,
   };
 }
 
@@ -839,6 +843,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         if (ev.status !== "published" || eventEndOrStart(ev) <= Date.now()) throw new DataError("Only future published events can be cancelled", "invalid");
         ev.status = "cancelled";
         ev.updatedAt = new Date().toISOString();
+        refundOnCancel(state, id);
         notifyOn.eventCancelled(state, id, creatorId);
         persist();
       },
@@ -853,6 +858,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         state.eventTags = state.eventTags.filter((t) => t.eventId !== id);
         state.eventAttendees = state.eventAttendees.filter((a) => a.eventId !== id);
         dropEventChats(state, new Set([id]));
+        for (const t of state.tickets) if (t.eventId === id) t.eventId = null;
         persist();
       },
       async join(userId, eventId) {
@@ -861,6 +867,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         const ev = state.events.find((e) => e.id === eventId);
         if (!ev || !canViewEvent(state, ev, userId) || ev.status !== "published") throw new DataError("Event not found", "not_found");
         if (eventEndOrStart(ev) < Date.now()) throw new DataError("This event has already ended", "invalid");
+        if (needsTicket(state, ev, userId) && !state.eventAttendees.some((a) => a.eventId === eventId && a.userId === userId)) throw paymentsError("ticket_required");
         if (state.eventAttendees.some((a) => a.eventId === eventId && a.userId === userId)) return;
         const count = state.eventAttendees.filter((a) => a.eventId === eventId).length;
         if (ev.capacity !== null && count >= ev.capacity) throw new DataError("This event is full", "full");
@@ -935,7 +942,8 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         const name = normalizeListName(rawName);
         const mine = state.savedLists.filter((l) => l.ownerId === ownerId);
         // Same order as the database: the cap trigger runs before the unique index.
-        if (mine.length >= MAX_SAVED_LISTS) throw new DataError(LIST_LIMIT_ERROR, "full");
+        const cap = isPlusIn(state, ownerId) ? PLUS_LIST_CAP : MAX_SAVED_LISTS;
+        if (mine.length >= cap) throw new DataError(cap === MAX_SAVED_LISTS ? LIST_LIMIT_ERROR : `You can have at most ${cap} lists`, "full");
         // Then the rate limit (triggers fire in name order), then the unique index.
         const counted = rateLimit(ownerId, "lists");
         if (mine.some((l) => listNameKey(l.name) === listNameKey(name))) throw duplicateListName(name);
@@ -1301,6 +1309,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         if (content && after !== before) {
           content.status = after as typeof content.status;
           content.updatedAt = now;
+          if (targetType === "event" && before === "published" && after === "removed") refundOnCancel(state, targetId);
         }
         if (message && after !== before) message.removedAt = after === "removed" ? now : null;
         state.moderationActions.push({
@@ -1523,6 +1532,8 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
 
     notifications: createDemoNotifications(state, { persist, summary: (id) => profileOf(state, id) }),
 
+    payments: createDemoPayments(state, { persist, assertActive, rateLimit, canViewEvent: (event, viewerId) => canViewEvent(state, event, viewerId) }),
+
     messaging: createDemoMessaging(state, {
       persist,
       assertActive,
@@ -1534,7 +1545,8 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
     limits: {
       async consume(userId, action) {
         assertActive(userId);
-        rateLimit(userId, action)();
+        // Plus: a larger daily quota of AI plans (consume_trip_plan()).
+        rateLimit(userId, action === "trip_plans" && isPlusIn(state, userId) ? "trip_plans_plus" : action)();
         persist();
       },
     },

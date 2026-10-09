@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { LevelBadge } from "./LevelBadge";
-import { Bell, Flag, MapPin, MessageCircle, Pencil, Settings, ShieldAlert, ShieldCheck } from "lucide-react";
+import { Bell, Flag, Heart, MapPin, MessageCircle, Pencil, Settings, ShieldAlert, ShieldCheck, Ticket } from "lucide-react";
 import type { Profile, ProfileStats, RemovedContent, UserActivity } from "@/lib/data/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { getInterest } from "@/lib/data/taxonomy";
@@ -24,6 +24,7 @@ export function ProfileView({
   suspended = false,
   messaging = null,
   notificationsUnread = null,
+  payments = false,
 }: {
   profile: Profile;
   stats: ProfileStats;
@@ -46,6 +47,8 @@ export function ProfileView({
   messaging?: { canMessage: boolean; blocked: boolean; unread?: never } | { unread: number; canMessage?: never; blocked?: never } | null;
   /** Self view, behind the notifications flag. */
   notificationsUnread?: number | null;
+  /** Self view: tickets and Plus links (payments flag). */
+  payments?: boolean;
 }) {
   return (
     <div className="max-w-2xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-nav md:pb-10">
@@ -56,6 +59,11 @@ export function ProfileView({
             <h1 className="text-2xl font-bold leading-tight break-words">{profile.displayName}</h1>
             <p className="text-sm text-muted">@{profile.username}</p>
             {showLevel ? <div className="mt-1.5"><LevelBadge level={profile.reputationLevel} /></div> : null}
+            {profile.supporter ? (
+              <p className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-pulse-50 text-pulse px-2 py-0.5 text-xs font-semibold">
+                <Heart size={12} /> Supporter
+              </p>
+            ) : null}
             {profile.homeCity ? (
               <p className="text-sm text-ink-2 mt-1 inline-flex items-center gap-1">
                 <MapPin size={13} /> {profile.homeCity}
@@ -164,6 +172,12 @@ export function ProfileView({
       {isSelf ? (
         <div className="mt-8 flex flex-col items-center gap-3">
           <div className="flex flex-wrap justify-center gap-2">
+            {payments ? (
+              <>
+                <Link href="/profile/tickets" className="chip"><Ticket size={14} /> Tickets</Link>
+                <Link href="/plus" className="chip"><Heart size={14} /> Plus</Link>
+              </>
+            ) : null}
             {notificationsUnread !== null ? (
               <Link href="/notifications" className="chip">
                 <Bell size={14} />

@@ -1,5 +1,9 @@
 import type {
   ConnectionEntry,
+  Entitlement,
+  Ticket,
+  TicketReservation,
+  TicketSummary,
   AppNotification,
   NotificationSettings,
   PushClaim,
@@ -314,6 +318,40 @@ export interface DataRepository {
     dropDevice(endpoint: string): Promise<void>;
     /** Service: retention. */
     purge(now: string): Promise<number>;
+  };
+  /**
+   * Paid tickets and the Plus subscription (0022_payments.sql). Money records
+   * are owner-only; buyers and hosts act through the first group of methods.
+   * The "service" methods are called by Stripe webhooks, checkout and the
+   * cron: in Supabase mode they need a repository on the service-role client.
+   * In demo mode a labeled fake checkout calls them and no money moves.
+   */
+  payments: {
+    isPlus(userId: string): Promise<boolean>;
+    entitlement(userId: string): Promise<Entitlement | null>;
+    /** Whether the host can take payments (a Stripe account with charges enabled). Always true in demo mode. */
+    canSell(userId: string): Promise<boolean>;
+    /** Owner only, before anyone else is going; null makes the event free. */
+    setEventPrice(ownerId: string, eventId: string, cents: number | null): Promise<void>;
+    /** Holds a spot for 30 minutes (reusing an existing hold). Pending holds count against capacity. */
+    reserveTicket(userId: string, eventId: string): Promise<TicketReservation>;
+    myTickets(userId: string): Promise<Ticket[]>;
+    /** The host's sales on their own event; null for anyone else. */
+    ticketSummary(ownerId: string, eventId: string): Promise<TicketSummary | null>;
+    /** Service: the Stripe customer for a user, if one was made. */
+    customerOf(userId: string): Promise<string | null>;
+    hostAccountOf(userId: string): Promise<string | null>;
+    attachCheckout(ticketId: string, sessionId: string): Promise<void>;
+    /** Service: checkout completed. Idempotent. */
+    confirmTicket(sessionId: string, paymentIntentId: string, amountCents: number): Promise<"confirmed" | "duplicate" | "refund" | "unknown">;
+    expireCheckout(sessionId: string): Promise<void>;
+    ticketsToRefund(): Promise<{ ticketId: string; paymentIntentId: string }[]>;
+    markRefunded(paymentIntentId: string): Promise<void>;
+    setEntitlement(userId: string, status: Entitlement["status"], periodEnd: string | null, subscriptionId: string | null): Promise<void>;
+    linkCustomer(userId: string, customerId: string): Promise<void>;
+    setHostAccount(userId: string, accountId: string, chargesEnabled: boolean): Promise<void>;
+    /** Service: true the first time a Stripe event id is seen. */
+    recordStripeEvent(id: string, type: string, objectId: string | null): Promise<boolean>;
   };
   /** Limits on actions that write no row of their own (an AI plan). */
   limits: {

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { featureEnabled } from "@/lib/config";
+import { featureEnabled, paymentsMode } from "@/lib/config";
 import { getRepository } from "@/lib/data";
 import { getViewer } from "@/lib/auth/server";
 import { ProfileView } from "@/components/profile/ProfileView";
@@ -62,6 +62,7 @@ export default async function MyProfilePage() {
       suspended={suspended}
       messaging={unread === null ? null : { unread }}
       notificationsUnread={notificationsUnread}
+      payments={!!paymentsMode()}
     />
   );
 }

@@ -55,6 +55,8 @@ export interface Profile extends ProfileSummary {
   interests: string[];
   createdAt: string;
   updatedAt: string;
+  /** A Plus subscriber (the supporter badge). */
+  supporter?: boolean;
 }
 
 export interface ProfileStats {
@@ -140,6 +142,8 @@ export interface Event {
   tags: string[];
   status: EventStatus;
   createdAt: string;
+  /** Ticket price in cents (USD); null or absent for a free event. */
+  priceCents?: number | null;
 }
 
 export interface EventDetail extends Event {
@@ -697,6 +701,53 @@ export interface PushClaim {
   detail: string | null;
   count: number;
   devices: PushDevice[];
+}
+
+// ----------------------------------------------------------------------------
+// Payments
+// ----------------------------------------------------------------------------
+export type TicketStatus = "pending" | "paid" | "expired" | "refund_pending" | "refunded";
+
+export interface Ticket {
+  id: string;
+  eventId: string | null;
+  eventTitle: string | null;
+  eventStartsAt: string | null;
+  status: TicketStatus;
+  amountCents: number;
+  currency: string;
+  createdAt: string;
+  expiresAt: string;
+  paidAt: string | null;
+  refundedAt: string | null;
+}
+
+/** A 30-minute hold on a spot, to be paid through checkout. */
+export interface TicketReservation {
+  ticketId: string;
+  amountCents: number;
+  currency: string;
+  expiresAt: string;
+  eventTitle: string;
+  /** The host's Stripe account (payouts); null in demo mode. */
+  hostAccount: string | null;
+}
+
+export type EntitlementStatus = "active" | "trialing" | "past_due" | "canceled" | "incomplete" | "incomplete_expired" | "unpaid" | "paused";
+
+export interface Entitlement {
+  plan: "plus";
+  status: EntitlementStatus;
+  currentPeriodEnd: string | null;
+  /** Whether the perks apply now. */
+  active: boolean;
+}
+
+export interface TicketSummary {
+  paid: number;
+  pending: number;
+  refunded: number;
+  revenueCents: number;
 }
 
 export class DataError extends Error {

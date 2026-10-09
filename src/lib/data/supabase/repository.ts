@@ -31,8 +31,11 @@ import {
   type AppNotification,
   type NotificationSettings,
   type PushClaim,
+  type Ticket,
+  type Entitlement,
 } from "../types";
 import { DEFAULT_NOTIFICATION_SETTINGS } from "@/lib/notifications";
+import { parsePaymentsMessage } from "../payments";
 import { MESSAGE_PAGE_SIZE, messagingError, normalizeMessageBody, parseMessagingMessage } from "../messaging";
 import { parseRateLimitMessage } from "@/lib/rateLimits";
 import { compareModerationReports, parseModerationMessage } from "../moderation";
@@ -78,6 +81,7 @@ interface ProfileRow extends ProfileSummaryRow {
   home_city_changed_at?: string | null;
   onboarded_at?: string | null;
   reputation_level?: Profile["reputationLevel"];
+  supporter?: boolean;
   created_at: string;
   updated_at: string;
   profile_interests?: { interest_slug: string }[];
@@ -119,6 +123,7 @@ interface EventRow {
   creator_id: string | null;
   category_slug: string;
   capacity: number | null;
+  price_cents?: number | null;
   status: Event["status"];
   created_at: string;
   creator?: ProfileSummaryRow | null;
@@ -143,6 +148,7 @@ function mapProfile(r: ProfileRow): Profile {
     homeCityChangedAt: r.home_city_changed_at ?? null,
     onboardedAt: r.onboarded_at ?? null,
     reputationLevel: r.reputation_level ?? "new",
+    supporter: !!r.supporter,
     interests: (r.profile_interests ?? []).map((i) => i.interest_slug),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -193,6 +199,7 @@ function mapEvent(r: EventRow): Event {
     tags: (r.event_tags ?? []).map((t) => t.interest_slug),
     status: r.status,
     createdAt: r.created_at,
+    priceCents: r.price_cents ?? null,
   };
 }
 
@@ -202,18 +209,18 @@ export function translate(error: PostgrestError): DataError {
     case "FM429": // check_rate_limit()
       return parseRateLimitMessage(error.message) ?? new DataError("Too many requests. Try again later.", "rate_limited");
     case "P0002": // no_data_found, raised by our functions for a missing target
-      return parseModerationMessage(error.message) ?? parseMessagingMessage(error.message) ?? new DataError("Not found", "not_found");
+      return parseModerationMessage(error.message) ?? parseMessagingMessage(error.message) ?? parsePaymentsMessage(error.message) ?? new DataError("Not found", "not_found");
     case "23505":
       return new DataError("That already exists", "conflict");
     case "23503":
       return new DataError("Related record not found", "not_found");
     case "42501":
-      return new DataError("You don't have permission to do that", "forbidden");
+      return parsePaymentsMessage(error.message) ?? new DataError("You don't have permission to do that", "forbidden");
     case "22007": // invalid_datetime_format
     case "22008": // datetime_field_overflow
       return new DataError("Invalid date or time", "invalid");
     case "P0001": { // raise exception from our triggers
-      const moderation = parseModerationMessage(error.message) ?? parseMessagingMessage(error.message);
+      const moderation = parseModerationMessage(error.message) ?? parseMessagingMessage(error.message) ?? parsePaymentsMessage(error.message);
       if (moderation) return moderation;
       const cooldown = /home_city_cooldown:(\S+)/.exec(error.message);
       if (cooldown) return new DataError(homeCityCooldownMessage(cooldown[1]), "rate_limited");
@@ -241,7 +248,10 @@ function mapSavedList(r: SavedListRow): SavedList {
 /** Saved-list failures in the user's terms (the generic translate() would say "That already exists"). */
 function listError(error: PostgrestError, name?: string): DataError {
   if (error.code === "23505" && name) return duplicateListName(name);
-  if (error.code === "P0001" && error.message.includes("at most")) return new DataError(LIST_LIMIT_ERROR, "full");
+  if (error.code === "P0001" && error.message.includes("at most")) {
+    const cap = /at most (\d+)/.exec(error.message)?.[1];
+    return new DataError(cap ? `You can have at most ${cap} lists` : LIST_LIMIT_ERROR, "full");
+  }
   // add_to_saved_list: the list is not the caller's (P0002), or the place is not one they may see (RLS).
   if (error.code === "P0002") return new DataError("List not found", "not_found");
   if (error.code === "42501") return new DataError("Place not found", "not_found");
@@ -317,6 +327,19 @@ async function readReports(supabase: SupabaseClient, view: "reports_i_filed" | "
     resolvedAt: r.resolved_at ?? null,
     targetLabel: labels.get(r.target_id) ?? null,
   }));
+}
+
+interface TicketDbRow {
+  id: string;
+  event_id: string | null;
+  status: Ticket["status"];
+  amount_cents: number;
+  currency: string;
+  created_at: string;
+  expires_at: string;
+  paid_at: string | null;
+  refunded_at: string | null;
+  event: { title: string; starts_at: string } | null;
 }
 
 interface NotificationRpcRow {
@@ -1471,10 +1494,84 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
       },
     },
 
+    payments: {
+      async isPlus(userId) {
+        return Boolean(unwrap(await supabase.rpc("is_plus", { p_user: userId })));
+      },
+      async entitlement(userId) {
+        const row = unwrap(await supabase.from("entitlements").select("status, current_period_end").eq("user_id", userId).maybeSingle()) as { status: Entitlement["status"]; current_period_end: string | null } | null;
+        if (!row) return null;
+        const active = Boolean(unwrap(await supabase.rpc("is_plus", { p_user: userId })));
+        return { plan: "plus", status: row.status, currentPeriodEnd: row.current_period_end, active };
+      },
+      async canSell(userId) {
+        const row = unwrap(await supabase.from("host_accounts").select("charges_enabled").eq("user_id", userId).maybeSingle()) as { charges_enabled: boolean } | null;
+        return !!row?.charges_enabled;
+      },
+      async setEventPrice(_ownerId, eventId, cents) {
+        unwrap(await supabase.rpc("set_event_price", { p_event: eventId, p_cents: cents }));
+      },
+      async reserveTicket(_userId, eventId) {
+        const [r] = unwrap(await supabase.rpc("reserve_ticket", { p_event: eventId })) as { ticket_id: string; amount_cents: number; currency: string; expires_at: string; event_title: string; host_account: string | null }[];
+        return { ticketId: r.ticket_id, amountCents: r.amount_cents, currency: r.currency, expiresAt: r.expires_at, eventTitle: r.event_title, hostAccount: r.host_account };
+      },
+      async myTickets(userId) {
+        const rows = unwrap(await supabase.from("tickets").select("*, event:events!tickets_event_id_fkey(title, starts_at)").eq("user_id", userId)
+          .order("created_at", { ascending: false }).order("id", { ascending: false })) as unknown as TicketDbRow[];
+        return rows.map((t): Ticket => ({
+          id: t.id, eventId: t.event_id, eventTitle: t.event?.title ?? null, eventStartsAt: t.event?.starts_at ?? null, status: t.status,
+          amountCents: t.amount_cents, currency: t.currency, createdAt: t.created_at, expiresAt: t.expires_at, paidAt: t.paid_at, refundedAt: t.refunded_at,
+        }));
+      },
+      async ticketSummary(ownerId, eventId) {
+        const [r] = unwrap(await supabase.rpc("event_ticket_summary", { p_event: eventId })) as { paid: number; pending: number; refunded: number; revenue_cents: number }[];
+        const ev = unwrap(await supabase.from("events").select("creator_id").eq("id", eventId).maybeSingle()) as { creator_id: string | null } | null;
+        if (!r || !ev || ev.creator_id !== ownerId) return null;
+        return { paid: r.paid, pending: r.pending, refunded: r.refunded, revenueCents: r.revenue_cents };
+      },
+      async customerOf(userId) {
+        const row = unwrap(await supabase.from("stripe_customers").select("customer_id").eq("user_id", userId).maybeSingle()) as { customer_id: string } | null;
+        return row?.customer_id ?? null;
+      },
+      async hostAccountOf(userId) {
+        const row = unwrap(await supabase.from("host_accounts").select("stripe_account_id").eq("user_id", userId).maybeSingle()) as { stripe_account_id: string } | null;
+        return row?.stripe_account_id ?? null;
+      },
+      async attachCheckout(ticketId, sessionId) {
+        unwrap(await supabase.rpc("attach_checkout_session", { p_ticket: ticketId, p_session: sessionId }));
+      },
+      async confirmTicket(sessionId, paymentIntentId, amountCents) {
+        return unwrap(await supabase.rpc("confirm_ticket", { p_session: sessionId, p_payment_intent: paymentIntentId, p_amount: amountCents })) as "confirmed" | "duplicate" | "refund" | "unknown";
+      },
+      async expireCheckout(sessionId) {
+        unwrap(await supabase.rpc("expire_checkout", { p_session: sessionId }));
+      },
+      async ticketsToRefund() {
+        return (unwrap(await supabase.rpc("tickets_to_refund")) as { ticket_id: string; payment_intent_id: string }[]).map((r) => ({ ticketId: r.ticket_id, paymentIntentId: r.payment_intent_id }));
+      },
+      async markRefunded(paymentIntentId) {
+        unwrap(await supabase.rpc("mark_ticket_refunded", { p_payment_intent: paymentIntentId }));
+      },
+      async setEntitlement(userId, status, periodEnd, subscriptionId) {
+        unwrap(await supabase.rpc("set_entitlement", { p_user: userId, p_status: status, p_period_end: periodEnd, p_subscription: subscriptionId }));
+      },
+      async linkCustomer(userId, customerId) {
+        unwrap(await supabase.rpc("link_stripe_customer", { p_user: userId, p_customer: customerId }));
+      },
+      async setHostAccount(userId, accountId, chargesEnabled) {
+        unwrap(await supabase.rpc("set_host_account", { p_user: userId, p_account: accountId, p_charges_enabled: chargesEnabled }));
+      },
+      async recordStripeEvent(id, type, objectId) {
+        return Boolean(unwrap(await supabase.rpc("record_stripe_event", { p_id: id, p_type: type, p_object: objectId })));
+      },
+    },
+
     limits: {
       async consume(_userId, action) {
         // Its own transaction: the count sticks even though nothing else is written.
-        unwrap(await supabase.rpc("check_rate_limit", { p_action: action }));
+        // Trip plans go through consume_trip_plan(), which knows the Plus quota.
+        if (action === "trip_plans") unwrap(await supabase.rpc("consume_trip_plan"));
+        else unwrap(await supabase.rpc("check_rate_limit", { p_action: action }));
       },
     },
 

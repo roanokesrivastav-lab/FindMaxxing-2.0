@@ -57,6 +57,14 @@ export function deleteDemoAccount(handle: StoreHandle, userId: string): DeletedO
   state.notificationSettings = state.notificationSettings.filter((s) => s.userId !== userId);
   state.pushSubscriptions = state.pushSubscriptions.filter((d) => d.userId !== userId);
   state.pushLog = state.pushLog.filter((l) => l.userId !== userId);
+  // Money records stay, anonymized; plans, customers and payout accounts go.
+  for (const t of state.tickets) {
+    if (t.userId === userId) t.userId = null;
+    if (t.eventId && ownEvents.has(t.eventId)) t.eventId = null;
+  }
+  state.entitlements = state.entitlements.filter((e) => e.userId !== userId);
+  state.stripeCustomers = state.stripeCustomers.filter((c) => c.userId !== userId);
+  state.hostAccounts = state.hostAccounts.filter((a) => a.userId !== userId);
   state.eventTags = state.eventTags.filter((t) => !ownEvents.has(t.eventId));
   state.eventAttendees = state.eventAttendees.filter((a) => a.userId !== userId && !ownEvents.has(a.eventId));
   for (const event of state.events) if (event.placeId && ownPlaces.has(event.placeId)) event.placeId = null;

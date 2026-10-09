@@ -25,7 +25,7 @@ import {
   seedPlaceByName,
   seedUserByName,
 } from "@/lib/seed/seed-data";
-import type { AppNotification, EventStatus, ModerationLogAction, NotificationSettings, NotificationType, PlaceStatus, ReportReason, ReportStatus, ReportTargetType, ReputationLevel, Visibility } from "../types";
+import type { AppNotification, EntitlementStatus, TicketStatus, EventStatus, ModerationLogAction, NotificationSettings, NotificationType, PlaceStatus, ReportReason, ReportStatus, ReportTargetType, ReputationLevel, Visibility } from "../types";
 import { refreshDemoReputation } from "./reputation";
 import { syncAllEventChats } from "./messaging";
 import { CATEGORIES, INTERESTS } from "../taxonomy";
@@ -52,6 +52,8 @@ export interface ProfileRow {
   reputationLevel: ReputationLevel;
   createdAt: string;
   updatedAt: string;
+  /** Mirrors profiles.supporter (Plus). Absent in stores from before v11. */
+  supporter?: boolean;
 }
 export interface PlaceRow {
   id: string;
@@ -111,6 +113,8 @@ export interface EventRow {
   status: EventStatus;
   createdAt: string;
   updatedAt: string;
+  /** Ticket price in cents; absent or null for free. */
+  priceCents?: number | null;
 }
 export interface ReportRow {
   id: string;
@@ -190,6 +194,27 @@ export interface DemoState {
   notificationSettings: ({ userId: string; updatedAt: string } & NotificationSettings)[];
   pushSubscriptions: { id: string; userId: string; endpoint: string; p256dh: string; auth: string; createdAt: string }[];
   pushLog: { userId: string; notificationId: string; sentAt: string }[];
+  /** Mirrors 0022_payments.sql (see ./payments). No money moves in demo mode. */
+  tickets: TicketRow[];
+  hostAccounts: { userId: string; accountId: string; chargesEnabled: boolean }[];
+  entitlements: { userId: string; status: EntitlementStatus; currentPeriodEnd: string | null; subscriptionId: string | null; updatedAt: string }[];
+  stripeCustomers: { userId: string; customerId: string }[];
+  stripeEvents: { id: string; type: string; objectId: string | null; receivedAt: string }[];
+}
+
+export interface TicketRow {
+  id: string;
+  eventId: string | null;
+  userId: string | null;
+  status: TicketStatus;
+  amountCents: number;
+  currency: string;
+  checkoutSessionId: string | null;
+  paymentIntentId: string | null;
+  expiresAt: string;
+  createdAt: string;
+  paidAt: string | null;
+  refundedAt: string | null;
 }
 
 export interface NotificationRow {
@@ -254,7 +279,7 @@ export interface SavedListRow {
   updatedAt: string;
 }
 
-export const STATE_VERSION = 10;
+export const STATE_VERSION = 11;
 const DATA_DIR = path.join(process.cwd(), ".data");
 const STATE_FILE = path.join(DATA_DIR, "demo-store.json");
 
@@ -273,6 +298,7 @@ const COLLECTIONS = [
   "moderators", "moderationActions", "localRevocations", "rateLimits", "admins", "analyticsEvents", "reputationResets", "suspensions", "taxonomy",
   "conversations", "conversationMembers", "messages", "blocks",
   "notifications", "notificationSettings", "pushSubscriptions", "pushLog",
+  "tickets", "hostAccounts", "entitlements", "stripeCustomers", "stripeEvents",
 ] as const;
 
 const LEGACY_PLACE_UPLOAD = /^\/api\/uploads\/(places-[^/]+)$/;
@@ -364,6 +390,14 @@ const MIGRATIONS: Record<number, (state: LooseState) => void> = {
     state.pushSubscriptions ??= [];
     state.pushLog ??= [];
   },
+  // v10 → v11: payments. Every event stays free; nobody has a plan or a ticket.
+  10(state) {
+    state.tickets ??= [];
+    state.hostAccounts ??= [];
+    state.entitlements ??= [];
+    state.stripeCustomers ??= [];
+    state.stripeEvents ??= [];
+  },
 };
 
 export type MigrationResult =
@@ -441,6 +475,11 @@ export function buildSeedState(now = new Date()): DemoState {
     notificationSettings: [],
     pushSubscriptions: [],
     pushLog: [],
+    tickets: [],
+    hostAccounts: [],
+    entitlements: [],
+    stripeCustomers: [],
+    stripeEvents: [],
   };
 
   SEED_USERS.forEach((u, i) => {
