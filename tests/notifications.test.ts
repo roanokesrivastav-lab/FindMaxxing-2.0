@@ -189,11 +189,16 @@ describe("notifications in the database", () => {
     await as(maya, "insert into public.follows (follower_id, following_id) values (auth.uid(), $1)", [theo]);
     const pending = (await mine(theo, "new_follower")).filter((n) => n.actor_id === maya);
     expect(pending.map((n) => n.push_state)).toEqual(["pending"]);
-    const tomorrow = new Date(Date.now() + 86_400_000);
-    const nightNy = new Date(tomorrow); nightNy.setUTCHours(5, 0, 0, 0); // 01:00 in New York
-    expect(await claim(nightNy.toISOString())).toEqual([]);
-    const morningNy = new Date(tomorrow); morningNy.setUTCHours(14, 0, 0, 0); // 10:00
-    expect((await claim(morningNy.toISOString())).map((c) => c.user_id)).toEqual([theo]);
+    // The next 01:00 and 10:00 in New York (05:00 / 14:00 UTC), both within the
+    // 24 hours a push stays claimable, whatever time of day the suite runs.
+    const nextUtcHour = (hour: number) => {
+      const d = new Date();
+      d.setUTCHours(hour, 0, 0, 0);
+      if (d.getTime() <= Date.now()) d.setTime(d.getTime() + 86_400_000);
+      return d;
+    };
+    expect(await claim(nextUtcHour(5).toISOString())).toEqual([]); // 01:00 (00:00 in winter): quiet
+    expect((await claim(nextUtcHour(14).toISOString())).map((c) => c.user_id)).toEqual([theo]); // 10:00 (09:00)
 
     // The cap: at most 5 in 24 hours; the rest stay in-app.
     await as(theo, "update public.notification_settings set quiet_start = null, quiet_end = null where user_id = auth.uid()");
@@ -327,6 +332,10 @@ describe("the push pipeline", () => {
   beforeEach(() => {
     handle = createIsolatedStore();
     repo = createDemoRepository(handle);
+    // Seed events are scheduled relative to now, and theo attends several: at
+    // some hours one falls in the reminder window and adds pushes these tests
+    // did not ask for. Reminders have their own test above.
+    handle.state.eventAttendees = handle.state.eventAttendees.filter((a) => a.userId !== theo);
   });
   const fakeSender = (gone: string[] = []) => {
     const sent: { endpoint: string; payload: string }[] = [];
