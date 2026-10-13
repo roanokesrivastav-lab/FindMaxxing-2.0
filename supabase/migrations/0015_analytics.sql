@@ -80,7 +80,9 @@ create table public.analytics_salt (
   id    boolean primary key default true check (id),
   salt  text not null
 );
+set search_path = public, extensions;
 insert into public.analytics_salt (salt) values (encode(gen_random_bytes(32), 'hex'));
+reset search_path;
 alter table public.analytics_salt enable row level security;
 revoke all on public.analytics_salt from anon, authenticated;
 

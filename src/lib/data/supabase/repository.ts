@@ -557,7 +557,8 @@ function mapSnapshot(s: Partial<ModerationSnapshot>): ModerationSnapshot {
   };
 }
 
-const PLACE_MAP_SELECT = "id, name, category_slug, lat, lng, rating_avg, rating_count";
+// PostgREST requires RPC ordering columns to be part of the projection.
+const PLACE_MAP_SELECT = "id, name, category_slug, lat, lng, rating_avg, rating_count, save_count, creator_reputation";
 const EVENT_MAP_SELECT = "id, title, category_slug, lat, lng, starts_at";
 
 export function createSupabaseRepository(supabase: SupabaseClient): DataRepository {
@@ -644,7 +645,17 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
             .order("creator_reputation", { ascending: false })
             .order("id", { ascending: true })
             .limit(limit + 1),
-        ) as { id: string; name: string; category_slug: string; lat: number; lng: number; rating_avg: number | string; rating_count: number }[];
+        ) as {
+          id: string;
+          name: string;
+          category_slug: string;
+          lat: number;
+          lng: number;
+          rating_avg: number | string;
+          rating_count: number;
+          save_count: number;
+          creator_reputation: number;
+        }[];
         return {
           items: rows.slice(0, limit).map<PlaceMapRecord>((r) => ({
             id: r.id, name: r.name, categorySlug: r.category_slug, lat: Number(r.lat), lng: Number(r.lng),

@@ -65,7 +65,7 @@ The beta's go/no-go list, with the command and current status of each gate, is `
 
 ## Going live with Supabase + Mapbox
 
-1. Create a Supabase project. In the SQL editor (or `supabase db push`), run:
+1. Create a Supabase project. Use `supabase db push` to apply every numbered migration in order. If applying SQL manually, run all files in `supabase/migrations` in numeric order. Migration highlights (not exhaustive):
    - `supabase/migrations/0001_init.sql` — schema, triggers, RLS policies, storage buckets
    - `supabase/migrations/0002_tier1_owner_controls.sql` — owner edit/delete rules
    - `supabase/migrations/0003_tier2_community_layer.sql` — trust tiers, photo cap, report views
@@ -85,6 +85,7 @@ The beta's go/no-go list, with the command and current status of each gate, is `
    - `supabase/migrations/0018_recommendations.sql` — rule-based, explained "For you" recommendations for places and events, computed under RLS
    - `supabase/migrations/0019_trip_planning.sql` — the daily limit on AI trip plans
    - `supabase/migrations/0016_reputation.sql` — contributor reputation (cached levels, moderator reset) and the trusted-locals and followers visibility tiers
+   - `supabase/migrations/0025_seed_taxonomy.sql` — required categories and interests, without demo accounts or content
    - `supabase/seed.sql` — optional fictional demo data (generated from `src/lib/seed/seed-data.ts` via `npm run seed:sql`; **do not use the demo users in production**)
 2. In Supabase Auth settings, add `http://localhost:3000/auth/callback` (and your production URL) to the redirect allow-list. Email confirmation is supported: the sign-up flow shows a "check your email" state and `/auth/callback` exchanges the code.
    Under **Authentication → Rate Limits**, keep sign-ups and password-recovery emails low for the beta: 30 sign-ups and 30 token verifications per 5 minutes per IP, and 4 emails per hour (or connect your own SMTP provider and raise it deliberately). Turn on CAPTCHA protection if sign-up spam appears. These sit in front of the app's own per-IP limit (see [Rate limits](#rate-limits)).
