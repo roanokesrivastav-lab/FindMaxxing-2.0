@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Create account" };
 export const dynamic = "force-dynamic";
 
 function safeNext(v: unknown): string {
-  return typeof v === "string" && v.startsWith("/") && !v.startsWith("//") ? v : "/profile/edit?welcome=1";
+  return typeof v === "string" && v.startsWith("/") && !v.startsWith("//") ? v : "/welcome";
 }
 
 export default async function SignUpPage({ searchParams }: PageProps<"/auth/sign-up">) {

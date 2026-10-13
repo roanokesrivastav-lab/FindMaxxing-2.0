@@ -33,7 +33,7 @@ export default async function SavedListPage({ params }: PageProps<"/saved/[id]">
       </div>
       <PageHeader
         eyebrow={
-          <Link href="/saved" className="hover:text-flare-600">
+          <Link href="/saved" className="hover:text-flare-ink">
             Saved · List
           </Link>
         }

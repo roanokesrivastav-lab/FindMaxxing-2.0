@@ -98,7 +98,7 @@ export function SaveButton({
           aria-label={optimisticSaved ? "Saved. Organize into lists" : "Save"}
           className={cn(
             "h-10 w-10 inline-flex items-center justify-center rounded-full border backdrop-blur transition-colors active:scale-95",
-            optimisticSaved ? "bg-flare text-white border-flare" : "bg-surface/90 border-line text-ink hover:bg-surface",
+            optimisticSaved ? "bg-flare-ink text-white border-flare-ink" : "bg-surface/90 border-line text-ink hover:bg-surface",
           )}
         >
           <Bookmark size={18} fill={optimisticSaved ? "currentColor" : "none"} />
@@ -111,7 +111,7 @@ export function SaveButton({
           aria-haspopup="dialog"
           className={cn(
             "h-11 px-5 rounded-full font-semibold inline-flex items-center gap-2 border transition-colors active:scale-[0.97]",
-            optimisticSaved ? "bg-flare text-white border-flare" : "bg-surface border-line hover:bg-surface-2",
+            optimisticSaved ? "bg-flare-ink text-white border-flare-ink" : "bg-surface border-line hover:bg-surface-2",
           )}
         >
           <Bookmark size={18} fill={optimisticSaved ? "currentColor" : "none"} />
@@ -172,7 +172,7 @@ function ListRow({ checked, onToggle, title, detail, emphasis = false }: { check
       <span
         className={cn(
           "h-6 w-6 shrink-0 rounded-md border-2 inline-flex items-center justify-center transition-colors",
-          checked ? "bg-flare border-flare text-white" : "border-line-2 bg-surface",
+          checked ? "bg-flare-ink border-flare-ink text-white" : "border-line-2 bg-surface",
         )}
         aria-hidden
       >

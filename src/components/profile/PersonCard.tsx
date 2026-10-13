@@ -12,7 +12,7 @@ export function PersonCard({ profile, action, sharedInterests }: { profile: Prof
         <Avatar name={profile.displayName} src={profile.avatarUrl} size={48} />
       </Link>
       <div className="min-w-0 flex-1">
-        <Link href={`/u/${profile.username}`} className="block font-bold truncate hover:text-flare-600">
+        <Link href={`/u/${profile.username}`} className="block font-bold truncate hover:text-flare-ink">
           {profile.displayName}
         </Link>
         <p className="text-xs text-muted truncate">@{profile.username}{profile.homeCity ? ` · ${profile.homeCity}` : ""}</p>

@@ -1,6 +1,17 @@
 import type { NextConfig } from "next";
+import { demoModeRefusal } from "./src/lib/config";
+
+// On a deploy target, fail the build rather than ship a demo-mode site by
+// accident. Local `next build` (and CI) may build without Supabase; starting
+// that build in production still refuses (src/instrumentation.ts).
+if (process.env.VERCEL) {
+  const refusal = demoModeRefusal({ ...process.env, NODE_ENV: "production" });
+  if (refusal) throw new Error(refusal);
+}
 
 const nextConfig: NextConfig = {
+  // Shared TypeScript source (types, taxonomy, validation) used by the mobile app too.
+  transpilePackages: ["@findmaxxing/shared"],
   typedRoutes: false,
   agentRules: false,
   experimental: {

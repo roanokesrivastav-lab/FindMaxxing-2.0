@@ -23,7 +23,7 @@ export function PlaceReviews({ ratings }: { ratings: PlaceRating[] }) {
           <li key={r.id} className="card p-4">
             <div className="flex items-center gap-2.5">
               {r.user ? (
-                <Link href={`/u/${r.user.username}`} className="flex items-center gap-2.5 min-w-0 hover:text-flare-600">
+                <Link href={`/u/${r.user.username}`} className="flex items-center gap-2.5 min-w-0 hover:text-flare-ink">
                   <Avatar name={r.user.displayName} src={r.user.avatarUrl} size={30} />
                   <span className="font-semibold text-sm truncate">{r.user.displayName}</span>
                 </Link>

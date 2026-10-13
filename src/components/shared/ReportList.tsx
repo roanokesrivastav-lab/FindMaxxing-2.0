@@ -39,7 +39,7 @@ export function ReportList({ entries, perspective }: { entries: ReportEntry[]; p
                   {entry.targetType === "place" ? "Place" : entry.targetType === "event" ? "Event" : "Profile"}
                 </p>
                 {href && entry.targetLabel ? (
-                  <Link href={href} className="font-bold hover:text-flare-600 break-words">
+                  <Link href={href} className="font-bold hover:text-flare-ink break-words">
                     {label}
                   </Link>
                 ) : (
@@ -54,6 +54,7 @@ export function ReportList({ entries, perspective }: { entries: ReportEntry[]; p
 
             <p className="mt-2 text-xs text-muted">
               {perspective === "owner" ? "Reported" : "You reported this"} on {DATE.format(new Date(entry.createdAt))}
+              {perspective === "reporter" && entry.resolvedAt ? ` · a moderator resolved it on ${DATE.format(new Date(entry.resolvedAt))}` : ""}
             </p>
           </li>
         );

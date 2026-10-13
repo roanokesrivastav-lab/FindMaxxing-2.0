@@ -6,11 +6,18 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
+import { pg_trgm } from "@electric-sql/pglite/contrib/pg_trgm";
 import { buildSeedSql } from "../../scripts/generate-seed-sql";
 
 export const SUPABASE_STUBS = `
   create role anon nologin;
   create role authenticated nologin;
+  create role service_role nologin bypassrls;
+  -- Supabase grants table privileges to the API roles when a table is created,
+  -- so a migration's later revoke (column grants, append-only tables) is what
+  -- actually holds. Granting them again per query would hide those revokes.
+  grant usage on schema public to anon, authenticated, service_role;
+  alter default privileges in schema public grant select, insert, update, delete on tables to anon, authenticated, service_role;
   create schema auth;
   create table auth.users (
     id uuid primary key,
@@ -33,7 +40,7 @@ export const SUPABASE_STUBS = `
 `;
 
 export async function createSeededDb(): Promise<PGlite> {
-  const db = new PGlite({ extensions: { pgcrypto } });
+  const db = new PGlite({ extensions: { pgcrypto, pg_trgm } });
   await db.exec("create extension if not exists pgcrypto;");
   await db.exec(SUPABASE_STUBS);
   const migrationsDir = path.join(__dirname, "../../supabase/migrations");
@@ -50,7 +57,6 @@ export async function createSeededDb(): Promise<PGlite> {
  */
 export async function queryAs<T>(db: PGlite, userId: string | null, sql: string, params: unknown[] = []): Promise<T[]> {
   const role = userId ? "authenticated" : "anon";
-  await db.exec(`grant usage on schema public to ${role}; grant select, insert, update, delete on all tables in schema public to ${role};`);
   await db.exec(`set role ${role};`);
   await db.query("select set_config('request.jwt.claim.sub', $1, false)", [userId ?? ""]);
   try {

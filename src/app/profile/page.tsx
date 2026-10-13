@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { featureEnabled, paymentsMode } from "@/lib/config";
 import { getRepository } from "@/lib/data";
 import { getViewer } from "@/lib/auth/server";
 import { ProfileView } from "@/components/profile/ProfileView";
@@ -38,6 +39,31 @@ export default async function MyProfilePage() {
     );
   }
   const repo = await getRepository();
-  const [stats, activity] = await Promise.all([repo.profiles.stats(viewer.id), repo.profiles.activity(viewer.id, viewer.id)]);
-  return <ProfileView profile={viewer.profile} stats={stats} activity={activity} isSelf viewerSignedIn viewerFollows={false} />;
+  const [stats, activity, removed, isModerator] = await Promise.all([
+    repo.profiles.stats(viewer.id),
+    repo.profiles.activity(viewer.id, viewer.id),
+    repo.moderation.myRemovedContent(viewer.id),
+    repo.moderation.isModerator(viewer.id),
+  ]);
+  const suspended = await repo.admin.isSuspended(viewer.id);
+  const unread = featureEnabled("messaging") ? await repo.messaging.unreadTotal(viewer.id) : null;
+  const notificationsUnread = featureEnabled("notifications") ? await repo.notifications.unreadCount(viewer.id) : null;
+  return (
+    <ProfileView
+      profile={viewer.profile}
+      stats={stats}
+      activity={activity}
+      isSelf
+      viewerSignedIn
+      viewerFollows={false}
+      removed={removed}
+      isModerator={isModerator}
+      showLevel={featureEnabled("reputation")}
+      suspended={suspended}
+      messaging={unread === null ? null : { unread }}
+      notificationsUnread={notificationsUnread}
+      payments={!!paymentsMode()}
+      ads={!!paymentsMode() && featureEnabled("ads")}
+    />
+  );
 }

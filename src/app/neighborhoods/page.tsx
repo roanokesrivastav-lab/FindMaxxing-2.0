@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { readableInk } from "@/lib/utils/contrast";
 import Link from "next/link";
 import { MapPin } from "lucide-react";
 import { getRepository } from "@/lib/data";
@@ -44,7 +45,7 @@ export default async function NeighborhoodsPage() {
                   {g.topCategories.slice(0, 3).map((slug) => {
                     const c = getCategory(slug);
                     return (
-                      <span key={slug} className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-white" style={{ background: c.color }}>
+                      <span key={slug} className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-white" style={{ background: readableInk(c.color) }}>
                         {c.emoji} {c.label}
                       </span>
                     );

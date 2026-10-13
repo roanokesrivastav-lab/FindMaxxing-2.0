@@ -42,7 +42,7 @@ export default async function ConnectionsPage({ params }: PageProps<"/u/[usernam
       </div>
       <PageHeader
         eyebrow={
-          <Link href={isSelf ? "/profile" : `/u/${profile.username}`} className="hover:text-flare-600">
+          <Link href={isSelf ? "/profile" : `/u/${profile.username}`} className="hover:text-flare-ink">
             @{profile.username}
           </Link>
         }

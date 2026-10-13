@@ -1,6 +1,10 @@
+import { redirect } from "next/navigation";
+import { forYouPlaces } from "@/server/recommendations";
+import { ForYouRail } from "@/components/recommendations/ForYouRail";
 import { getRepository } from "@/lib/data";
 import { getViewer } from "@/lib/auth/server";
-import { DEFAULT_CENTER } from "@/lib/config";
+import { INTEREST_MAP } from "@/lib/data/taxonomy";
+import { DEFAULT_CENTER, featureEnabled } from "@/lib/config";
 import { ExploreClient } from "@/components/explore/ExploreClient";
 import { EVENT_PAGE, PLACE_PAGE, type DiscoveryRequest } from "@/components/explore/discoveryRequest";
 
@@ -16,20 +20,29 @@ const INITIAL_REQUEST: DiscoveryRequest = {
   kind: "all",
 };
 
-export default async function ExplorePage() {
-  const [repo, viewer] = await Promise.all([getRepository(), getViewer()]);
+export default async function ExplorePage({ searchParams }: PageProps<"/">) {
+  const [repo, viewer, sp] = await Promise.all([getRepository(), getViewer(), searchParams]);
+  // First run happens once, before the map.
+  if (viewer && !viewer.profile.onboardedAt) redirect("/welcome");
   const viewerId = viewer?.id ?? null;
-  const filters = { bounds: INITIAL_REQUEST.bounds, viewerId };
-  const [placeMarkers, eventMarkers, places, events] = await Promise.all([
+  // Onboarding lands here with the chosen interests as the starting filter.
+  const tags = typeof sp.tags === "string" ? sp.tags.split(",").filter((t) => t in INTEREST_MAP).slice(0, 8) : [];
+  const request: DiscoveryRequest = { ...INITIAL_REQUEST, tags };
+  const filters = { bounds: request.bounds, tags, viewerId };
+  const [placeMarkers, eventMarkers, places, events, forYou] = await Promise.all([
     repo.places.mapMarkers(filters),
     repo.events.mapMarkers(filters),
     repo.places.search({ ...filters, limit: PLACE_PAGE }),
     repo.events.search({ ...filters, limit: EVENT_PAGE }),
+    forYouPlaces(repo, viewer),
   ]);
   return (
     <ExploreClient
       initial={{ placeMarkers, eventMarkers, places, events }}
-      initialRequest={INITIAL_REQUEST}
+      initialRequest={request}
+      welcome={sp.welcome === "1" && !!viewer}
+      forYou={<ForYouRail places={forYou} />}
+      ads={featureEnabled("ads") && !(viewer && (await repo.payments.isPlus(viewer.id)))}
       viewer={viewer ? { displayName: viewer.profile.displayName, avatarUrl: viewer.profile.avatarUrl, interests: viewer.profile.interests } : null}
     />
   );

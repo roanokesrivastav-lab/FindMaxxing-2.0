@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { forYouEvents } from "@/server/recommendations";
+import { ForYouRail } from "@/components/recommendations/ForYouRail";
 import type { Metadata } from "next";
 import { CalendarPlus } from "lucide-react";
 import { getRepository } from "@/lib/data";
@@ -16,6 +18,7 @@ export default async function EventsPage() {
   // listJoined already includes events that have finished, so the "Been to"
   // filter costs nothing extra: no need to pull every past event in the city.
   const joined = viewer ? await repo.events.listJoined(viewer.id, viewer.id) : [];
+  const forYou = await forYouEvents(repo, viewer);
   return (
     <div className="max-w-2xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-nav md:pb-10">
       <PageHeader
@@ -28,6 +31,7 @@ export default async function EventsPage() {
           </Link>
         }
       />
+      <ForYouRail events={forYou} title="Events for you" />
       <EventsClient initial={initial} joined={joined} signedIn={!!viewer} />
     </div>
   );

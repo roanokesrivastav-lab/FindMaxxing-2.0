@@ -8,7 +8,8 @@ import { CreateMenu } from "./CreateMenu";
 import { useState } from "react";
 import type { ShellViewer } from "./AppShell";
 
-export function BottomNav({ viewer }: { viewer: ShellViewer | null }) {
+/** `badge`: unread messages and notifications, shown on the Profile tab (where both are reached on a phone). */
+export function BottomNav({ viewer, badge = 0 }: { viewer: ShellViewer | null; badge?: number }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   // Hide on full-screen forms/auth to give them room.
@@ -41,7 +42,7 @@ export function BottomNav({ viewer }: { viewer: ShellViewer | null }) {
             </button>
           </div>
           {right.map((item) => (
-            <NavLink key={item.href} item={item} active={item.match(pathname)} />
+            <NavLink key={item.href} item={item} active={item.match(pathname)} badge={item.href === "/profile" ? badge : 0} />
           ))}
         </div>
       </nav>
@@ -50,7 +51,7 @@ export function BottomNav({ viewer }: { viewer: ShellViewer | null }) {
   );
 }
 
-function NavLink({ item, active }: { item: (typeof NAV_ITEMS)[number]; active: boolean }) {
+function NavLink({ item, active, badge = 0 }: { item: (typeof NAV_ITEMS)[number]; active: boolean; badge?: number }) {
   const Icon = item.icon;
   return (
     <Link
@@ -58,8 +59,13 @@ function NavLink({ item, active }: { item: (typeof NAV_ITEMS)[number]; active: b
       className={cn("flex flex-col items-center justify-center gap-1 text-[11px] font-semibold transition-colors", active ? "text-ink" : "text-muted")}
       aria-current={active ? "page" : undefined}
     >
-      <span className={cn("h-7 w-12 rounded-full inline-flex items-center justify-center transition-colors", active && "bg-flare-100 text-flare-600")}>
+      <span className={cn("relative h-7 w-12 rounded-full inline-flex items-center justify-center transition-colors", active && "bg-flare-100 text-flare-ink")}>
         <Icon size={21} strokeWidth={active ? 2.4 : 2} />
+        {badge ? (
+          <span className="absolute -top-1 right-1 min-w-4 h-4 px-1 rounded-full bg-flare-ink text-white text-[10px] font-bold leading-4 text-center">
+            {badge > 99 ? "99+" : badge}<span className="sr-only"> unread</span>
+          </span>
+        ) : null}
       </span>
       {item.label}
     </Link>

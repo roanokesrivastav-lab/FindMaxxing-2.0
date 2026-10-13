@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { readableInk } from "@/lib/utils/contrast";
 import { Star, MapPin } from "lucide-react";
 import type { Place } from "@/lib/data/types";
 import { getCategory, getInterest } from "@/lib/data/taxonomy";
@@ -31,7 +32,7 @@ export function PlaceCard({
         <PlaceCover photoUrl={place.photos[0]?.url} categorySlug={place.categorySlug} name={place.name} emojiSize={compact ? 30 : 44} layout={compact ? "thumb" : "card"} />
       </div>
       <div className={cn("min-w-0 flex-1 flex flex-col", compact ? "p-3 justify-center gap-1" : "p-4 gap-1.5")}>
-        <div className="flex items-center gap-2 text-xs font-semibold" style={{ color: c.color }}>
+        <div className="flex items-center gap-2 text-xs font-semibold" style={{ color: readableInk(c.color) }}>
           <span>{c.emoji}</span>
           <span className="truncate">{c.label}</span>
           {place.neighborhood ? (
@@ -41,7 +42,7 @@ export function PlaceCard({
             </>
           ) : null}
         </div>
-        <h3 className={cn("font-bold leading-snug group-hover:text-flare-600 transition-colors", compact ? "text-[15px] line-clamp-1" : "text-lg line-clamp-2")}>
+        <h3 className={cn("font-bold leading-snug group-hover:text-flare-ink transition-colors", compact ? "text-[15px] line-clamp-1" : "text-lg line-clamp-2")}>
           {place.name}
         </h3>
         {!compact ? <p className="text-sm text-ink-2 line-clamp-2">{place.localTip ?? place.description}</p> : null}

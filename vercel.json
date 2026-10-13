@@ -1,0 +1,32 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "installCommand": "npm ci",
+  "buildCommand": "npm run build",
+  "regions": [
+    "iad1"
+  ],
+  "functions": {
+    "src/app/**/*": {
+      "maxDuration": 30
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/purge-analytics",
+      "schedule": "17 4 * * *"
+    },
+    {
+      "path": "/api/cron/refresh-reputation",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/notifications",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/payments",
+      "schedule": "*/15 * * * *"
+    }
+  ]
+}

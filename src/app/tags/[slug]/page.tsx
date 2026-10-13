@@ -67,7 +67,7 @@ export default async function TagPage({ params }: PageProps<"/tags/[slug]">) {
       </div>
       <PageHeader
         eyebrow={
-          <Link href="/tags" className="hover:text-flare-600">
+          <Link href="/tags" className="hover:text-flare-ink">
             Interests
           </Link>
         }

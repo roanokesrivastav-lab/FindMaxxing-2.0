@@ -2,9 +2,11 @@ import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Figtree } from "next/font/google";
 import "./globals.css";
 import { AppShell } from "@/components/layout/AppShell";
+import { RegisterServiceWorker } from "@/components/pwa/RegisterServiceWorker";
 import { getViewer } from "@/lib/auth/server";
 import { ToastProvider } from "@/components/ui/Toast";
-import { getDataMode, getSiteUrl } from "@/lib/config";
+import { featureEnabled, getDataMode, getSiteUrl } from "@/lib/config";
+import { getRepository } from "@/lib/data";
 
 const figtree = Figtree({
   variable: "--font-figtree",
@@ -34,25 +36,35 @@ export const metadata: Metadata = {
   openGraph: { type: "website", siteName: "FindMaxxing", title: "FindMaxxing", description: DESCRIPTION },
   twitter: { card: "summary", title: "FindMaxxing", description: DESCRIPTION },
   appleWebApp: { capable: true, title: "FindMaxxing", statusBarStyle: "default" },
+  icons: { apple: "/icons/apple-touch-icon.png" },
 };
 
 export const viewport: Viewport = {
   themeColor: "#f6f4ee",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
+  // No maximumScale: people must be able to pinch-zoom text (WCAG 1.4.4).
   viewportFit: "cover",
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const viewer = await getViewer();
+  // Flag-gated rail entries. A failed unread count never breaks the page.
+  const messaging = !!viewer && featureEnabled("messaging");
+  const notificationsOn = !!viewer && featureEnabled("notifications");
+  const [unread, notifications] = await Promise.all([
+    messaging ? getRepository().then((r) => r.messaging.unreadTotal(viewer.id)).catch(() => 0) : null,
+    notificationsOn ? getRepository().then((r) => r.notifications.unreadCount(viewer.id)).catch(() => 0) : null,
+  ]);
+  const extras = { plan: !!viewer && featureEnabled("tripPlanning"), unread, notifications };
   return (
     <html lang="en" className={`${figtree.variable} ${bricolage.variable} h-full`}>
       <body className="min-h-full flex flex-col">
         <ToastProvider>
-          <AppShell viewer={viewer} dataMode={getDataMode()}>
+          <AppShell viewer={viewer} dataMode={getDataMode()} extras={extras}>
             {children}
           </AppShell>
+          {featureEnabled("pwa") ? <RegisterServiceWorker /> : null}
         </ToastProvider>
       </body>
     </html>

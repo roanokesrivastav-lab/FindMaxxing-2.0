@@ -45,7 +45,7 @@ export interface SeedPlace {
   creator: string; // username
   tags: string[];
   /** Defaults to "public". "locals" exercises the trust tier. */
-  visibility?: "public" | "locals";
+  visibility?: "public" | "locals" | "trusted" | "followers";
 }
 
 export interface SeedEvent {
@@ -525,6 +525,20 @@ export const SEED_FOLLOWS: { follower: string; following: string }[] = [
   { follower: "nina", following: "maya_r" },
   { follower: "nina", following: "lena" },
 ];
+
+/**
+ * Seeded moderators. In Supabase the role is granted only from SQL or the
+ * service role (see 0010_moderation.sql); the seed does it from SQL.
+ */
+export const SEED_MODERATORS: string[] = ["sam_k"];
+
+/** Seeded admins (Session 10+): granted from SQL, like moderators. */
+export const SEED_ADMINS: string[] = ["dev"];
+
+/** How long ago each seed account was created: old enough to count as a local. */
+export function seedAccountAgeDays(index: number): number {
+  return 90 - index;
+}
 
 export function seedUserByName(username: string): SeedUser {
   const found = SEED_USERS.find((x) => x.username === username);

@@ -1,9 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { CalendarDays, Clock, MapPin, Navigation, Users } from "lucide-react";
+import { CalendarDays, Clock, MapPin, MessageCircle, Navigation, Users } from "lucide-react";
 import { getRepository } from "@/lib/data";
 import { getViewer } from "@/lib/auth/server";
+import { featureEnabled, paymentsMode } from "@/lib/config";
+import { TicketButton } from "@/components/payments/TicketButton";
+import { EventPricing } from "@/components/payments/EventPricing";
+import { formatPrice } from "@/lib/data/payments";
 import { getCategory, getInterest } from "@/lib/data/taxonomy";
 import { JoinButton } from "@/components/events/JoinButton";
 import { ReportButton } from "@/components/shared/ReportButton";
@@ -44,6 +48,15 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
   const spotsLeft = event.capacity !== null ? Math.max(0, event.capacity - event.attendeeCount) : null;
   const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${event.lat},${event.lng}`;
   const day = relativeDayLabel(event.startsAt);
+  // The group chat, for people going (behind the messaging flag).
+  const chatId = viewer && event.viewerJoined && featureEnabled("messaging") ? await repo.messaging.eventConversation(viewer.id, event.id) : null;
+  // Tickets (behind the payments flag): buyers see a price; the host gets the pricing panel.
+  const payments = paymentsMode();
+  const price = payments ? (event.priceCents ?? null) : null;
+  const isHost = !!viewer && viewer.id === event.creatorId;
+  const [ticketSummary, canSell] = payments && isHost && !cancelled && !ended
+    ? await Promise.all([repo.payments.ticketSummary(viewer!.id, event.id), repo.payments.canSell(viewer!.id)])
+    : [null, false];
 
   return (
     <article className="pb-nav md:pb-10">
@@ -102,8 +115,24 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
               {cancelled ? (event.viewerJoined ? "You were on the attendee list." : "This event is no longer accepting attendees.") : event.viewerJoined ? "You're on the list." : full ? "Full for now." : "Free to join. Just show up."}
             </p>
           </div>
-          <JoinButton eventId={event.id} joined={event.viewerJoined} signedIn={!!viewer} full={full} ended={ended} cancelled={cancelled} size="md" />
+          {price && !event.viewerJoined && !isHost && !cancelled && !ended ? (
+            <TicketButton eventId={event.id} priceCents={price} signedIn={!!viewer} disabled={full} />
+          ) : (
+            <JoinButton eventId={event.id} joined={event.viewerJoined} signedIn={!!viewer} full={full} ended={ended} cancelled={cancelled} size="md" />
+          )}
         </div>
+        {chatId ? (
+          <Link href={`/messages/${chatId}`} className="mt-3 card p-3 flex items-center gap-2 font-semibold hover:bg-surface-2">
+            <MessageCircle size={18} className="text-pulse" /> Group chat
+            <span className="ml-auto text-xs font-normal text-muted">Everyone going</span>
+          </Link>
+        ) : null}
+        {price ? <p className="mt-2 text-sm text-ink-2"><b>{formatPrice(price)}</b> per ticket{cancelled ? " · tickets are being refunded" : ""}</p> : null}
+        {sp.ticket === "success" ? <p role="status" className="card p-3 mt-3 text-sm font-semibold">Payment received. Your ticket is confirmed{payments === "stripe" ? " as soon as Stripe tells us" : ""}.</p> : null}
+        {sp.ticket === "refunded" ? <p role="status" className="card p-3 mt-3 text-sm font-semibold">The event filled up while you checked out, so your payment was refunded.</p> : null}
+        {payments && isHost && !cancelled && !ended ? (
+          <EventPricing eventId={event.id} priceCents={price} summary={ticketSummary} canSell={canSell} locked={event.attendees.some((a) => a.id !== event.creatorId)} demo={payments === "demo"} />
+        ) : null}
         {sp.new ? (
           <div className="mt-3">
             <NewBanner kind="event" />
@@ -147,7 +176,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
           {event.attendees.length ? (
             <div className="card p-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
               {event.attendees.map((a) => (
-                <Link key={a.id} href={`/u/${a.username}`} className="flex items-center gap-2 min-w-0 hover:text-flare-600">
+                <Link key={a.id} href={`/u/${a.username}`} className="flex items-center gap-2 min-w-0 hover:text-flare-ink">
                   <Avatar name={a.displayName} src={a.avatarUrl} size={32} />
                   <span className="text-sm font-semibold truncate">{a.displayName}</span>
                 </Link>

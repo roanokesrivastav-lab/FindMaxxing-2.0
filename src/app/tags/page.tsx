@@ -44,7 +44,7 @@ export default async function TagsIndexPage() {
                   <span className="text-2xl leading-none" aria-hidden>
                     {i.emoji}
                   </span>
-                  {yours ? <span className="rounded-full bg-flare/10 text-flare-600 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5">Yours</span> : null}
+                  {yours ? <span className="rounded-full bg-flare/10 text-flare-ink text-[10px] font-bold uppercase tracking-wide px-2 py-0.5">Yours</span> : null}
                 </div>
                 <p className="font-bold leading-tight">{i.label}</p>
                 <p className="text-xs text-muted">

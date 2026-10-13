@@ -1,0 +1,17 @@
+{
+  "name": "@findmaxxing/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Types, taxonomy, validation and wording shared by the web app and the mobile app. TypeScript source, no Node or browser APIs.",
+  "type": "module",
+  "exports": {
+    "./types": "./src/types.ts",
+    "./taxonomy": "./src/taxonomy.ts",
+    "./validation": "./src/validation.ts",
+    "./notifications": "./src/notifications.ts",
+    "./timestamps": "./src/timestamps.ts"
+  },
+  "dependencies": {
+    "zod": "^4.5.4"
+  }
+}

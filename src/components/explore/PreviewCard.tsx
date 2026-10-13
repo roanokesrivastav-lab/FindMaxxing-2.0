@@ -1,4 +1,5 @@
 "use client";
+import { readableInk } from "@/lib/utils/contrast";
 import Link from "next/link";
 import { ArrowRight, MapPin, Star, Users, X } from "lucide-react";
 import type { Event, Place } from "@/lib/data/types";
@@ -29,14 +30,14 @@ export function PreviewCard({ selected, onClose, distanceMeters }: { selected: S
       <div className="flex-1 min-w-0 p-3 flex flex-col gap-1">
         <div className="flex items-center gap-2">
           <KindBadge kind={selected.kind} />
-          <span className="text-xs font-semibold truncate" style={{ color: c.color }}>
+          <span className="text-xs font-semibold truncate" style={{ color: readableInk(c.color) }}>
             {c.label}
           </span>
           <button type="button" onClick={onClose} className="ml-auto -mr-1 h-7 w-7 inline-flex items-center justify-center rounded-full hover:bg-surface-2" aria-label="Close preview">
             <X size={15} />
           </button>
         </div>
-        <Link href={href} className="font-bold leading-snug line-clamp-1 hover:text-flare-600">
+        <Link href={href} className="font-bold leading-snug line-clamp-1 hover:text-flare-ink">
           {selected.kind === "place" ? selected.item.name : selected.item.title}
         </Link>
         {selected.kind === "place" ? (

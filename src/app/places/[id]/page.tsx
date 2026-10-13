@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { featureEnabled } from "@/lib/config";
+import { TrackPlaceView } from "@/components/analytics/TrackPlaceView";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { CalendarPlus, MapPin, Navigation, Lightbulb, Bookmark } from "lucide-react";
@@ -60,6 +62,7 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
 
   return (
     <article className="pb-nav md:pb-10">
+      {viewer && featureEnabled("analytics") ? <TrackPlaceView placeId={place.id} /> : null}
       {/* Hero */}
       <div className="relative h-[260px] md:h-[360px] md:mx-6 md:mt-6 md:rounded-3xl overflow-hidden">
         <PlaceCover photoUrl={place.photos[0]?.url} categorySlug={place.categorySlug} name={place.name} emojiSize={72} layout="hero" priority />
@@ -84,7 +87,7 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
           <div className="flex flex-wrap items-center gap-2">
             <CategoryBadge slug={place.categorySlug} />
             {place.neighborhood ? (
-              <Link href={neighborhoodHref(place.neighborhood)} className="text-sm text-muted hover:text-flare-600 underline-offset-4 hover:underline" title={`Browse ${place.neighborhood}`}>
+              <Link href={neighborhoodHref(place.neighborhood)} className="text-sm text-muted hover:text-flare-ink underline-offset-4 hover:underline" title={`Browse ${place.neighborhood}`}>
                 {place.neighborhood}
               </Link>
             ) : null}
@@ -190,7 +193,7 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
           )}
         </section>
 
-        {isOwner ? <PlaceOwnerControls placeId={place.id} status={place.status} visibility={place.visibility} /> : null}
+        {isOwner ? <PlaceOwnerControls placeId={place.id} status={place.status} visibility={place.visibility} extendedTiers={featureEnabled("reputation")} /> : null}
 
         <div className="mt-8 flex items-center justify-between text-xs text-muted">
           <span>Added {new Date(place.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>

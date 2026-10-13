@@ -82,14 +82,17 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     ? { top: padding.top ?? 0, bottom: padding.bottom ?? 0, left: padding.left ?? 0, right: padding.right ?? 0 }
     : undefined;
 
+  // Map flights jump instead of animating for people who ask for less motion.
+  const duration = () => (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? 0 : 700);
+
   useImperativeHandle(ref, () => ({
     flyTo(target, zoom) {
-      mapRef.current?.flyTo({ center: [target.lng, target.lat], zoom: zoom ?? Math.max(viewState.zoom, 14), duration: 700, padding: paddingOptions });
+      mapRef.current?.flyTo({ center: [target.lng, target.lat], zoom: zoom ?? Math.max(viewState.zoom, 14), duration: duration(), padding: paddingOptions });
     },
     fitBounds(bounds, pad = 60, maxZoom = 15) {
       // maxZoom is caller-supplied so a precise street address can settle close
       // while a whole neighborhood stays wide.
-      mapRef.current?.fitBounds(bounds, { padding: pad, duration: 700, maxZoom });
+      mapRef.current?.fitBounds(bounds, { padding: pad, duration: duration(), maxZoom });
     },
   }));
 

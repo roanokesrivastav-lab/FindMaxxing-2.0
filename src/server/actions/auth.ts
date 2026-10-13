@@ -6,6 +6,9 @@ import { getDataMode, getSiteUrl } from "@/lib/config";
 import { fieldErrors, signInSchema, signUpSchema } from "@/lib/validation/schemas";
 import { DataError } from "@/lib/data/types";
 import { fail, str, toFailure, type ActionResult } from "./result";
+import { waitPhrase } from "@/lib/rateLimits";
+import { clientIp } from "@/server/http/clientIp";
+import { limiters } from "@/server/limiters";
 
 function safeNext(next: string): string {
   // Only allow same-origin relative paths to prevent open redirects.
@@ -50,7 +53,11 @@ export async function signUpAction(_prev: ActionResult | null, formData: FormDat
     displayName: str(formData, "displayName"),
   });
   if (!parsed.success) return fail("Check the highlighted fields", fieldErrors(parsed.error));
-  const next = safeNext(str(formData, "next") || "/profile/edit?welcome=1");
+  const next = safeNext(str(formData, "next") || "/welcome");
+
+  // Supabase Auth has its own limits (see README); this one holds in both modes.
+  const wait = limiters().signUp.consume(await clientIp());
+  if (wait !== null) return fail(`Too many sign-ups from this network. Try again in ${waitPhrase(wait)}.`, undefined, "rate_limited");
 
   try {
     if (getDataMode() === "supabase") {
