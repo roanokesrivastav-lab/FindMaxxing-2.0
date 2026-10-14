@@ -7,6 +7,7 @@ import { featureEnabled } from "@/lib/config";
 import { getRepository } from "@/lib/data";
 import { ALL_NOTIFICATION_TYPES } from "@/lib/notifications";
 import type { NotificationType } from "@/lib/data/types";
+import { isWebPushEndpoint } from "@/lib/security/pushEndpoints";
 import { fail, succeed, toFailure, type ActionResult } from "./result";
 
 const types = z.array(z.enum(ALL_NOTIFICATION_TYPES as [NotificationType, ...NotificationType[]])).max(ALL_NOTIFICATION_TYPES.length);
@@ -15,7 +16,7 @@ const settingsSchema = z
   .object({ mutedTypes: types, pushTypes: types, quietStart: hour, quietEnd: hour, timeZone: z.string().min(1).max(64) })
   .refine((s) => (s.quietStart === null) === (s.quietEnd === null), { message: "Choose both quiet-hours times, or neither", path: ["quietEnd"] });
 const deviceSchema = z.object({
-  endpoint: z.string().url().startsWith("https://").max(1000),
+  endpoint: z.string().refine(isWebPushEndpoint),
   keys: z.object({ p256dh: z.string().min(1).max(200), auth: z.string().min(1).max(100) }),
 });
 

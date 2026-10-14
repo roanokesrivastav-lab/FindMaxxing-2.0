@@ -3,8 +3,10 @@ import type { DataRepository } from "@/lib/data/repository";
 import type { PushClaim, PushDevice } from "@/lib/data/types";
 import { MAX_PUSHES_PER_DAY, notificationHref, notificationText } from "@/lib/notifications";
 import { getSiteUrl } from "@/lib/config";
+import { isWebPushEndpoint } from "@/lib/security/pushEndpoints";
+import { webPushAgent } from "./pushAgent";
 
-/** Sends one encrypted payload to one device. `gone` means the push service forgot the device. */
+/** Sends one encrypted payload. `gone` means the subscription is no longer usable. */
 export interface PushSender {
   send(device: PushDevice, payload: string): Promise<{ ok: true } | { ok: false; gone: boolean }>;
 }
@@ -54,16 +56,22 @@ export async function webPushSender(env: Record<string, string | undefined> = pr
   const subject = env.VAPID_SUBJECT || getSiteUrl();
   return {
     async send(device, payload) {
+      // Recheck stored subscriptions too: old rows may predate registration rules.
+      if (!isWebPushEndpoint(device.endpoint)) return { ok: false, gone: true };
+      let agent: Awaited<ReturnType<typeof webPushAgent>> | undefined;
       try {
+        agent = await webPushAgent(device.endpoint);
         await webpush.sendNotification(
           { endpoint: device.endpoint, keys: { p256dh: device.p256dh ?? "", auth: device.auth ?? "" } },
           payload,
-          { vapidDetails: { subject, publicKey, privateKey }, TTL: 12 * 3600, timeout: 10_000 },
+          { vapidDetails: { subject, publicKey, privateKey }, TTL: 12 * 3600, timeout: 10_000, agent },
         );
         return { ok: true };
       } catch (err) {
         const status = (err as { statusCode?: number }).statusCode;
         return { ok: false, gone: status === 404 || status === 410 };
+      } finally {
+        agent?.destroy();
       }
     },
   };

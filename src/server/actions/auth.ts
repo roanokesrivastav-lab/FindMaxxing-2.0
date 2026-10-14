@@ -9,11 +9,7 @@ import { fail, str, toFailure, type ActionResult } from "./result";
 import { waitPhrase } from "@/lib/rateLimits";
 import { clientIp } from "@/server/http/clientIp";
 import { limiters } from "@/server/limiters";
-
-function safeNext(next: string): string {
-  // Only allow same-origin relative paths to prevent open redirects.
-  return next.startsWith("/") && !next.startsWith("//") ? next : "/";
-}
+import { safeAuthNext } from "@/lib/auth/redirect";
 
 const DEMO_COOKIE_OPTS = {
   httpOnly: true,
@@ -26,7 +22,7 @@ const DEMO_COOKIE_OPTS = {
 export async function signInAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   const parsed = signInSchema.safeParse({ email: str(formData, "email"), password: str(formData, "password") });
   if (!parsed.success) return fail("Check the highlighted fields", fieldErrors(parsed.error));
-  const next = safeNext(str(formData, "next") || "/");
+  const next = safeAuthNext(str(formData, "next"));
 
   try {
     if (getDataMode() === "supabase") {
@@ -53,7 +49,7 @@ export async function signUpAction(_prev: ActionResult | null, formData: FormDat
     displayName: str(formData, "displayName"),
   });
   if (!parsed.success) return fail("Check the highlighted fields", fieldErrors(parsed.error));
-  const next = safeNext(str(formData, "next") || "/welcome");
+  const next = safeAuthNext(str(formData, "next"), "/welcome");
 
   // Supabase Auth has its own limits (see README); this one holds in both modes.
   const wait = limiters().signUp.consume(await clientIp());
@@ -109,7 +105,7 @@ export async function demoQuickSignInAction(formData: FormData): Promise<void> {
   const { demoSignIn, DEMO_SESSION_COOKIE } = await import("@/lib/data/demo/auth");
   const { DEMO_PASSWORD } = await import("@/lib/seed/seed-data");
   const email = str(formData, "email");
-  const next = safeNext(str(formData, "next") || "/");
+  const next = safeAuthNext(str(formData, "next"));
   try {
     const session = demoSignIn(email, DEMO_PASSWORD);
     (await cookies()).set(DEMO_SESSION_COOKIE, session.userId, DEMO_COOKIE_OPTS);

@@ -21,7 +21,8 @@ const { runNotificationJobs, pushPayload } = await import("../src/server/notific
 const user = (u: string) => SEED_USERS.find((x) => x.username === u)!.id;
 const [maya, theo, jules, nina, sam, dev, lena] = ["maya_r", "theo", "jules", "nina", "sam_k", "dev", "lena"].map(user);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const device = (n: number): PushDevice => ({ endpoint: `https://push.example.test/${n}`, p256dh: `key${n}`, auth: `auth${n}` });
+// Provider-shaped fixture URLs; sends remain mocked and never contact FCM.
+const device = (n: number): PushDevice => ({ endpoint: `https://fcm.googleapis.com/fcm/send/${n}`, p256dh: `key${n}`, auth: `auth${n}` });
 const meeple = stableId("place:Meeple Cellar");
 
 /** An upcoming published event (and its creator) that nina is not going to and that has room. */
@@ -80,7 +81,7 @@ describe("notifications in the database", () => {
     // Settings, devices and the push log are private too.
     await as(theo, "insert into public.notification_settings (user_id) values (auth.uid())");
     expect(await as(nina, "select * from public.notification_settings")).toEqual([]);
-    await as(theo, "select public.save_push_subscription('https://push.example.test/theo', 'k', 'a')");
+    await as(theo, "select public.save_push_subscription('https://fcm.googleapis.com/fcm/send/theo', 'k', 'a')");
     expect(await as(nina, "select * from public.push_subscriptions")).toEqual([]);
     await expect(as(theo, "insert into public.push_subscriptions (user_id, endpoint, p256dh, auth) values (auth.uid(), 'https://x.test', 'k', 'a')")).rejects.toThrow(/permission denied/);
     await expect(as(theo, "select * from public.push_log")).rejects.toThrow(/permission denied/);
@@ -176,7 +177,7 @@ describe("notifications in the database", () => {
     const first = await claim(new Date().toISOString());
     const theoClaims = first.filter((c) => c.user_id === theo);
     expect(theoClaims.length).toBeGreaterThan(0); // theo has a device (earlier test)
-    expect(theoClaims[0].devices).toEqual([{ kind: "web", endpoint: "https://push.example.test/theo", p256dh: "k", auth: "a" }]);
+    expect(theoClaims[0].devices).toEqual([{ kind: "web", endpoint: "https://fcm.googleapis.com/fcm/send/theo", p256dh: "k", auth: "a" }]);
     expect(first.every((c) => c.user_id === theo)).toBe(true);
     expect(await claim(new Date().toISOString())).toEqual([]); // nothing twice
     expect((await db.query("select 1 from public.notifications where push_state = 'pending'")).rows).toEqual([]);
@@ -215,18 +216,18 @@ describe("notifications in the database", () => {
     await db.query("delete from public.push_log where user_id = $1", [theo]);
     await db.query("insert into public.notifications (user_id, type, push_state) values ($1, 'new_follower', 'pending')", [theo]);
     await db.query("insert into public.notifications (user_id, type, push_state, created_at) values ($1, 'trip_plan_ready', 'pending', now() - interval '2 days')", [nina]);
-    await as(nina, "select public.save_push_subscription('https://push.example.test/nina', 'k', 'a')");
+    await as(nina, "select public.save_push_subscription('https://fcm.googleapis.com/fcm/send/nina', 'k', 'a')");
     expect(await claim(new Date().toISOString())).toEqual([]);
     expect((await db.query("select push_state from public.notifications where push_state = 'pending'")).rows).toEqual([]);
   });
 
   it("moves a device to whoever signed in on it last, and keeps ten per person", async () => {
-    await as(maya, "select public.save_push_subscription('https://push.example.test/shared', 'k', 'a')");
-    await as(dev, "select public.save_push_subscription('https://push.example.test/shared', 'k', 'a')");
-    expect((await db.query("select user_id from public.push_subscriptions where endpoint = 'https://push.example.test/shared'")).rows).toEqual([{ user_id: dev }]);
-    for (let i = 0; i < 12; i++) await as(dev, "select public.save_push_subscription($1, 'k', 'a')", [`https://push.example.test/dev${i}`]);
+    await as(maya, "select public.save_push_subscription('https://fcm.googleapis.com/fcm/send/shared', 'k', 'a')");
+    await as(dev, "select public.save_push_subscription('https://fcm.googleapis.com/fcm/send/shared', 'k', 'a')");
+    expect((await db.query("select user_id from public.push_subscriptions where endpoint = 'https://fcm.googleapis.com/fcm/send/shared'")).rows).toEqual([{ user_id: dev }]);
+    for (let i = 0; i < 12; i++) await as(dev, "select public.save_push_subscription($1, 'k', 'a')", [`https://fcm.googleapis.com/fcm/send/dev${i}`]);
     expect((await db.query("select count(*)::int as n from public.push_subscriptions where user_id = $1", [dev])).rows).toEqual([{ n: 10 }]);
-    await expect(as(dev, "select public.save_push_subscription('http://insecure.test', 'k', 'a')")).rejects.toThrow(/check constraint/);
+    await expect(as(dev, "select public.save_push_subscription('http://insecure.test', 'k', 'a')")).rejects.toThrow(/Invalid push subscription/);
   });
 
   it("purges old read notifications and the push log", async () => {
@@ -258,7 +259,7 @@ describe("notification parity", () => {
       [() => q(nina, "insert into public.place_ratings (user_id, place_id, score) values (auth.uid(), $1, 5)", [meeple]), () => repo.places.rate(nina, meeple, 5, null)],
       [() => q(theo, "insert into public.notification_settings (user_id, push_types, quiet_start, quiet_end) values (auth.uid(), array['new_message'], 1, 2)"),
         () => repo.notifications.updateSettings(theo, { ...DEFAULT_NOTIFICATION_SETTINGS, pushTypes: ["new_message"], quietStart: 1, quietEnd: 2 })],
-      [() => q(theo, "select public.save_push_subscription('https://push.example.test/t', 'k', 'a')"), () => repo.notifications.addDevice(theo, { endpoint: "https://push.example.test/t", p256dh: "k", auth: "a" })],
+      [() => q(theo, "select public.save_push_subscription('https://fcm.googleapis.com/fcm/send/t', 'k', 'a')"), () => repo.notifications.addDevice(theo, { endpoint: "https://fcm.googleapis.com/fcm/send/t", p256dh: "k", auth: "a" })],
       [() => q(maya, "select public.start_direct($1)", [theo]), () => repo.messaging.startDirect(maya, theo)],
       [() => q(theo, "select public.notify_trip_plan_ready('Saturday')"), () => repo.notifications.tripPlanReady(theo, "Saturday")],
     ];
@@ -309,7 +310,7 @@ describe("notification parity", () => {
     const repo = createDemoRepository(handle);
     await queryAs(db, nina, "insert into public.follows (follower_id, following_id) values (auth.uid(), $1)", [theo]);
     await queryAs(db, theo, "insert into public.follows (follower_id, following_id) values (auth.uid(), $1)", [nina]);
-    await queryAs(db, nina, "select public.save_push_subscription('https://push.example.test/n', 'k', 'a')");
+    await queryAs(db, nina, "select public.save_push_subscription('https://fcm.googleapis.com/fcm/send/n', 'k', 'a')");
     await repo.profiles.follow(nina, theo);
     await repo.profiles.follow(theo, nina);
     await repo.notifications.addDevice(nina, device(1));
@@ -421,7 +422,7 @@ describe("notification actions and the cron route", async () => {
     expect(await actions.saveNotificationSettingsAction({ ...DEFAULT_NOTIFICATION_SETTINGS, quietStart: 22, quietEnd: null })).toMatchObject({ ok: false });
     expect(await actions.saveNotificationSettingsAction({ ...DEFAULT_NOTIFICATION_SETTINGS, mutedTypes: ["nope"] })).toMatchObject({ ok: false });
     expect(await actions.saveNotificationSettingsAction({ ...DEFAULT_NOTIFICATION_SETTINGS, timeZone: "Mars/Olympus" })).toMatchObject({ ok: false, error: "Unknown time zone" });
-    const sub = { endpoint: "https://push.example.test/a", keys: { p256dh: "k", auth: "a" } };
+    const sub = { endpoint: "https://fcm.googleapis.com/fcm/send/a", keys: { p256dh: "k", auth: "a" } };
     expect(await actions.savePushDeviceAction(sub)).toMatchObject({ ok: false, code: "unavailable" });
     vi.stubEnv("NEXT_PUBLIC_FEATURES", "notifications,push");
     vi.stubEnv("VAPID_PUBLIC_KEY", "pub");

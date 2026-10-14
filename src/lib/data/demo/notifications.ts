@@ -9,6 +9,7 @@ import { DataError, EXPO_PUSH_TOKEN, type AppNotification, type NotificationSett
 import { clampLimit, compareTimestamps, decodeCursor, toPage } from "../discovery";
 import { ALL_NOTIFICATION_TYPES, DEFAULT_NOTIFICATION_SETTINGS } from "@/lib/notifications";
 import { newId } from "@/lib/utils/ids";
+import { isWebPushEndpoint } from "@/lib/security/pushEndpoints";
 import { hasBlocked } from "./messaging";
 import type { DemoState, NotificationRow } from "./store";
 
@@ -267,7 +268,7 @@ export function createDemoNotifications(state: DemoState, h: { persist(): void; 
       const kind = device.kind ?? "web";
       const ok = kind === "expo"
         ? EXPO_PUSH_TOKEN.test(device.endpoint)
-        : /^https:\/\//.test(device.endpoint) && device.endpoint.length <= 1000 && !!device.p256dh && device.p256dh.length <= 200 && !!device.auth && device.auth.length <= 100;
+        : isWebPushEndpoint(device.endpoint) && !!device.p256dh && device.p256dh.length <= 200 && !!device.auth && device.auth.length <= 100;
       if (!ok) throw new DataError("Invalid push subscription", "invalid");
       state.pushSubscriptions = state.pushSubscriptions.filter((d) => d.endpoint !== device.endpoint);
       const mine = state.pushSubscriptions.filter((d) => d.userId === userId).sort((a, b) => compareTimestamps(a.createdAt, b.createdAt) || compareIds(a.id, b.id));

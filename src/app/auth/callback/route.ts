@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getDataMode } from "@/lib/config";
+import { safeAuthNext } from "@/lib/auth/redirect";
 
 /**
  * Supabase Auth redirect target (email confirmation / magic links).
@@ -8,8 +9,7 @@ import { getDataMode } from "@/lib/config";
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
-  const nextParam = url.searchParams.get("next") ?? "/";
-  const next = nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "/";
+  const next = safeAuthNext(url.searchParams.get("next"));
 
   if (getDataMode() === "supabase" && code) {
     const { createSupabaseServerClient } = await import("@/lib/supabase/server");
