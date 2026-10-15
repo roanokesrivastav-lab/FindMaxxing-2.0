@@ -75,7 +75,6 @@ export type Feature = (typeof FEATURES)[number];
 const requiredKeys: Partial<Record<Feature, string[]>> = {
   aiRerank: ["ANTHROPIC_API_KEY"],
   tripPlanning: ["ANTHROPIC_API_KEY"],
-  push: ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY"],
   payments: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"],
 };
 
@@ -92,6 +91,11 @@ export function featureEnabled(feature: Feature, env: Record<string, string | un
   const listed = listedFeatures(env);
   if (!listed.has("all") && !listed.has(feature)) return false;
   return (requiredKeys[feature] ?? []).every((key) => !!env[key]);
+}
+
+/** Push is a global opt-in; browser credentials do not gate Expo devices. */
+export function pushTransportReady(kind: "web" | "expo", env: Record<string, string | undefined> = process.env): boolean {
+  return featureEnabled("push", env) && (kind === "expo" || (!!env.VAPID_PUBLIC_KEY && !!env.VAPID_PRIVATE_KEY));
 }
 
 /**

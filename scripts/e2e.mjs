@@ -7,7 +7,9 @@
 // fresh in-memory store (FINDMAXXING_DEMO_FRESH=1, nothing written to .data)
 // with uploads in a scratch folder that is deleted afterwards. Point
 // E2E_BASE_URL at a running server to test that instead (e.g. staging; the
-// demo-only steps are skipped there).
+// demo password-reset step is skipped there). External runs CREATE/MUTATE
+// records and delete the suite's account: disposable staging only, with
+// E2E_ALLOW_STAGING_WRITES=1 and E2E_STAGING_BASE_URL=E2E_BASE_URL.
 //
 // Covers the core loop and the beta flows: discover on the map, onboarding,
 // open a place, save it to a new list, add a place with a photo, create an
@@ -18,6 +20,10 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 import { hydrated, launchOptions, startDemoServer } from "./lib/demo-server.mjs";
+import { e2eTargetError } from "./lib/e2e-target.mjs";
+
+const targetError = e2eTargetError(process.env);
+if (targetError) { console.error(`e2e: NOT RUN. ${targetError}`); process.exit(2); }
 
 const OUT = process.env.E2E_OUT ?? ".data/e2e";
 mkdirSync(OUT, { recursive: true });
@@ -255,7 +261,7 @@ await step("report a place", async () => {
 // 8. A moderator resolves it.
 await step("a moderator resolves the report", async () => {
   const mod = await phone();
-  await signIn(mod.page, "sam@example.com");
+  await signIn(mod.page, process.env.E2E_MOD_EMAIL ?? "sam@example.com", process.env.E2E_MOD_PASSWORD ?? "findmaxxing");
   await mod.page.goto(`${BASE}/moderation/place/${placeUrl.split("/").pop()}`, { waitUntil: "domcontentloaded" });
   await hydrated(mod.page, "h1");
   check("the moderator sees who reported it", (await mod.page.getByText(`@${me.username}`).count()) > 0);
@@ -266,6 +272,9 @@ await step("a moderator resolves the report", async () => {
   await snap(mod.page, "moderated");
   await mod.ctx.close();
   await page.goto(`${BASE}/profile/reports`, { waitUntil: "domcontentloaded" });
+  // This route streams its report lists after the initial document. Require
+  // the same resolution text, but wait for it instead of sampling first paint.
+  await page.getByText(/a moderator resolved it on/).waitFor({ timeout: 15_000 });
   check("the reporter sees it resolved", /a moderator resolved it on/.test(await page.locator("body").innerText()));
 });
 

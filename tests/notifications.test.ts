@@ -425,7 +425,11 @@ describe("notification actions and the cron route", async () => {
     const sub = { endpoint: "https://fcm.googleapis.com/fcm/send/a", keys: { p256dh: "k", auth: "a" } };
     expect(await actions.savePushDeviceAction(sub)).toMatchObject({ ok: false, code: "unavailable" });
     vi.stubEnv("NEXT_PUBLIC_FEATURES", "notifications,push");
+    vi.stubEnv("VAPID_PUBLIC_KEY", "");
+    vi.stubEnv("VAPID_PRIVATE_KEY", "");
+    expect(await actions.savePushDeviceAction(sub)).toMatchObject({ ok: false, code: "unavailable" });
     vi.stubEnv("VAPID_PUBLIC_KEY", "pub");
+    expect(await actions.savePushDeviceAction(sub)).toMatchObject({ ok: false, code: "unavailable" });
     vi.stubEnv("VAPID_PRIVATE_KEY", "priv");
     expect(await actions.savePushDeviceAction({ ...sub, endpoint: "http://insecure.test" })).toMatchObject({ ok: false });
     expect(await actions.savePushDeviceAction(sub)).toEqual({ ok: true, data: undefined });

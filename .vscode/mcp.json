@@ -1,0 +1,14 @@
+{
+  "servers": {
+    "vexp": {
+      "type": "stdio",
+      "command": "/usr/local/bin/node",
+      "args": [
+        "/Users/ronaksrivastav/.vscode/extensions/vexp.vexp-vscode-3.3.3-darwin-arm64/dist/mcp-server.cjs"
+      ],
+      "env": {
+        "VEXP_WORKSPACE": "/Users/ronaksrivastav/FindMaxxing-2.0"
+      }
+    }
+  }
+}

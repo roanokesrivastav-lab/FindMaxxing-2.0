@@ -1,5 +1,12 @@
 # Beta gate
 
+> Current release decision (2026-10-14): **NOT APPROVED**. The historical table
+> below is not current production evidence. See
+> [batch 5 release/mobile verification](release-mobile-verification.md) for the
+> latest local results, native gaps, hosted requirements and strengthened target
+> guards. Staging now requires `STAGING_PROJECT_REF` and explicit
+> `--allow-staging-writes`; skipped checks cannot approve the complete gate.
+
 The public beta opens only when every line below says **passed on staging**
 (or **passed locally** where staging adds nothing). "Passed on staging" is
 written here only after the command has actually been run against the staging

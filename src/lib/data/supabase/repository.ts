@@ -1450,8 +1450,8 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
       async scheduleReminders(now) {
         return Number(unwrap(await supabase.rpc("schedule_event_reminders", { p_now: now })) ?? 0);
       },
-      async claimPushes(now, limit = 100) {
-        const rows = unwrap(await supabase.rpc("claim_push_batch", { p_now: now, p_limit: limit })) as PushClaimRow[];
+      async claimPushes(now, limit = 100, kinds = ["web", "expo"]) {
+        const rows = unwrap(await supabase.rpc("claim_transport_push_batch", { p_now: now, p_limit: limit, p_kinds: kinds })) as PushClaimRow[];
         return rows.map((r): PushClaim => ({
           notificationId: r.notification_id, userId: r.user_id, type: r.type, actorUsername: r.actor_username,
           subjectType: r.subject_type, subjectId: r.subject_id, label: r.label, detail: r.detail, count: r.count, devices: r.devices,
@@ -1596,6 +1596,9 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
     },
 
     payments: {
+      async isClosing(userId) {
+        return Boolean(unwrap(await supabase.rpc("account_is_closing", { p_user: userId })));
+      },
       async isPlus(userId) {
         return Boolean(unwrap(await supabase.rpc("is_plus", { p_user: userId })));
       },
@@ -1664,6 +1667,15 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
       },
       async recordStripeEvent(id, type, objectId) {
         return Boolean(unwrap(await supabase.rpc("record_stripe_event", { p_id: id, p_type: type, p_object: objectId })));
+      },
+      async claimStripeEvent(id, type, objectId, userId) {
+        return unwrap(await supabase.rpc("claim_stripe_event", { p_id: id, p_type: type, p_object: objectId, p_user: userId }));
+      },
+      async finishStripeEvent(id, token, outcome, plan) {
+        unwrap(await supabase.rpc("finish_stripe_event", { p_id: id, p_token: token, p_outcome: outcome, p_plan: plan ?? null }));
+      },
+      async releaseStripeEvent(id, token) {
+        unwrap(await supabase.rpc("release_stripe_event", { p_id: id, p_token: token }));
       },
     },
 

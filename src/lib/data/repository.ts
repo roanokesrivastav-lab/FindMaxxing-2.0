@@ -75,6 +75,15 @@ import type {
  * Authorization is enforced inside implementations (RLS in Supabase, explicit
  * ownership checks in demo) and never trusted from the client.
  */
+export type StripeEventClaim = { state: "claimed"; token: string } | { state: "complete"; outcome: string } | { state: "busy" };
+export interface StripePlanSnapshot {
+  userId: string;
+  status: Entitlement["status"];
+  periodEnd: string | null;
+  subscriptionId: string;
+  customerId?: string;
+}
+
 export interface DataRepository {
   places: {
     /**
@@ -316,8 +325,8 @@ export interface DataRepository {
     tripPlanReady(userId: string, title: string): Promise<void>;
     /** Service: event reminders due at `now`; returns how many were created. Idempotent. */
     scheduleReminders(now: string): Promise<number>;
-    /** Service: claims pending pushes (marked sent before returning, so a retry never resends). */
-    claimPushes(now: string, limit?: number): Promise<PushClaim[]>;
+    /** Service: claims only ready transports, once per kind; unsendable kinds stay pending. */
+    claimPushes(now: string, limit?: number, kinds?: ("web" | "expo")[]): Promise<PushClaim[]>;
     /** Service: forgets a device the push service says is gone. */
     dropDevice(endpoint: string): Promise<void>;
     /** Service: retention. */
@@ -331,6 +340,8 @@ export interface DataRepository {
    * In demo mode a labeled fake checkout calls them and no money moves.
    */
   payments: {
+    /** Closing/missing accounts must not create or restore billing state. */
+    isClosing(userId: string): Promise<boolean>;
     isPlus(userId: string): Promise<boolean>;
     entitlement(userId: string): Promise<Entitlement | null>;
     /** Whether the host can take payments (a Stripe account with charges enabled). Always true in demo mode. */
@@ -356,6 +367,11 @@ export interface DataRepository {
     setHostAccount(userId: string, accountId: string, chargesEnabled: boolean): Promise<void>;
     /** Service: true the first time a Stripe event id is seen. */
     recordStripeEvent(id: string, type: string, objectId: string | null): Promise<boolean>;
+    /** Service: fenced event lease; subscription events serialize by user before remote reads. */
+    claimStripeEvent(id: string, type: string, objectId: string | null, userId: string | null): Promise<StripeEventClaim>;
+    /** Service: atomically apply a reconciled plan and complete its event, or release failed work. */
+    finishStripeEvent(id: string, token: string, outcome: string, plan?: StripePlanSnapshot): Promise<void>;
+    releaseStripeEvent(id: string, token: string): Promise<void>;
   };
   /**
    * Sponsored cards (0023_ads.sql): local, labeled, contextual, never

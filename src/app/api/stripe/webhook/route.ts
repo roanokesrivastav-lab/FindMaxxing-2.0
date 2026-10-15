@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { paymentsMode } from "@/lib/config";
+import { getDataMode } from "@/lib/config";
 import { reportError } from "@/lib/observability";
 import { getStripe } from "@/server/payments/stripe";
 import { handleStripeEvent } from "@/server/payments/webhook";
@@ -10,14 +10,16 @@ export const dynamic = "force-dynamic";
 /**
  * POST /api/stripe/webhook. Only with Stripe configured (404 otherwise). The
  * signature is checked against STRIPE_WEBHOOK_SECRET over the raw body before
- * anything is read; handling is idempotent, so Stripe's retries are safe.
+ * anything is read. The handler retains the event ID for processing logs.
  */
 export async function POST(req: Request) {
-  if (paymentsMode() !== "stripe") return new NextResponse(null, { status: 404 });
+  // Turning off purchases must not disable refunds/closure of existing billing.
+  if (getDataMode() !== "supabase") return new NextResponse(null, { status: 404 });
   const stripe = await getStripe();
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
   const signature = req.headers.get("stripe-signature");
-  if (!stripe || !secret || !signature) return NextResponse.json({ error: "Missing signature" }, { status: 400 });
+  if (!stripe || !secret) return new NextResponse(null, { status: 404 });
+  if (!signature) return NextResponse.json({ error: "Missing signature" }, { status: 400 });
   const body = await req.text();
   let event;
   try {

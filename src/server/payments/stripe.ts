@@ -2,9 +2,27 @@ import "server-only";
 import type Stripe from "stripe";
 import type { DataRepository } from "@/lib/data/repository";
 import type { TicketReservation } from "@/lib/data/types";
+import { DataError } from "@/lib/data/types";
+import { stripeUserId } from "./metadata";
 
 /** The part of the Stripe client this app uses (tests pass a fake). */
-export type StripeLike = Pick<Stripe, "checkout" | "billingPortal" | "refunds" | "customers" | "accounts" | "accountLinks" | "webhooks">;
+export type StripeLike = Pick<Stripe, "checkout" | "billingPortal" | "refunds" | "customers" | "accounts" | "accountLinks" | "webhooks" | "subscriptions">;
+
+/** A canceled subscription stays canceled; recover a lost cancellation response by reading it. */
+export async function cancelSubscription(stripe: StripeLike, id: string, userId: string, requireCurrentOwner = false): Promise<boolean> {
+  const terminal = (status: string) => status === "canceled" || status === "incomplete_expired";
+  const current = await stripe.subscriptions.retrieve(id);
+  // Webhook snapshots can predate an ownership correction. Billing cleanup
+  // from a durable customer manifest is separate from these external events.
+  if (requireCurrentOwner && stripeUserId(current.metadata) !== userId) return false;
+  if (terminal(current.status)) return true;
+  try {
+    await stripe.subscriptions.cancel(id, { invoice_now: false, prorate: false }, { idempotencyKey: `account-delete:${userId}:${id}` });
+  } catch (err) {
+    if (!terminal((await stripe.subscriptions.retrieve(id)).status)) throw err;
+  }
+  return true;
+}
 
 /** Test-mode client from STRIPE_SECRET_KEY, or null without it. */
 export async function getStripe(env: Record<string, string | undefined> = process.env): Promise<StripeLike | null> {
@@ -59,6 +77,7 @@ export async function createCampaignCheckout(stripe: StripeLike, c: { id: string
 
 /** Plus checkout, for an existing or new Stripe customer. */
 export async function createPlusCheckout(stripe: StripeLike, repo: DataRepository, opts: { userId: string; email: string | null; priceId: string; origin: string }): Promise<string> {
+  if (await repo.payments.isClosing(opts.userId)) throw new DataError("Account deletion is in progress", "forbidden");
   let customer = await repo.payments.customerOf(opts.userId);
   if (!customer) {
     customer = (await stripe.customers.create({ email: opts.email ?? undefined, metadata: { user_id: opts.userId } }, { idempotencyKey: `customer:${opts.userId}` })).id;
@@ -74,6 +93,10 @@ export async function createPlusCheckout(stripe: StripeLike, repo: DataRepositor
     cancel_url: `${opts.origin}/plus`,
   });
   if (!session.url) throw new Error("Stripe returned no checkout URL");
+  if (await repo.payments.isClosing(opts.userId)) {
+    await stripe.checkout.sessions.expire(session.id);
+    throw new DataError("Account deletion is in progress", "forbidden");
+  }
   return session.url;
 }
 

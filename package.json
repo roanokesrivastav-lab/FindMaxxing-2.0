@@ -15,6 +15,7 @@
     "predev": "node scripts/copy-map-worker.mjs",
     "prebuild": "node scripts/copy-map-worker.mjs",
     "e2e": "node scripts/e2e.mjs",
+    "e2e:features": "node scripts/e2e-features.mjs",
     "a11y": "node scripts/a11y.mjs"
   },
   "dependencies": {

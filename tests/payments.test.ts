@@ -263,10 +263,13 @@ describe("payments parity", () => {
 // ----------------------------------------------------------------------------
 const fakeStripe = () => {
   const calls: { method: string; args: unknown[] }[] = [];
+  const subscriptions = new Map<string, Stripe.Subscription>();
   const rec = (method: string, result: unknown) => vi.fn(async (...args: unknown[]) => (calls.push({ method, args }), result));
   return {
     calls,
+    subscriptions,
     stripe: {
+      subscriptions: { retrieve: vi.fn(async (id: string) => subscriptions.get(id)), list: vi.fn(async () => ({ data: [...subscriptions.values()], has_more: false })) },
       checkout: { sessions: { create: rec("checkout.sessions.create", { id: "cs_test_1", url: "https://checkout.stripe.test/cs_test_1" }) } },
       refunds: { create: rec("refunds.create", { id: "re_1" }) },
       billingPortal: { sessions: { create: rec("billingPortal.sessions.create", { url: "https://billing.stripe.test" }) } },
@@ -292,18 +295,20 @@ describe("Stripe webhooks and jobs", () => {
     await repo.payments.setEventPrice(dev, ev.id, 1500);
     const hold = await repo.payments.reserveTicket(maya, ev.id);
     await repo.payments.attachCheckout(hold.ticketId, "cs_1");
-    const { stripe, calls } = fakeStripe();
-    const completed = event("evt_1", "checkout.session.completed", { id: "cs_1", mode: "payment", metadata: { ticket_id: hold.ticketId }, payment_intent: "pi_1", amount_total: 1500 });
+    const { stripe, calls, subscriptions } = fakeStripe();
+    const completed = event("evt_1", "checkout.session.completed", { id: "cs_1", mode: "payment", payment_status: "paid", currency: "usd", metadata: { ticket_id: hold.ticketId }, payment_intent: "pi_1", amount_total: 1500 });
     expect(await handleStripeEvent(completed, repo, stripe)).toBe("confirmed");
-    expect(await handleStripeEvent(completed, repo, stripe)).toBe("duplicate:duplicate");
+    expect(await handleStripeEvent(completed, repo, stripe)).toBe("duplicate:confirmed");
     // A payment through a replaced checkout is refunded.
-    const stale = event("evt_2", "checkout.session.completed", { id: "cs_old", mode: "payment", metadata: { ticket_id: hold.ticketId }, payment_intent: "pi_old", amount_total: 1500 });
+    const stale = event("evt_2", "checkout.session.completed", { id: "cs_old", mode: "payment", payment_status: "paid", currency: "usd", metadata: { ticket_id: hold.ticketId }, payment_intent: "pi_old", amount_total: 1500 });
     expect(await handleStripeEvent(stale, repo, stripe)).toBe("unknown");
     expect(calls).toEqual([{ method: "refunds.create", args: [{ payment_intent: "pi_old", reverse_transfer: true }, { idempotencyKey: "refund:session:cs_old" }] }]);
 
-    const sub = { id: "sub_1", status: "active", metadata: { user_id: theo }, items: { data: [{ current_period_end: Math.floor(Date.now() / 1000) + 86_400 }] } };
+    const sub = { id: "sub_1", status: "active", created: 1, customer: "cus_sub", metadata: { user_id: theo }, items: { data: [{ current_period_end: Math.floor(Date.now() / 1000) + 86_400 }] } };
+    subscriptions.set(sub.id, sub as unknown as Stripe.Subscription);
     expect(await handleStripeEvent(event("evt_3", "customer.subscription.created", sub), repo, stripe)).toBe("plan_active");
     expect(await repo.payments.isPlus(theo)).toBe(true);
+    subscriptions.set(sub.id, { ...sub, status: "canceled" } as unknown as Stripe.Subscription);
     expect(await handleStripeEvent(event("evt_4", "customer.subscription.deleted", sub), repo, stripe)).toBe("plan_canceled");
     expect(await repo.payments.isPlus(theo)).toBe(false);
 
@@ -352,16 +357,21 @@ describe("the webhook route, and the demo checkout actions", async () => {
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon");
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake");
     vi.stubEnv("STRIPE_WEBHOOK_SECRET", "whsec_test");
-    const payload = JSON.stringify({ id: "evt_r1", object: "event", type: "customer.subscription.created", data: { object: { id: "sub_r", status: "active", metadata: { user_id: theo }, items: { data: [{ current_period_end: Math.floor(Date.now() / 1000) + 3600 }] } } } });
+    const repo = service.repo as DataRepository;
+    const ev = await newEvent(repo, dev, null, globalThis.__findmaxxingDemoStore!.state.events[0].categorySlug);
+    await repo.payments.setEventPrice(dev, ev.id, 1500);
+    const hold = await repo.payments.reserveTicket(maya, ev.id);
+    await repo.payments.attachCheckout(hold.ticketId, "cs_signed");
+    const payload = JSON.stringify({ id: "evt_r1", object: "event", type: "checkout.session.completed", data: { object: { id: "cs_signed", mode: "payment", payment_status: "paid", currency: "usd", amount_total: 1500, payment_intent: "pi_signed", metadata: { ticket_id: hold.ticketId } } } });
     const post = (headers: Record<string, string>, body = payload) => POST(new Request("http://x/api/stripe/webhook", { method: "POST", body, headers }));
     expect((await post({})).status).toBe(400);
     expect((await post({ "stripe-signature": "t=1,v1=bad" })).status).toBe(400);
     const signature = new Stripe("sk_test_fake").webhooks.generateTestHeaderString({ payload, secret: "whsec_test" });
-    expect((await post({ "stripe-signature": signature }, payload.replace("active", "trialing"))).status).toBe(400); // tampered
+    expect((await post({ "stripe-signature": signature }, payload.replace('"paid"', '"unpaid"'))).status).toBe(400); // tampered
     const ok = await post({ "stripe-signature": signature });
     expect(ok.status).toBe(200);
-    expect(await ok.json()).toEqual({ received: true, outcome: "plan_active" });
-    expect(await (service.repo as DataRepository).payments.isPlus(theo)).toBe(true);
+    expect(await ok.json()).toEqual({ received: true, outcome: "confirmed" });
+    expect((await repo.payments.myTickets(maya))[0].status).toBe("paid");
     vi.unstubAllEnvs();
     expect((await post({ "stripe-signature": signature })).status).toBe(404); // payments off
   });

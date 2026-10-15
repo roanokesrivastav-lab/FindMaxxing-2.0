@@ -7,7 +7,7 @@ import { BackButton } from "@/components/ui/BackButton";
 import { DeleteAccount } from "@/components/profile/DeleteAccount";
 import { AnalyticsToggle } from "@/components/profile/AnalyticsToggle";
 import { getRepository } from "@/lib/data";
-import { featureEnabled } from "@/lib/config";
+import { featureEnabled, pushTransportReady } from "@/lib/config";
 import { NotificationSettingsForm } from "@/components/notifications/NotificationSettingsForm";
 import { PushToggle } from "@/components/notifications/PushToggle";
 
@@ -19,7 +19,7 @@ export default async function SettingsPage() {
   const analytics = featureEnabled("analytics");
   const optedOut = analytics ? await (await getRepository()).analytics.optedOut(viewer.id) : false;
   const notifications = featureEnabled("notifications");
-  const push = notifications && featureEnabled("push") ? process.env.VAPID_PUBLIC_KEY ?? null : null;
+  const push = notifications && pushTransportReady("web") ? process.env.VAPID_PUBLIC_KEY ?? null : null;
   const notificationSettings = notifications ? await (await getRepository()).notifications.settings(viewer.id) : null;
   return (
     <div className="max-w-2xl mx-auto px-4 md:px-6 pt-4 md:pt-8 pb-nav md:pb-10">

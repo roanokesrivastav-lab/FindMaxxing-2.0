@@ -53,6 +53,7 @@ export function createDemoPayments(state: DemoState, h: {
     if (p) p.supporter = isPlusIn(state, userId);
   };
   return {
+    async isClosing(userId) { return !state.profiles.some((p) => p.id === userId); },
     async isPlus(userId) {
       return isPlusIn(state, userId);
     },
@@ -139,6 +140,7 @@ export function createDemoPayments(state: DemoState, h: {
         h.persist();
         return "refund" as const;
       };
+      if (t.status === "expired" || Date.parse(t.expiresAt) <= Date.now()) return refund();
       if (amountCents !== t.amountCents) return refund();
       const e = state.events.find((x) => x.id === t.eventId);
       const going = state.eventAttendees.filter((a) => a.eventId === t.eventId);
@@ -174,6 +176,7 @@ export function createDemoPayments(state: DemoState, h: {
       h.persist();
     },
     async setEntitlement(userId, status, periodEnd, subscriptionId) {
+      if (!state.profiles.some((p) => p.id === userId)) return;
       const row = state.entitlements.find((x) => x.userId === userId);
       const updatedAt = new Date().toISOString();
       if (row) Object.assign(row, { status, currentPeriodEnd: periodEnd, subscriptionId, updatedAt });
@@ -182,11 +185,13 @@ export function createDemoPayments(state: DemoState, h: {
       h.persist();
     },
     async linkCustomer(userId, customerId) {
+      if (!state.profiles.some((p) => p.id === userId)) return;
       state.stripeCustomers = state.stripeCustomers.filter((c) => c.userId !== userId);
       state.stripeCustomers.push({ userId, customerId });
       h.persist();
     },
     async setHostAccount(userId, accountId, chargesEnabled) {
+      if (!state.profiles.some((p) => p.id === userId)) return;
       state.hostAccounts = state.hostAccounts.filter((a) => a.userId !== userId);
       state.hostAccounts.push({ userId, accountId, chargesEnabled });
       h.persist();
@@ -196,6 +201,40 @@ export function createDemoPayments(state: DemoState, h: {
       state.stripeEvents.push({ id, type, objectId, receivedAt: new Date().toISOString() });
       h.persist();
       return true;
+    },
+    async claimStripeEvent(id, type, objectId, userId) {
+      let e = state.stripeEvents.find((x) => x.id === id);
+      if (e && (!e.state || e.state === "complete")) return { state: "complete", outcome: e.outcome ?? "processed" };
+      const scope = userId ? `user:${userId}` : `event:${id}`;
+      if (state.stripeEvents.some((x) => x.state === "processing" && (x.id === id || x.scope === scope) && Date.parse(x.leasedUntil ?? "") > Date.now())) return { state: "busy" };
+      if (!e) { e = { id, type, objectId, receivedAt: new Date().toISOString() }; state.stripeEvents.push(e); }
+      const token = newId();
+      Object.assign(e, { state: "processing", token, scope, leasedUntil: new Date(Date.now() + 5 * 60_000).toISOString() });
+      h.persist();
+      return { state: "claimed", token };
+    },
+    async finishStripeEvent(id, token, outcome, plan) {
+      const e = state.stripeEvents.find((x) => x.id === id && x.state === "processing" && x.token === token);
+      if (!e || Date.parse(e.leasedUntil ?? "") <= Date.now()
+        || state.stripeEvents.some((x) => x.id !== id && x.scope === e.scope && x.state === "processing" && x.token !== token && Date.parse(x.leasedUntil ?? "") > Date.now())) throw new Error("Stripe event lease lost");
+      if (plan) {
+        if (e.scope !== `user:${plan.userId}`) throw new Error("Stripe plan scope mismatch");
+        // No await between validation, plan mutation and event completion.
+        if (state.profiles.some((p) => p.id === plan.userId)) {
+          const customer = state.stripeCustomers.find((c) => c.userId === plan.userId);
+          if (plan.customerId && customer && customer.customerId !== plan.customerId) throw new Error("Stripe customer changed");
+          if (plan.customerId && !customer) state.stripeCustomers.push({ userId: plan.userId, customerId: plan.customerId });
+          const row = state.entitlements.find((x) => x.userId === plan.userId);
+          const fields = { userId: plan.userId, status: plan.status, currentPeriodEnd: plan.periodEnd, subscriptionId: plan.subscriptionId, updatedAt: new Date().toISOString() };
+          if (row) Object.assign(row, fields); else state.entitlements.push(fields);
+          syncSupporter(plan.userId);
+        }
+      }
+      Object.assign(e, { state: "complete", outcome, token: undefined, scope: undefined, leasedUntil: undefined }); h.persist();
+    },
+    async releaseStripeEvent(id, token) {
+      const e = state.stripeEvents.find((x) => x.id === id && x.state === "processing" && x.token === token);
+      if (e) { Object.assign(e, { state: "pending", token: undefined, scope: undefined, leasedUntil: undefined }); h.persist(); }
     },
   };
 }

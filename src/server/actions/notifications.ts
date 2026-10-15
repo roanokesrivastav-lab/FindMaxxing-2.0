@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getViewer } from "@/lib/auth/server";
-import { featureEnabled } from "@/lib/config";
+import { featureEnabled, pushTransportReady } from "@/lib/config";
 import { getRepository } from "@/lib/data";
 import { ALL_NOTIFICATION_TYPES } from "@/lib/notifications";
 import type { NotificationType } from "@/lib/data/types";
@@ -60,7 +60,7 @@ export async function saveNotificationSettingsAction(input: unknown): Promise<Ac
 export async function savePushDeviceAction(subscription: unknown): Promise<ActionResult> {
   const { viewer, error } = await notificationsViewer();
   if (error) return error;
-  if (!featureEnabled("push")) return fail("Push notifications are not set up", undefined, "unavailable");
+  if (!pushTransportReady("web")) return fail("Push notifications are not set up", undefined, "unavailable");
   const parsed = deviceSchema.safeParse(subscription);
   if (!parsed.success) return fail("This browser gave an invalid push subscription");
   try {

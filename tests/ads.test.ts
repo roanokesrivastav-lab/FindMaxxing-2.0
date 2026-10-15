@@ -220,9 +220,9 @@ describe("sponsored cards in demo mode", () => {
     await repo.ads.attachCheckout(id, "cs_ad");
     const calls: unknown[] = [];
     const stripe = { refunds: { create: vi.fn(async (...a: unknown[]) => (calls.push(a), { id: "re" })) } } as never;
-    const ev = (id: string, session: string, amount: number) => ({ id, type: "checkout.session.completed", data: { object: { id: session, mode: "payment", metadata: { campaign_id: "c" }, payment_intent: `pi_${session}`, amount_total: amount } } }) as unknown as Stripe.Event;
+    const ev = (id: string, session: string, amount: number) => ({ id, type: "checkout.session.completed", data: { object: { id: session, mode: "payment", payment_status: "paid", currency: "usd", metadata: { campaign_id: "c" }, payment_intent: `pi_${session}`, amount_total: amount } } }) as unknown as Stripe.Event;
     expect(await handleStripeEvent(ev("evt_a", "cs_ad", 2000), repo, stripe)).toBe("campaign_active");
-    expect(await handleStripeEvent(ev("evt_a", "cs_ad", 2000), repo, stripe)).toBe("duplicate:campaign_duplicate");
+    expect(await handleStripeEvent(ev("evt_a", "cs_ad", 2000), repo, stripe)).toBe("duplicate:campaign_active");
     expect(await handleStripeEvent(ev("evt_b", "cs_other", 2000), repo, stripe)).toBe("campaign_unknown");
     expect(calls).toEqual([[{ payment_intent: "pi_cs_other" }, { idempotencyKey: "refund:campaign:cs_other" }]]);
   });

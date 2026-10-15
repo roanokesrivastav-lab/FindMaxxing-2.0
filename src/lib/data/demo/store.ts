@@ -199,7 +199,8 @@ export interface DemoState {
   hostAccounts: { userId: string; accountId: string; chargesEnabled: boolean }[];
   entitlements: { userId: string; status: EntitlementStatus; currentPeriodEnd: string | null; subscriptionId: string | null; updatedAt: string }[];
   stripeCustomers: { userId: string; customerId: string }[];
-  stripeEvents: { id: string; type: string; objectId: string | null; receivedAt: string }[];
+  stripeEvents: { id: string; type: string; objectId: string | null; receivedAt: string;
+    state?: "pending" | "processing" | "complete"; token?: string; scope?: string; leasedUntil?: string; outcome?: string }[];
   /** Mirrors 0023_ads.sql (see ./ads). Impressions are aggregated: no user. */
   adCampaigns: AdCampaignRow[];
   adImpressions: { campaignId: string; day: string; slot: "places" | "events"; count: number }[];
@@ -255,6 +256,7 @@ export interface NotificationRow {
   batchKey: string | null;
   dedupeKey: string | null;
   pushState: "none" | "pending" | "sent" | "skipped" | "capped";
+  pushClaimedKinds?: ("web" | "expo")[];
   createdAt: string;
   updatedAt: string;
   readAt: string | null;

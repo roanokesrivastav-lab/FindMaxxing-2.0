@@ -23,6 +23,7 @@ export function deleteDemoAccount(handle: StoreHandle, userId: string): DeletedO
 
   const ownPlaces = new Set(state.places.filter((p) => p.creatorId === userId).map((p) => p.id));
   const ownEvents = new Set(state.events.filter((e) => e.creatorId === userId).map((e) => e.id));
+  const futureEvents = new Set(state.events.filter((e) => ownEvents.has(e.id) && Date.parse(e.startsAt) > Date.now()).map((e) => e.id));
   const photoGone = (ph: (typeof state.placePhotos)[number]) => ph.uploaderId === userId || ownPlaces.has(ph.placeId);
 
   const placePhotos = [...new Set(state.placePhotos.filter((ph) => photoGone(ph) && ph.storagePath).map((ph) => ph.storagePath!))];
@@ -59,6 +60,8 @@ export function deleteDemoAccount(handle: StoreHandle, userId: string): DeletedO
   state.pushLog = state.pushLog.filter((l) => l.userId !== userId);
   // Money records stay, anonymized; plans, customers and payout accounts go.
   for (const t of state.tickets) {
+    if (t.status === "pending" && (t.userId === userId || (t.eventId && ownEvents.has(t.eventId)))) t.status = "expired";
+    if (t.status === "paid" && t.eventId && futureEvents.has(t.eventId)) t.status = "refund_pending";
     if (t.userId === userId) t.userId = null;
     if (t.eventId && ownEvents.has(t.eventId)) t.eventId = null;
   }

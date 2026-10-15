@@ -163,30 +163,35 @@ export function inQuietHours(s: NotificationSettings | null, now: string): boole
 }
 
 /** Mirrors claim_push_batch(). */
-export function claimDemoPushes(state: DemoState, now: string, limit = 100, dailyCap = 5): PushClaim[] {
+export function claimDemoPushes(state: DemoState, now: string, limit = 100, dailyCap = 5, kinds: ("web" | "expo")[] = ["web", "expo"]): PushClaim[] {
   const at = Date.parse(now);
+  if (!kinds.length) return [];
+  const eligible = (n: DemoState["notifications"][number]) => state.pushSubscriptions.filter((d) => d.userId === n.userId
+    && kinds.includes(d.kind ?? "web") && !(n.pushClaimedKinds ?? []).includes(d.kind ?? "web"));
   const pending = state.notifications
-    .filter((n) => n.pushState === "pending")
+    .filter((n) => n.pushState === "pending" && (eligible(n).length || Date.parse(n.createdAt) < at - 24 * HOUR
+      || !state.pushSubscriptions.some((d) => d.userId === n.userId) || (settingsOf(state, n.userId) && !settingsOf(state, n.userId)!.pushTypes.includes(n.type))))
     .sort((a, b) => compareTimestamps(a.createdAt, b.createdAt) || compareIds(a.id, b.id))
     .slice(0, Math.min(Math.max(limit, 1), 1000));
   const out: PushClaim[] = [];
   for (const n of pending) {
     const s = settingsOf(state, n.userId);
-    const devices = state.pushSubscriptions
-      .filter((d) => d.userId === n.userId)
+    const devices = eligible(n)
       .sort((a, b) => compareTimestamps(a.createdAt, b.createdAt) || compareIds(a.id, b.id))
       .map((d) => ({ kind: d.kind ?? "web", endpoint: d.endpoint, p256dh: d.p256dh, auth: d.auth }));
-    if ((s && !s.pushTypes.includes(n.type)) || !devices.length || Date.parse(n.createdAt) < at - 24 * HOUR) {
+    if ((s && !s.pushTypes.includes(n.type)) || !state.pushSubscriptions.some((d) => d.userId === n.userId) || Date.parse(n.createdAt) < at - 24 * HOUR) {
       n.pushState = "skipped";
       continue;
     }
+    if (!devices.length) continue;
     if (inQuietHours(s, now)) continue;
-    if (state.pushLog.filter((l) => l.userId === n.userId && Date.parse(l.sentAt) > at - 24 * HOUR).length >= dailyCap) {
+    if (!(n.pushClaimedKinds ?? []).length && state.pushLog.filter((l) => l.userId === n.userId && Date.parse(l.sentAt) > at - 24 * HOUR).length >= dailyCap) {
       n.pushState = "capped";
       continue;
     }
-    n.pushState = "sent";
-    state.pushLog.push({ userId: n.userId, notificationId: n.id, sentAt: now });
+    if (!(n.pushClaimedKinds ?? []).length) state.pushLog.push({ userId: n.userId, notificationId: n.id, sentAt: now });
+    n.pushClaimedKinds = [...new Set([...(n.pushClaimedKinds ?? []), ...devices.map((d) => d.kind)])];
+    n.pushState = state.pushSubscriptions.some((d) => d.userId === n.userId && !n.pushClaimedKinds!.includes(d.kind ?? "web")) ? "pending" : "sent";
     out.push({
       notificationId: n.id, userId: n.userId, type: n.type, actorUsername: n.actorId ? (state.profiles.find((p) => p.id === n.actorId)?.username ?? null) : null,
       subjectType: n.subjectType, subjectId: n.subjectId, label: n.label, detail: n.detail, count: n.count, devices,
@@ -292,8 +297,8 @@ export function createDemoNotifications(state: DemoState, h: { persist(): void; 
       if (n) h.persist();
       return n;
     },
-    async claimPushes(now, limit) {
-      const out = claimDemoPushes(state, now, limit);
+    async claimPushes(now, limit, kinds) {
+      const out = claimDemoPushes(state, now, limit, 5, kinds);
       h.persist();
       return out;
     },

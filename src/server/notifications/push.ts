@@ -8,6 +8,8 @@ import { webPushAgent } from "./pushAgent";
 
 /** Sends one encrypted payload. `gone` means the subscription is no longer usable. */
 export interface PushSender {
+  /** Omitted only for legacy/test senders that can handle both transports. */
+  supportedKinds?: ("web" | "expo")[];
   send(device: PushDevice, payload: string): Promise<{ ok: true } | { ok: false; gone: boolean }>;
 }
 
@@ -17,6 +19,7 @@ export interface PushSender {
  */
 export function expoPushSender(env: Record<string, string | undefined> = process.env, fetcher: typeof fetch = fetch): PushSender {
   return {
+    supportedKinds: ["expo"],
     async send(device, payload) {
       const { title, body, url } = JSON.parse(payload) as { title: string; body: string; url: string };
       try {
@@ -40,6 +43,7 @@ export function expoPushSender(env: Record<string, string | undefined> = process
 export function combinedSender(web: PushSender | null, expo: PushSender | null): PushSender | null {
   if (!web && !expo) return null;
   return {
+    supportedKinds: [...(web ? ["web" as const] : []), ...(expo ? ["expo" as const] : [])],
     async send(device, payload) {
       const sender = device.kind === "expo" ? expo : web;
       return sender ? sender.send(device, payload) : { ok: false, gone: false };
@@ -55,6 +59,7 @@ export async function webPushSender(env: Record<string, string | undefined> = pr
   const webpush = (await import("web-push")).default;
   const subject = env.VAPID_SUBJECT || getSiteUrl();
   return {
+    supportedKinds: ["web"],
     async send(device, payload) {
       // Recheck stored subscriptions too: old rows may predate registration rules.
       if (!isWebPushEndpoint(device.endpoint)) return { ok: false, gone: true };
@@ -93,15 +98,17 @@ export interface PushRunResult {
 
 /**
  * One scheduler run: create due reminders, then claim and send pending
- * pushes. Claims are marked sent in the database before anything goes out, so
- * a retry after a crash can miss a push but never sends one twice. Without a
- * sender (no VAPID keys), nothing is claimed: pushes wait in the queue.
+ * pushes for ready transports. Each kind is claimed before sending, retaining
+ * the existing at-most-once policy on send failures/crashes. Unready kinds are
+ * not consumed; they stay pending until ready or normal notification expiry.
  */
 export async function runNotificationJobs(repo: DataRepository, sender: PushSender | null, now = new Date().toISOString()): Promise<PushRunResult> {
   const reminders = await repo.notifications.scheduleReminders(now);
   const result: PushRunResult = { reminders, claimed: 0, sent: 0, failed: 0, dropped: 0 };
   if (!sender) return result;
-  const claims = await repo.notifications.claimPushes(now, 200);
+  const kinds = sender.supportedKinds ?? ["web", "expo"];
+  if (!kinds.length) return result;
+  const claims = await repo.notifications.claimPushes(now, 200, kinds);
   result.claimed = claims.length;
   for (const claim of claims) {
     const payload = pushPayload(claim);
