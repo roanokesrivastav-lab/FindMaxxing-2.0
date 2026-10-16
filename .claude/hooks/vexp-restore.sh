@@ -1,6 +1,6 @@
 #!/bin/bash
 # vexp-restore: context lifecycle restore on SessionStart (compact/resume). Fails open.
-VEXP_BIN="/Users/ronaksrivastav/.vscode/extensions/vexp.vexp-vscode-3.3.3-darwin-arm64/binaries/vexp-core-darwin-arm64/vexp-core"
+VEXP_BIN="/Users/ronaksrivastav/.vscode/extensions/vexp.vexp-vscode-3.3.4-darwin-arm64/binaries/vexp-core-darwin-arm64/vexp-core"
 # An extension upgrade removes the versioned folder above; fall back to the
 # newest installed vexp extension binary. Managed by vexp.
 if [ ! -x "$VEXP_BIN" ]; then

@@ -4,6 +4,57 @@
 met. Web/native release approval is withheld.** Hosted service checks and native
 execution evidence must not be replaced with stub, demo, or bundle results.
 
+## Hosted follow-up — 2026-10-15
+
+The owner identified `ebwgdjocwusxdamojarj` as a disposable test project with
+no real users or valuable data and explicitly authorized migrations and temporary
+test users/uploads/records. This follow-up supersedes the earlier NOT RUN entries
+only for the checks recorded here; overall release approval remains withheld.
+
+- Confirmed both the logged-in dashboard and linked CLI target matched that
+  project. The existing local Supabase URL also matched; no credentials were
+  printed or transferred to Vercel.
+- The migration preview contained exactly `0026_security_boundaries.sql`,
+  `0027_account_deletion_lifecycle.sql`, `0028_payment_event_processing.sql`,
+  and `0029_push_transport_readiness.sql`. Applied all four through the CLI,
+  without database reset, seed import, role import, or vault changes. A second
+  dry run reported the remote database up to date. Dashboard and SQL history
+  independently confirmed versions through `0029`.
+- Verified RLS is enabled on `account_deletion_jobs` and
+  `stripe_processing_locks`; anonymous/authenticated roles cannot select them.
+  Verified all seven new deletion/event/push control RPCs are executable by
+  `service_role`, not anonymous/authenticated roles.
+- Re-ran the focused local database and staging-preflight suites: **4 files,
+  31 tests passed**.
+- Ran the existing hosted checker in backend-only mode: **all 26 Auth/Storage/RLS
+  assertions passed**, including locals visibility, cross-user writes/lists,
+  private-photo access, moderator boundaries and rate limits. Scratch Storage
+  removal and **4/4** test-user deletions passed. Final SQL counts matched the
+  baseline: **1 existing Auth account, 0 Storage objects**, with no checker users
+  or scratch objects remaining. Normal application deletion/audit bookkeeping is
+  not asserted to have been purged.
+- Image migration dry run passed: no images required migration and none failed.
+  The backend-only checker deliberately reported **29/31** and exited **1**:
+  its own migration step was skipped because migrations were applied/verified
+  separately, and browser e2e was intentionally deferred. This is not a passing
+  full staging gate. Its unused database URL contained no password; API keys were
+  supplied only in the child process environment from existing local config.
+
+### Deployment mismatch blocks hosted browser verification
+
+The owner deployed `https://find-maxxing-2-0.vercel.app`. Vercel's dashboard
+identifies its source as `main` at `c8514fb`, while the audited checkout is
+`tier1-owner-controls` at `e9497e2`. Read-only GitHub branch inspection confirmed
+`main` is still `c8514fb`; remote `tier1-owner-controls` is `2082afb` and lacks
+the three latest local commits. No code was pushed or deployment changed here.
+
+The deployed page displayed "Something broke" and `/api/health` returned HTTP
+404. These observations do not identify the cause of the page error, but the
+revision mismatch alone means it cannot verify the audited repairs. Deploy the
+reviewed revision to the test environment, confirm its backend and auth redirect
+configuration, then execute browser e2e. Stripe sandbox transactions, real native
+execution/push, and multi-connection race scenarios still remain unverified.
+
 ## Preflight contract
 
 Approved with required changes for the safe local portion. No separate Claude
