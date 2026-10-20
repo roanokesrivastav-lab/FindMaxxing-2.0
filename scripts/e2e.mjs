@@ -15,6 +15,13 @@
 // open a place, save it to a new list, add a place with a photo, create an
 // event, join one, follow someone, report a place, a moderator resolving the
 // report, password reset, and account deletion.
+//
+// Protected staging (Vercel Deployment Protection, email confirmation on):
+//   VERCEL_AUTOMATION_BYPASS_SECRET  sent only to E2E_BASE_URL's origin
+//   E2E_USER_EMAIL / E2E_USER_PASSWORD / E2E_USER_USERNAME
+//       a pre-confirmed, not-yet-onboarded account to sign in as instead of
+//       signing up (confirmation email delivery is verified separately)
+//   E2E_MOD_EMAIL / E2E_MOD_PASSWORD  a moderator account
 import { chromium } from "playwright-core";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
@@ -50,13 +57,18 @@ function check(name, pass, detail = "") {
   console.log(`${pass ? "PASS" : "FAIL"}  ${name}${detail ? `  — ${detail}` : ""}`);
 }
 
+const bypass = external ? process.env.VERCEL_AUTOMATION_BYPASS_SECRET : undefined;
+
 async function phone() {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  // The bypass secret goes to the app's own origin only, never to Supabase, tiles or other hosts.
+  if (bypass) await ctx.route((url) => url.origin === new URL(BASE).origin, (route) => route.continue({ headers: { ...route.request().headers(), "x-vercel-protection-bypass": bypass } }));
   const page = await ctx.newPage();
   const problems = [];
   page.on("pageerror", (e) => problems.push(e.message.slice(0, 200)));
   page.on("console", (m) => {
-    if (m.type() === "error" && /Content Security Policy|Refused to/i.test(m.text())) problems.push(m.text().slice(0, 200));
+    // Hydration mismatches are recoverable in production (React #418/#423/#425) and only reach the console.
+    if (m.type() === "error" && /Content Security Policy|Refused to|Minified React error #(418|423|425)|[Hh]ydrat/.test(m.text())) problems.push(m.text().slice(0, 200));
   });
   return { ctx, page, problems };
 }
@@ -84,7 +96,11 @@ async function signIn(page, email, password = "findmaxxing") {
 }
 
 const run = Date.now().toString(36);
-const me = { email: `e2e-${run}@example.test`, username: `e2e_${run}`.slice(0, 24), password: "e2e-password-1", newPassword: "e2e-password-2" };
+const preconfirmed = !!process.env.E2E_USER_EMAIL;
+const me = preconfirmed
+  ? { email: process.env.E2E_USER_EMAIL, username: process.env.E2E_USER_USERNAME, password: process.env.E2E_USER_PASSWORD, newPassword: "" }
+  : { email: `e2e-${run}@example.test`, username: `e2e_${run}`.slice(0, 24), password: "e2e-password-1", newPassword: "e2e-password-2" };
+if (preconfirmed && (!me.username || !me.password)) { console.error("e2e: E2E_USER_EMAIL needs E2E_USER_PASSWORD and E2E_USER_USERNAME"); process.exit(2); }
 const PLACE_NAME = `E2E court ${run}`;
 const photo = await sharp({ create: { width: 800, height: 600, channels: 3, background: { r: 30, g: 140, b: 90 } } }).jpeg().toBuffer();
 
@@ -102,7 +118,14 @@ await step("explore loads with labelled, focusable pins", async () => {
 });
 
 // 2. Sign up and onboard.
-await step("sign up lands on onboarding", async () => {
+await step(preconfirmed ? "sign in lands on onboarding" : "sign up lands on onboarding", async () => {
+  if (preconfirmed) {
+    await signIn(page, me.email, me.password);
+    await page.waitForURL("**/welcome", { timeout: 30_000 });
+    check("sign in lands on onboarding", true);
+    await snap(page, "welcome");
+    return;
+  }
   await page.goto(`${BASE}/auth/sign-up`, { waitUntil: "domcontentloaded" });
   await hydrated(page, "#email");
   await page.fill("#displayName", "E2E Tester");
@@ -186,7 +209,10 @@ await step("add a place with a photo", async () => {
   newPlaceUrl = new URL(page.url()).pathname;
   const img = page.locator('img[src^="/api/photos/"]').first();
   await img.waitFor({ timeout: 15_000 });
-  const loaded = await img.evaluate((el) => el.complete && el.naturalWidth > 0);
+  // The element appears before its bytes arrive; wait for load or error rather than sampling.
+  const loaded = await img.evaluate((el) => el.complete
+    ? el.naturalWidth > 0
+    : new Promise((resolve) => { el.addEventListener("load", () => resolve(el.naturalWidth > 0)); el.addEventListener("error", () => resolve(false)); }));
   check("add a place with a photo", loaded, newPlaceUrl);
   await snap(page, "new-place");
 });
@@ -274,8 +300,10 @@ await step("a moderator resolves the report", async () => {
   await page.goto(`${BASE}/profile/reports`, { waitUntil: "domcontentloaded" });
   // This route streams its report lists after the initial document. Require
   // the same resolution text, but wait for it instead of sampling first paint.
-  await page.getByText(/a moderator resolved it on/).waitFor({ timeout: 15_000 });
-  check("the reporter sees it resolved", /a moderator resolved it on/.test(await page.locator("body").innerText()));
+  const resolved = page.getByText(/a moderator resolved it on/);
+  await resolved.first().waitFor({ timeout: 15_000 });
+  const matches = await resolved.evaluateAll((els) => els.map((e) => `${e.closest("[hidden]") ? "hidden " : ""}${e.outerHTML.slice(0, 160)}`));
+  check("the reporter sees it resolved", matches.length === 1, matches.length === 1 ? "" : matches.join(" | "));
 });
 
 // 9. Password reset (demo shows the link instead of emailing it).
