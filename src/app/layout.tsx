@@ -7,6 +7,8 @@ import { getViewer } from "@/lib/auth/server";
 import { ToastProvider } from "@/components/ui/Toast";
 import { featureEnabled, getDataMode, getSiteUrl } from "@/lib/config";
 import { getRepository } from "@/lib/data";
+import { ViewerTimeProvider } from "@/components/time/ViewerTime";
+import { getViewerTime } from "@/lib/time/server";
 
 const figtree = Figtree({
   variable: "--font-figtree",
@@ -48,7 +50,7 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const viewer = await getViewer();
+  const [viewer, time] = await Promise.all([getViewer(), getViewerTime()]);
   // Flag-gated rail entries. A failed unread count never breaks the page.
   const messaging = !!viewer && featureEnabled("messaging");
   const notificationsOn = !!viewer && featureEnabled("notifications");
@@ -60,12 +62,14 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${figtree.variable} ${bricolage.variable} h-full`}>
       <body className="min-h-full flex flex-col">
-        <ToastProvider>
-          <AppShell viewer={viewer} dataMode={getDataMode()} extras={extras}>
-            {children}
-          </AppShell>
-          {featureEnabled("pwa") ? <RegisterServiceWorker /> : null}
-        </ToastProvider>
+        <ViewerTimeProvider initial={time}>
+          <ToastProvider>
+            <AppShell viewer={viewer} dataMode={getDataMode()} extras={extras}>
+              {children}
+            </AppShell>
+            {featureEnabled("pwa") ? <RegisterServiceWorker /> : null}
+          </ToastProvider>
+        </ViewerTimeProvider>
       </body>
     </html>
   );

@@ -12,4 +12,4 @@ export async function requireAdmin(path: string) {
   return { viewer, repo };
 }
 
-export const ADMIN_DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
+export const ADMIN_DATE: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric" };

@@ -5,6 +5,7 @@ import { requireViewer } from "@/lib/auth/server";
 import { getRepository } from "@/lib/data";
 import { formatPrice } from "@/lib/data/payments";
 import { eventHasEnded } from "@/lib/utils/format";
+import { getViewerTime } from "@/lib/time/server";
 import type { CampaignStatus } from "@/lib/data/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { CampaignForm } from "@/components/ads/CampaignForm";
@@ -28,6 +29,7 @@ export default async function AdsPage({ searchParams }: PageProps<"/ads">) {
   const viewer = await requireViewer("/ads");
   const sp = await searchParams;
   const repo = await getRepository();
+  const { now } = await getViewerTime();
   const [campaigns, places, events] = await Promise.all([
     repo.ads.mine(viewer.id),
     repo.places.listByCreator(viewer.id, viewer.id),
@@ -35,7 +37,7 @@ export default async function AdsPage({ searchParams }: PageProps<"/ads">) {
   ]);
   const listings = [
     ...places.filter((p) => p.status === "published" && p.visibility === "public").map((p) => ({ kind: "place" as const, id: p.id, label: p.name })),
-    ...events.filter((e) => e.status === "published" && !eventHasEnded(e.startsAt, e.endsAt)).map((e) => ({ kind: "event" as const, id: e.id, label: e.title })),
+    ...events.filter((e) => e.status === "published" && !eventHasEnded(e.startsAt, e.endsAt, now)).map((e) => ({ kind: "event" as const, id: e.id, label: e.title })),
   ];
   return (
     <div className="max-w-2xl mx-auto px-4 md:px-6 pt-4 md:pt-8 pb-nav md:pb-10">

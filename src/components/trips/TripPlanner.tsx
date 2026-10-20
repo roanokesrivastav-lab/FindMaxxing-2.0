@@ -8,14 +8,17 @@ import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/Button";
 import { FormField, Input, Select } from "@/components/ui/Field";
 import { useToast } from "@/components/ui/Toast";
+import { toDateInputValue } from "@/lib/utils/format";
+import { zonedTimeToUtc } from "@/lib/utils/timezone";
+import { useViewerTime } from "@/components/time/ViewerTime";
 import { savePlanAsListAction } from "@/server/actions/trips";
 import type { PlanEvent, TripPlan } from "@/server/trips/planner";
 
-const today = () => new Date().toLocaleDateString("en-CA");
-
 /** Ask for a plan, watch it come together, then save it as a list or turn stops into events. */
 export function TripPlanner({ defaultInterests, start }: { defaultInterests: string[]; start: { lat: number; lng: number; label: string } }) {
-  const [date, setDate] = useState(today());
+  const time = useViewerTime();
+  const today = toDateInputValue(time.now, time);
+  const [date, setDate] = useState(today);
   const [from, setFrom] = useState("10:00");
   const [to, setTo] = useState("18:00");
   const [vibe, setVibe] = useState("");
@@ -39,8 +42,8 @@ export function TripPlanner({ defaultInterests, start }: { defaultInterests: str
     setError(null);
     setStatus([]);
     try {
-      const startIso = new Date(`${date}T${from}`).toISOString();
-      const endIso = new Date(`${date}T${to}`).toISOString();
+      const startIso = zonedTimeToUtc(date, from, time.timeZone).toISOString();
+      const endIso = zonedTimeToUtc(date, to, time.timeZone).toISOString();
       const res = await fetch("/api/trip-plan", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -88,7 +91,7 @@ export function TripPlanner({ defaultInterests, start }: { defaultInterests: str
     <div className="flex flex-col gap-6">
       <form onSubmit={submit} className="card p-5 flex flex-col gap-4">
         <div className="grid grid-cols-3 gap-2">
-          <FormField label="Day" htmlFor="plan-date"><Input id="plan-date" type="date" value={date} min={today()} onChange={(e) => setDate(e.target.value)} required /></FormField>
+          <FormField label="Day" htmlFor="plan-date"><Input id="plan-date" type="date" value={date} min={today} onChange={(e) => setDate(e.target.value)} required /></FormField>
           <FormField label="From" htmlFor="plan-from"><Input id="plan-from" type="time" value={from} onChange={(e) => setFrom(e.target.value)} required /></FormField>
           <FormField label="Until" htmlFor="plan-to"><Input id="plan-to" type="time" value={to} onChange={(e) => setTo(e.target.value)} required /></FormField>
         </div>

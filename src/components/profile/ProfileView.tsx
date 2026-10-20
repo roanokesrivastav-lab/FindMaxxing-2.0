@@ -8,8 +8,9 @@ import { FollowButton } from "./FollowButton";
 import { ActivityTabs } from "./ActivityTabs";
 import { SignOutButton } from "@/components/auth/SignOutButton";
 import { BlockButton, MessageButton } from "@/components/messages/MessageButtons";
+import { LocalDate } from "@/components/time/LocalDate";
 
-const REMOVED_DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
+const REMOVED_DATE: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric" };
 
 export function ProfileView({
   profile,
@@ -159,7 +160,7 @@ export function ProfileView({
                   {r.targetType === "place" ? "Place" : "Event"}: {r.label}
                 </p>
                 <p className="text-sm text-ink-2 mt-0.5 break-words">{r.reason ? `Reason: ${r.reason}` : "No reason was recorded."}</p>
-                {r.removedAt ? <p className="text-xs text-muted mt-1">Removed {REMOVED_DATE.format(new Date(r.removedAt))}</p> : null}
+                {r.removedAt ? <p className="text-xs text-muted mt-1">Removed <LocalDate value={r.removedAt} format={REMOVED_DATE} /></p> : null}
               </li>
             ))}
           </ul>

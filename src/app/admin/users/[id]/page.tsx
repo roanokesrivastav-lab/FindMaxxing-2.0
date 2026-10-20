@@ -6,6 +6,7 @@ import { ConfirmWithReason } from "@/components/admin/ConfirmWithReason";
 import { ACTION_LABEL, DATE_TIME } from "@/components/moderation/labels";
 import { uuidSchema } from "@/lib/validation/schemas";
 import { ADMIN_DATE, requireAdmin } from "../../guard";
+import { LocalDate } from "@/components/time/LocalDate";
 
 export const metadata: Metadata = { title: "Person · Admin" };
 export const dynamic = "force-dynamic";
@@ -29,7 +30,7 @@ export default async function AdminUserPage({ params }: { params: Promise<{ id: 
       <div className="mb-4"><BackButton fallback="/admin/users" /></div>
       <section className="card p-5">
         <h1 className="text-2xl font-bold">{u.displayName}</h1>
-        <p className="text-sm text-muted"><Link href={`/u/${u.username}`} className="hover:text-ink">@{u.username}</Link>{u.homeCity ? ` · ${u.homeCity}` : ""} · joined {ADMIN_DATE.format(new Date(u.createdAt))}</p>
+        <p className="text-sm text-muted"><Link href={`/u/${u.username}`} className="hover:text-ink">@{u.username}</Link>{u.homeCity ? ` · ${u.homeCity}` : ""} · joined <LocalDate value={u.createdAt} format={ADMIN_DATE} /></p>
         <p className="text-sm mt-2">{u.places} places · {u.events} events · {u.reportsAgainst} reports against · level {u.reputationLevel}</p>
         <p className="text-sm mt-1">{u.suspended ? "Suspended: cannot add or change anything." : "Active."} {u.isAdmin ? "Admin." : u.isModerator ? "Moderator." : ""}</p>
         {!self ? (
@@ -65,7 +66,7 @@ export default async function AdminUserPage({ params }: { params: Promise<{ id: 
           {history.map((h) => (
             <li key={h.id} className="rounded-xl bg-surface-2 px-4 py-3 text-sm">
               <b>{ACTION_LABEL[h.action] ?? h.action}</b>{h.reason ? ` — “${h.reason}”` : ""}
-              <p className="text-xs text-muted mt-1">{h.moderatorUsername ? `@${h.moderatorUsername}` : "A former moderator"} · {DATE_TIME.format(new Date(h.createdAt))}</p>
+              <p className="text-xs text-muted mt-1">{h.moderatorUsername ? `@${h.moderatorUsername}` : "A former moderator"} · <LocalDate value={h.createdAt} format={DATE_TIME} /></p>
             </li>
           ))}
           {!history.length ? <li className="text-sm text-muted">No actions yet.</li> : null}

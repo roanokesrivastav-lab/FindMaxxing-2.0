@@ -3,6 +3,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { DataError } from "@/lib/data/types";
 import { ADMIN_DATE, requireAdmin } from "../guard";
+import { LocalDate } from "@/components/time/LocalDate";
 
 export const metadata: Metadata = { title: "Content · Admin" };
 export const dynamic = "force-dynamic";
@@ -45,7 +46,7 @@ export default async function AdminContentPage({ searchParams }: { searchParams:
             </div>
             <p className="text-xs text-muted mt-1">
               {c.creatorUsername ? <Link href={`/admin/users/${c.creatorId}`} className="hover:text-ink">@{c.creatorUsername}</Link> : "deleted account"}
-              {c.city ? ` · ${c.city}` : ""}{c.visibility && c.visibility !== "public" ? ` · ${c.visibility}` : ""} · {ADMIN_DATE.format(new Date(c.createdAt))} · {c.openReports} open reports · {c.actions} moderation actions
+              {c.city ? ` · ${c.city}` : ""}{c.visibility && c.visibility !== "public" ? ` · ${c.visibility}` : ""} · <LocalDate value={c.createdAt} format={ADMIN_DATE} /> · {c.openReports} open reports · {c.actions} moderation actions
             </p>
           </li>
         ))}

@@ -140,7 +140,7 @@ describe("map provider and pins", () => {
   it("gives every pin an accessible name with its category and rating or time", () => {
     expect(placeMarker({ id: "1", lat: 0, lng: 0, name: "Meeple Cellar", categorySlug: "food", ratingAvg: 4.5, ratingCount: 12 }).label).toMatch(/^Meeple Cellar, .+, rated 4\.5 from 12 ratings$/);
     expect(placeMarker({ id: "1", lat: 0, lng: 0, name: "New spot", categorySlug: "food", ratingAvg: 0, ratingCount: 0 }).label).toMatch(/not rated yet$/);
-    expect(eventMarker({ id: "2", lat: 0, lng: 0, title: "Run club", categorySlug: "outdoors", startsAt: "2026-10-08T22:00:00Z" }).label).toMatch(/^Run club, Outdoors event, \w{3}, Oct \d+/);
+    expect(eventMarker({ id: "2", lat: 0, lng: 0, title: "Run club", categorySlug: "outdoors", startsAt: "2026-10-08T22:00:00Z" }, "America/New_York").label).toBe("Run club, Outdoors event, Thu, Oct 8, 6:00 PM EDT");
   });
 });
 

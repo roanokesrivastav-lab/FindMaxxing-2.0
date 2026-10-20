@@ -11,11 +11,12 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Avatar } from "@/components/ui/Avatar";
 import { MarkReadOnView } from "@/components/notifications/MarkReadOnView";
 import { cn } from "@/lib/utils/cn";
+import { LocalDate } from "@/components/time/LocalDate";
 
 export const metadata: Metadata = { title: "Notifications" };
 export const dynamic = "force-dynamic";
 
-const WHEN = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+const WHEN: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" };
 
 /** Hidden unless the notifications flag is on. */
 export default async function NotificationsPage() {
@@ -49,7 +50,7 @@ export default async function NotificationsPage() {
                   )}
                   <span className="flex-1 min-w-0">
                     <span className={cn("block text-[15px]", isUnread ? "font-semibold" : "text-ink-2")}>{text}</span>
-                    <time className="block text-xs text-muted mt-0.5" dateTime={n.updatedAt}>{WHEN.format(new Date(n.updatedAt))}</time>
+                    <time className="block text-xs text-muted mt-0.5" dateTime={n.updatedAt}><LocalDate value={n.updatedAt} format={WHEN} /></time>
                   </span>
                   {isUnread ? <span className="h-2.5 w-2.5 rounded-full bg-flare-ink shrink-0" aria-label="Unread" role="img" /> : null}
                 </Link>

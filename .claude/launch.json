@@ -1,0 +1,22 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web-demo-utc",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "TZ=UTC",
+        "NEXT_PUBLIC_SUPABASE_URL=",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY=",
+        "SUPABASE_SERVICE_ROLE_KEY=",
+        "FINDMAXXING_DEMO_NO_PERSIST=1",
+        "npx",
+        "next",
+        "dev",
+        "-p",
+        "3123"
+      ],
+      "port": 3123
+    }
+  ]
+}

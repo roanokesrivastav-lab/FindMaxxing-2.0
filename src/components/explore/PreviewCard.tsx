@@ -5,6 +5,7 @@ import { ArrowRight, MapPin, Star, Users, X } from "lucide-react";
 import type { Event, Place } from "@/lib/data/types";
 import { getCategory } from "@/lib/data/taxonomy";
 import { formatEventWhen, formatRating, relativeDayLabel } from "@/lib/utils/format";
+import { useViewerTime } from "@/components/time/ViewerTime";
 import { formatDistance } from "@/lib/utils/geo";
 import { PlaceCover } from "@/components/places/PlaceCover";
 import { KindBadge } from "@/components/ui/Badge";
@@ -13,6 +14,7 @@ type Selected = { kind: "place"; item: Place } | { kind: "event"; item: Event };
 
 export function PreviewCard({ selected, onClose, distanceMeters }: { selected: Selected; onClose: () => void; distanceMeters: number | null }) {
   const c = getCategory(selected.item.categorySlug);
+  const time = useViewerTime();
   const href = selected.kind === "place" ? `/places/${selected.item.id}` : `/events/${selected.item.id}`;
 
   return (
@@ -23,7 +25,7 @@ export function PreviewCard({ selected, onClose, distanceMeters }: { selected: S
         ) : (
           <div className="h-full w-full bg-pulse-50 flex flex-col items-center justify-center text-pulse">
             <span className="text-2xl">{c.emoji}</span>
-            <span className="text-[11px] font-bold mt-1">{relativeDayLabel(selected.item.startsAt)}</span>
+            <span className="text-[11px] font-bold mt-1">{relativeDayLabel(selected.item.startsAt, time)}</span>
           </div>
         )}
       </Link>
@@ -43,7 +45,7 @@ export function PreviewCard({ selected, onClose, distanceMeters }: { selected: S
         {selected.kind === "place" ? (
           <p className="text-xs text-ink-2 line-clamp-1">{selected.item.localTip ?? selected.item.description}</p>
         ) : (
-          <p className="text-xs text-ink-2 line-clamp-1">{formatEventWhen(selected.item.startsAt, selected.item.endsAt)}</p>
+          <p className="text-xs text-ink-2 line-clamp-1">{formatEventWhen(selected.item.startsAt, selected.item.endsAt, time)}</p>
         )}
         <div className="flex items-center gap-3 text-xs text-muted mt-auto">
           {selected.kind === "place" ? (

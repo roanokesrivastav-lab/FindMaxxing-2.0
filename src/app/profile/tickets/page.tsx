@@ -8,6 +8,7 @@ import { formatPrice } from "@/lib/data/payments";
 import type { TicketStatus } from "@/lib/data/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { LocalDate } from "@/components/time/LocalDate";
 
 export const metadata: Metadata = { title: "Tickets" };
 export const dynamic = "force-dynamic";
@@ -35,7 +36,7 @@ export default async function TicketsPage() {
             <li key={t.id} className="flex items-center gap-3 px-4 py-3">
               <span className="flex-1 min-w-0">
                 {t.eventId ? <Link href={`/events/${t.eventId}`} className="font-semibold truncate block">{t.eventTitle ?? "Event"}</Link> : <span className="font-semibold block">Event no longer listed</span>}
-                <span className="text-xs text-muted">{STATUS[t.status]} · {new Date(t.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                <span className="text-xs text-muted">{STATUS[t.status]} · <LocalDate value={t.createdAt} format={{ month: "short", day: "numeric" }} /></span>
               </span>
               <span className="font-semibold">{formatPrice(t.amountCents, t.currency)}</span>
             </li>

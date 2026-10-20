@@ -17,9 +17,12 @@ import { CategoryBadge } from "@/components/ui/Badge";
 import { MiniMap } from "@/components/map/MiniMap";
 import { NewBanner } from "@/components/shared/NewBanner";
 import { ShareButton } from "@/components/shared/ShareButton";
-import { eventHasEnded, formatEventDateLong, formatTimeRange, relativeDayLabel } from "@/lib/utils/format";
+import { eventHasEnded, formatEventDateLong, formatTimeRange } from "@/lib/utils/format";
+import { LocalDate, LocalDayLabel, LocalTimeRange } from "@/components/time/LocalDate";
 import { OwnerActions } from "@/components/shared/OwnerActions";
 import { shareMetadata } from "@/lib/utils/share-metadata";
+import { DEFAULT_TIME_ZONE } from "@/lib/utils/timezone";
+import { getViewerTime } from "@/lib/time/server";
 
 export const dynamic = "force-dynamic";
 
@@ -29,25 +32,26 @@ export async function generateMetadata({ params }: PageProps<"/events/[id]">): P
   // No viewer on purpose: crawlers are anonymous, so only public events unfurl.
   const event = await repo.events.get(id);
   if (!event) return { title: "Event" };
+  // Unfurls are read by people anywhere, so use the city's zone (labelled) rather than a cookie.
+  const tz = { timeZone: DEFAULT_TIME_ZONE };
   return shareMetadata({
     title: event.title,
-    description: `${formatEventDateLong(event.startsAt)} · ${formatTimeRange(event.startsAt, event.endsAt)} at ${event.locationName}. ${event.description}`,
+    description: `${formatEventDateLong(event.startsAt, tz)} · ${formatTimeRange(event.startsAt, event.endsAt, tz)} at ${event.locationName}. ${event.description}`,
     path: `/events/${event.id}`,
     type: "article",
   });
 }
 
 export default async function EventPage({ params, searchParams }: PageProps<"/events/[id]">) {
-  const [{ id }, sp, viewer, repo] = await Promise.all([params, searchParams, getViewer(), getRepository()]);
+  const [{ id }, sp, viewer, repo, time] = await Promise.all([params, searchParams, getViewer(), getRepository(), getViewerTime()]);
   const event = await repo.events.get(id, viewer?.id ?? null);
   if (!event) notFound();
   const category = getCategory(event.categorySlug);
-  const ended = eventHasEnded(event.startsAt, event.endsAt);
+  const ended = eventHasEnded(event.startsAt, event.endsAt, time.now);
   const cancelled = event.status === "cancelled";
   const full = event.capacity !== null && event.attendeeCount >= event.capacity;
   const spotsLeft = event.capacity !== null ? Math.max(0, event.capacity - event.attendeeCount) : null;
   const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${event.lat},${event.lng}`;
-  const day = relativeDayLabel(event.startsAt);
   // The group chat, for people going (behind the messaging flag).
   const chatId = viewer && event.viewerJoined && featureEnabled("messaging") ? await repo.messaging.eventConversation(viewer.id, event.id) : null;
   // Tickets (behind the payments flag): buyers see a price; the host gets the pricing panel.
@@ -69,10 +73,10 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
               {viewer?.id === event.creatorId ? <OwnerActions kind="event" id={event.id} canEdit={!cancelled && !ended} canCancel={!cancelled && !ended} canDelete={!event.attendees.some((attendee) => attendee.id !== event.creatorId)} /> : null}
               <ShareButton
                 title={event.title}
-                text={`${formatEventDateLong(event.startsAt)} at ${event.locationName}`}
+                text={`${formatEventDateLong(event.startsAt, time)} at ${event.locationName}`}
                 className="border-white/25 bg-white/15 text-white hover:bg-white/25"
               />
-              <span className="text-sm font-semibold bg-white/15 rounded-full px-3 py-1">{cancelled ? "Cancelled" : ended ? "Ended" : day}</span>
+              <span className="text-sm font-semibold bg-white/15 rounded-full px-3 py-1">{cancelled ? "Cancelled" : ended ? "Ended" : <LocalDayLabel value={event.startsAt} />}</span>
             </div>
           </div>
           <div className="mt-8 flex items-center gap-2">
@@ -84,10 +88,10 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
           <h1 className="mt-2 text-3xl md:text-4xl font-bold leading-tight">{event.title}</h1>
           <div className="mt-4 flex flex-col gap-1.5 text-white/90 text-[15px]">
             <p className="inline-flex items-center gap-2">
-              <CalendarDays size={16} /> {formatEventDateLong(event.startsAt)}
+              <CalendarDays size={16} /> <LocalDate value={event.startsAt} format={{ weekday: "long", month: "long", day: "numeric" }} />
             </p>
             <p className="inline-flex items-center gap-2">
-              <Clock size={16} /> {formatTimeRange(event.startsAt, event.endsAt)}
+              <Clock size={16} /> <LocalTimeRange startsAt={event.startsAt} endsAt={event.endsAt} />
             </p>
             <p className="inline-flex items-center gap-2">
               <MapPin size={16} />
@@ -207,7 +211,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
         </section>
 
         <div className="mt-8 flex items-center justify-between text-xs text-muted">
-          <span>Created {new Date(event.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+          <span>Created <LocalDate value={event.createdAt} format={{ month: "short", day: "numeric" }} /></span>
           <ReportButton targetType="event" targetId={event.id} signedIn={!!viewer} returnTo={`/events/${event.id}`} />
         </div>
       </div>

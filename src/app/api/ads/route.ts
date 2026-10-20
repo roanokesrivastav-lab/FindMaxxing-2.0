@@ -7,6 +7,8 @@ import { discoveryQuerySchema } from "@/lib/validation/schemas";
 import { clientIp } from "@/server/http/clientIp";
 import { limiters } from "@/server/limiters";
 import { serviceRepository } from "@/server/serviceRepository";
+import { formatEventDate } from "@/lib/utils/format";
+import { DEFAULT_TIME_ZONE } from "@/lib/utils/timezone";
 
 const HEADERS = { "Cache-Control": "private, no-store" };
 const querySchema = z.object({ slot: z.enum(["places", "events"]), bbox: discoveryQuerySchema.shape.bbox, category: discoveryQuerySchema.shape.category });
@@ -33,6 +35,6 @@ export async function GET(req: Request) {
   if (!target) return NextResponse.json({ card: null }, { headers: HEADERS });
   const detail = "name" in target
     ? { title: target.name, subtitle: [target.neighborhood, target.city].filter(Boolean).join(", "), href: `/places/${target.id}` }
-    : { title: target.title, subtitle: `${new Date(target.startsAt).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} · ${target.locationName}`, href: `/events/${target.id}` };
+    : { title: target.title, subtitle: `${formatEventDate(target.startsAt, { timeZone: DEFAULT_TIME_ZONE })} · ${target.locationName}`, href: `/events/${target.id}` };
   return NextResponse.json({ card: { ...card, ...detail } }, { headers: HEADERS });
 }

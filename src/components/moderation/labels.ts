@@ -1,7 +1,7 @@
 import { REPORT_REASONS } from "@/lib/data/taxonomy";
 import type { ModerationLogAction, ReportTargetType } from "@/lib/data/types";
 
-export const DATE_TIME = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+export const DATE_TIME: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" };
 
 export function reasonLabel(reason: string): string {
   return REPORT_REASONS.find((r) => r.value === reason)?.label ?? reason;

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { DataError } from "@/lib/data/types";
 import { ADMIN_DATE, requireAdmin } from "../guard";
+import { LocalDate } from "@/components/time/LocalDate";
 
 export const metadata: Metadata = { title: "People · Admin" };
 export const dynamic = "force-dynamic";
@@ -30,7 +31,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
               <div className="flex items-start justify-between gap-3">
                 <span className="min-w-0">
                   <span className="font-bold block truncate">{u.displayName}</span>
-                  <span className="text-sm text-muted">@{u.username}{u.homeCity ? ` · ${u.homeCity}` : ""} · joined {ADMIN_DATE.format(new Date(u.createdAt))}</span>
+                  <span className="text-sm text-muted">@{u.username}{u.homeCity ? ` · ${u.homeCity}` : ""} · joined <LocalDate value={u.createdAt} format={ADMIN_DATE} /></span>
                 </span>
                 <span className="flex flex-wrap gap-1 justify-end shrink-0">
                   {u.suspended ? <span className="rounded-full bg-danger-100 text-danger text-xs font-bold px-2 py-0.5">Suspended</span> : null}

@@ -10,11 +10,13 @@ import { MAX_MESSAGE_LENGTH } from "@/lib/data/messaging";
 import type { ConversationMember, Message, Page } from "@/lib/data/types";
 import { markReadAction, sendMessageAction } from "@/server/actions/messages";
 import { cn } from "@/lib/utils/cn";
+import { formatInZone } from "@/lib/utils/format";
+import { useViewerTime } from "@/components/time/ViewerTime";
 
 /** Demo mode has no Realtime: poll while the tab is visible. With Realtime, poll rarely as a fallback. */
 const POLL_MS = 4000;
 const REALTIME_FALLBACK_MS = 30000;
-const TIME = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+const TIME: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" };
 
 interface Snapshot {
   members: ConversationMember[];
@@ -55,6 +57,7 @@ export function ChatThread({
   const bottom = useRef<HTMLDivElement>(null);
   const lastSeen = useRef<string | null>(null);
   const { toast } = useToast();
+  const time = useViewerTime();
 
   /** Fetches the newest page (or an older one) through the members-only route. */
   const fetchPage = useCallback(async (cursor?: string | null): Promise<Snapshot | null> => {
@@ -154,7 +157,7 @@ export function ChatThread({
                   {m.body}
                 </p>
                 <span className="text-[11px] text-muted px-1 mt-0.5 inline-flex items-center gap-2">
-                  <time dateTime={m.createdAt}>{TIME.format(new Date(m.createdAt))}</time>
+                  <time dateTime={m.createdAt}>{formatInZone(m.createdAt, time, TIME)}</time>
                   {!own ? <ReportButton targetType="message" targetId={m.id} signedIn returnTo={`/messages/${conversationId}`} iconOnly /> : null}
                 </span>
               </div>

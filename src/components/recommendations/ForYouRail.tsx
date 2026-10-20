@@ -3,8 +3,9 @@ import { Sparkles } from "lucide-react";
 import type { Event, Place, Recommendation } from "@/lib/data/types";
 import { getCategory } from "@/lib/data/taxonomy";
 import { readableInk } from "@/lib/utils/contrast";
+import { LocalDate } from "@/components/time/LocalDate";
 
-const WHEN = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+const WHEN: Intl.DateTimeFormatOptions = { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" };
 
 /**
  * A horizontal "For you" rail. Every card says why it is there, because a
@@ -13,7 +14,7 @@ const WHEN = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short"
 export function ForYouRail({ places = [], events = [], title = "For you" }: { places?: Recommendation<Place>[]; events?: Recommendation<Event>[]; title?: string }) {
   const cards = [
     ...places.map((r) => ({ id: r.item.id, href: `/places/${r.item.id}`, title: r.item.name, category: r.item.categorySlug, meta: r.item.neighborhood ?? r.item.city, why: r.reason.text })),
-    ...events.map((r) => ({ id: r.item.id, href: `/events/${r.item.id}`, title: r.item.title, category: r.item.categorySlug, meta: WHEN.format(new Date(r.item.startsAt)), why: r.reason.text })),
+    ...events.map((r) => ({ id: r.item.id, href: `/events/${r.item.id}`, title: r.item.title, category: r.item.categorySlug, meta: <LocalDate value={r.item.startsAt} format={WHEN} zone />, why: r.reason.text })),
   ];
   if (!cards.length) return null;
   return (

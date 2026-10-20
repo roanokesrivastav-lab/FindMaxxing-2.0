@@ -8,6 +8,7 @@ import { DataError } from "@/lib/data/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { DATE_TIME, TARGET_LABEL, reasonLabel } from "@/components/moderation/labels";
+import { LocalDate } from "@/components/time/LocalDate";
 
 export const metadata: Metadata = { title: "Moderation" };
 export const dynamic = "force-dynamic";
@@ -54,8 +55,8 @@ export default async function ModerationQueuePage({ searchParams }: { searchPara
                   ))}
                 </div>
                 <p className="mt-2 text-xs text-muted">
-                  First reported {DATE_TIME.format(new Date(item.firstReportedAt))}
-                  {item.reportCount > 1 ? ` · latest ${DATE_TIME.format(new Date(item.lastReportedAt))}` : ""}
+                  First reported <LocalDate value={item.firstReportedAt} format={DATE_TIME} />
+                  {item.reportCount > 1 ? ` · latest $<LocalDate value={item.lastReportedAt} format={DATE_TIME} />` : ""}
                 </p>
               </Link>
             </li>

@@ -7,6 +7,7 @@ import { getRepository } from "@/lib/data";
 import { PLUS_LIST_CAP, PLUS_MONTHLY_PRICE } from "@/lib/data/payments";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PlusButton } from "@/components/payments/PlusButtons";
+import { LocalDate } from "@/components/time/LocalDate";
 
 export const metadata: Metadata = { title: "Plus" };
 export const dynamic = "force-dynamic";
@@ -41,7 +42,7 @@ export default async function PlusPage({ searchParams }: PageProps<"/plus">) {
         </p>
         <div className="mt-4 flex items-center gap-3">
           <PlusButton active={active} />
-          {active && entitlement?.currentPeriodEnd ? <span className="text-sm text-muted">Renews or ends {new Date(entitlement.currentPeriodEnd).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span> : null}
+          {active && entitlement?.currentPeriodEnd ? <span className="text-sm text-muted">Renews or ends <LocalDate value={entitlement.currentPeriodEnd} format={{ month: "short", day: "numeric" }} /></span> : null}
         </div>
         {mode === "demo" ? <p className="text-xs text-muted mt-3">Demo mode: the checkout is simulated and no money moves.</p> : null}
       </div>

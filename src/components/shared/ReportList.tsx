@@ -1,8 +1,9 @@
 import Link from "next/link";
 import type { ReportEntry } from "@/lib/data/types";
 import { REPORT_REASONS } from "@/lib/data/taxonomy";
+import { LocalDate } from "@/components/time/LocalDate";
 
-const DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
+const DATE: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric" };
 
 const STATUS_STYLE: Record<ReportEntry["status"], { label: string; className: string }> = {
   open: { label: "Open", className: "bg-sun-100 text-[#8a6000]" },
@@ -53,8 +54,8 @@ export function ReportList({ entries, perspective }: { entries: ReportEntry[]; p
             {entry.details ? <p className="mt-1 text-sm text-ink-2">{entry.details}</p> : null}
 
             <p className="mt-2 text-xs text-muted">
-              {perspective === "owner" ? "Reported" : "You reported this"} on {DATE.format(new Date(entry.createdAt))}
-              {perspective === "reporter" && entry.resolvedAt ? ` · a moderator resolved it on ${DATE.format(new Date(entry.resolvedAt))}` : ""}
+              {perspective === "owner" ? "Reported" : "You reported this"} on <LocalDate value={entry.createdAt} format={DATE} />
+              {perspective === "reporter" && entry.resolvedAt ? <> · a moderator resolved it on <LocalDate value={entry.resolvedAt} format={DATE} /></> : null}
             </p>
           </li>
         );

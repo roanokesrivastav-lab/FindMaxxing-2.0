@@ -10,11 +10,12 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Avatar } from "@/components/ui/Avatar";
 import { BlockButton } from "@/components/messages/MessageButtons";
+import { LocalDate } from "@/components/time/LocalDate";
 
 export const metadata: Metadata = { title: "Messages" };
 export const dynamic = "force-dynamic";
 
-const WHEN = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
+const WHEN: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
 
 /** Hidden unless the messaging flag is on. */
 export default async function MessagesPage() {
@@ -45,7 +46,7 @@ export default async function MessagesPage() {
                   <span className="flex-1 min-w-0">
                     <span className="flex items-baseline gap-2">
                       <span className={c.unread ? "font-bold truncate" : "font-semibold truncate"}>{title}</span>
-                      {c.lastMessageAt ? <time className="ml-auto text-xs text-muted shrink-0" dateTime={c.lastMessageAt}>{WHEN.format(new Date(c.lastMessageAt))}</time> : null}
+                      {c.lastMessageAt ? <time className="ml-auto text-xs text-muted shrink-0" dateTime={c.lastMessageAt}><LocalDate value={c.lastMessageAt} format={WHEN} /></time> : null}
                     </span>
                     <span className={c.unread ? "block text-sm text-ink truncate" : "block text-sm text-muted truncate"}>{preview}</span>
                   </span>

@@ -6,6 +6,7 @@ import { requireViewer } from "@/lib/auth/server";
 import { getRepository } from "@/lib/data";
 import { PLUS_MONTHLY_PRICE, formatPrice } from "@/lib/data/payments";
 import { DemoCheckout } from "@/components/payments/DemoCheckout";
+import { LocalDate } from "@/components/time/LocalDate";
 
 export const metadata: Metadata = { title: "Demo checkout" };
 export const dynamic = "force-dynamic";
@@ -46,7 +47,7 @@ export default async function DemoCheckoutPage({ searchParams }: PageProps<"/che
       <div className="card p-5 mt-4">
         <h1 className="text-xl font-bold">{ticket ? `Ticket: ${ticket.eventTitle ?? "Event"}` : plan === "plus" ? "FindMaxxing Plus" : "Your Plus plan"}</h1>
         <p className="text-2xl font-bold mt-2">{ticket ? formatPrice(ticket.amountCents, ticket.currency) : `${PLUS_MONTHLY_PRICE} a month`}</p>
-        {ticket ? <p className="text-sm text-muted mt-1">Your spot is held until {new Date(ticket.expiresAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}.</p> : null}
+        {ticket ? <p className="text-sm text-muted mt-1">Your spot is held until <LocalDate value={ticket.expiresAt} format={{ hour: "numeric", minute: "2-digit" }} zone />.</p> : null}
         <DemoCheckout kind={ticket ? "ticket" : plan!} ticketId={ticket?.id} eventId={ticket?.eventId} />
       </div>
     </div>

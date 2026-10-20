@@ -7,6 +7,7 @@ import type { MapCanvasHandle } from "@/components/map/MapCanvas";
 import { MapView } from "@/components/map/MapView";
 import { CATEGORIES, INTERESTS, getInterest } from "@/lib/data/taxonomy";
 import { eventMarker, placeMarker } from "@/lib/map/markers";
+import { useViewerTime } from "@/components/time/ViewerTime";
 import type { MapMarker, ViewState } from "@/lib/map/types";
 import { DEFAULT_CENTER, DEFAULT_ZOOM } from "@/lib/config";
 import { useGeolocation } from "@/lib/map/useGeolocation";
@@ -116,18 +117,19 @@ export function ExploreClient({
   );
   const discovery = useDiscovery(request, initial, initialRequest);
   const { results } = discovery;
+  const { timeZone } = useViewerTime();
   const places = results.places.items;
   const events = results.events.items;
 
   const markers = useMemo<MapMarker[]>(() => {
-    const list = [...(results.placeMarkers?.items ?? []).map(placeMarker), ...(results.eventMarkers?.items ?? []).map(eventMarker)];
+    const list = [...(results.placeMarkers?.items ?? []).map(placeMarker), ...(results.eventMarkers?.items ?? []).map((e) => eventMarker(e, timeZone))];
     // Keep the selected pin on the map across refreshes, even once it falls
     // outside the new results.
     if (selected && !list.some((m) => m.id === selected.item.id)) {
-      list.push(selected.kind === "place" ? placeMarker(selected.item) : eventMarker(selected.item));
+      list.push(selected.kind === "place" ? placeMarker(selected.item) : eventMarker(selected.item, timeZone));
     }
     return list;
-  }, [results.placeMarkers, results.eventMarkers, selected]);
+  }, [results.placeMarkers, results.eventMarkers, selected, timeZone]);
 
   // A fresh search everywhere: bring its matches into view.
   const fittedFor = useRef<unknown>(null);

@@ -12,6 +12,8 @@ import { Avatar } from "@/components/ui/Avatar";
 import { FollowButton } from "@/components/profile/FollowButton";
 import { Logo } from "@/components/layout/Logo";
 import { finishOnboardingAction, saveOnboardingStepAction } from "@/server/actions/onboarding";
+import { formatInZone } from "@/lib/utils/format";
+import { useViewerTime } from "@/components/time/ViewerTime";
 
 interface Person {
   id: string;
@@ -22,7 +24,7 @@ interface Person {
 }
 
 const STEPS = ["Interests", "Home city", "Location", "People"] as const;
-const DATE = new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric" });
+const DATE: Intl.DateTimeFormatOptions = { month: "long", day: "numeric" };
 
 /**
  * Four short steps, each skippable. Finishing or skipping marks onboarding done
@@ -50,6 +52,7 @@ export function WelcomeFlow({
   const [location, setLocation] = useState<"idle" | "asking" | "granted" | "denied">("idle");
   const [pending, start] = useTransition();
   const router = useRouter();
+  const time = useViewerTime();
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   // Each step announces itself: focus moves to its heading.
@@ -141,7 +144,7 @@ export function WelcomeFlow({
             <>
               <h1 ref={headingRef} tabIndex={-1} className="text-2xl font-bold outline-none">Where&apos;s home?</h1>
               <p className="text-sm text-muted mt-1 mb-4">
-                Locals see places other locals keep for each other. You count as a local of your home city from {DATE.format(new Date(localFrom))} ({localDays} days after joining),
+                Locals see places other locals keep for each other. You count as a local of your home city from {formatInZone(localFrom, time, DATE)} ({localDays} days after joining),
                 and your home city can change once every {HOME_CITY_COOLDOWN_DAYS} days.
               </p>
               <FormField label="Home city" htmlFor="welcome-city" error={error ?? undefined}>

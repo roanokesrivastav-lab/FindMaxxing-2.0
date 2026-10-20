@@ -26,6 +26,7 @@ import { PlaceOwnerControls } from "@/components/places/PlaceOwnerControls";
 import { VisibilityNotice } from "@/components/places/VisibilityNotice";
 import { shareMetadata } from "@/lib/utils/share-metadata";
 import { neighborhoodHref } from "@/lib/utils/neighborhoods";
+import { LocalDate } from "@/components/time/LocalDate";
 
 export const dynamic = "force-dynamic";
 
@@ -196,7 +197,7 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
         {isOwner ? <PlaceOwnerControls placeId={place.id} status={place.status} visibility={place.visibility} extendedTiers={featureEnabled("reputation")} /> : null}
 
         <div className="mt-8 flex items-center justify-between text-xs text-muted">
-          <span>Added {new Date(place.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+          <span>Added <LocalDate value={place.createdAt} format={{ month: "short", day: "numeric", year: "numeric" }} /></span>
           <ReportButton targetType="place" targetId={place.id} signedIn={!!viewer} returnTo={`/places/${place.id}`} />
         </div>
       </div>

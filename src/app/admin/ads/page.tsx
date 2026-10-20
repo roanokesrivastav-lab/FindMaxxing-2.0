@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ReviewButtons } from "@/components/ads/CampaignActions";
 import { requireAdmin, ADMIN_DATE } from "../guard";
+import { LocalDate } from "@/components/time/LocalDate";
 
 export const metadata: Metadata = { title: "Sponsored cards · Admin" };
 export const dynamic = "force-dynamic";
@@ -30,7 +31,7 @@ export default async function AdReviewPage() {
               {c.body ? <p className="text-sm text-ink-2">{c.body}</p> : null}
               <p className="text-xs text-muted mt-1">
                 <Link href={c.kind === "place" ? `/places/${c.targetId}` : `/events/${c.targetId}`} className="underline underline-offset-4">{c.targetLabel ?? "Listing"}</Link>
-                {" "}· {formatPrice(c.budgetCents)} · {ADMIN_DATE.format(new Date(c.startsAt))} to {ADMIN_DATE.format(new Date(c.endsAt))}
+                {" "}· {formatPrice(c.budgetCents)} · <LocalDate value={c.startsAt} format={ADMIN_DATE} /> to <LocalDate value={c.endsAt} format={ADMIN_DATE} />
                 {" "}· {c.bounds ? "near the listing" : "anywhere"}{c.categorySlug ? ` · ${c.categorySlug}` : ""}
               </p>
               <ReviewButtons id={c.id} />

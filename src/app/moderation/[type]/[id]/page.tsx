@@ -11,6 +11,7 @@ import { BackButton } from "@/components/ui/BackButton";
 import { ModerationActions } from "@/components/moderation/ModerationActions";
 import { LocalStatusControl } from "@/components/moderation/LocalStatusControl";
 import { ACTION_LABEL, DATE_TIME, TARGET_LABEL, publicHref, reasonLabel } from "@/components/moderation/labels";
+import { LocalDate } from "@/components/time/LocalDate";
 
 export const metadata: Metadata = { title: "Review report" };
 export const dynamic = "force-dynamic";
@@ -89,8 +90,8 @@ export default async function ModerationTargetPage({ params }: { params: Promise
               {r.details ? <p className="mt-1 text-sm text-ink-2 break-words">{r.details}</p> : null}
               <p className="mt-2 text-xs text-muted">
                 {r.reporter ? <>From <Link href={`/u/${r.reporter.username}`} className="font-semibold hover:text-ink">@{r.reporter.username}</Link> · </> : "From a deleted account · "}
-                {DATE_TIME.format(new Date(r.createdAt))}
-                {r.resolvedAt ? ` · resolved ${DATE_TIME.format(new Date(r.resolvedAt))}` : ""}
+                <LocalDate value={r.createdAt} format={DATE_TIME} />
+                {r.resolvedAt ? ` · resolved $<LocalDate value={r.resolvedAt} format={DATE_TIME} />` : ""}
               </p>
             </li>
           ))}
@@ -106,7 +107,7 @@ export default async function ModerationTargetPage({ params }: { params: Promise
                 <p className="text-sm font-semibold">{ACTION_LABEL[h.action]}</p>
                 {h.reason ? <p className="text-sm text-ink-2 mt-0.5 break-words">“{h.reason}”</p> : null}
                 <p className="text-xs text-muted mt-1">
-                  {h.moderator ? `@${h.moderator.username}` : "A former moderator"} · {DATE_TIME.format(new Date(h.createdAt))}
+                  {h.moderator ? `@${h.moderator.username}` : "A former moderator"} · <LocalDate value={h.createdAt} format={DATE_TIME} />
                   {h.statusBefore !== h.statusAfter ? ` · ${h.statusBefore ?? "—"} → ${h.statusAfter ?? "—"}` : ""}
                   {h.resolvedReports ? ` · ${h.resolvedReports} report${h.resolvedReports === 1 ? "" : "s"} resolved` : ""}
                 </p>
