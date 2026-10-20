@@ -4,6 +4,122 @@
 met. Web/native release approval is withheld.** Hosted service checks and native
 execution evidence must not be replaced with stub, demo, or bundle results.
 
+## Authenticated staging follow-up — 2026-10-19
+
+Owner authorized synthetic fixtures on `ebwgdjocwusxdamojarj` and separately
+approved the exact branch-preview auth callback allowlist addition. Added only:
+`https://find-maxxing-2-0-git-tier-12a7df-roanokesrivastav-labs-projects.vercel.app/auth/callback**`.
+The dashboard confirmed six entries afterward; the previous five, Site URL,
+email-confirmation policy and Vercel deployment protection were left unchanged.
+This verifies configuration, not delivery/exchange of a confirmation email.
+
+Created three disposable admin-confirmed accounts (owner, member, moderator), two
+synthetic places (public/locals), one actual Storage image and one future event.
+The credentials were held only in the ignored task-local manifest, never printed.
+No existing account was used for writes. Native/iPhone execution was not involved.
+
+### Checks observed in the protected, signed-in browser
+
+- Member sign-in and four-step onboarding passed: interest selection, home city,
+  location opt-out, following only the fixture owner, then the interest-filtered
+  map. Both places were visible to the aged local member; the anonymous map after
+  sign-out showed only the public place.
+- Public place details loaded. The actual image element was decoded successfully
+  (`complete: true`, nonzero natural width), not merely present as an image tag.
+- Save sheet accepted a new list and confirmed the fixture place was added.
+  Later profile navigation still reported the saved place and following count.
+- Event join persisted the second attendee and reduced free capacity from nine
+  to eight; leave restored one attendee/nine free slots. On resumption the event
+  still showed one attendee, confirming the leave persisted.
+- Member sign-out and owner sign-in passed, including after the interrupted
+  upload tool call and reopening the browser.
+- Owner deletion through the **deployed application** rejected a wrong password.
+  An independent API check confirmed no deletion job existed afterward and the
+  stored image remained. Correct-password deletion redirected to `/?deleted=1`.
+  Independent service checks then verified all eight assertions: Auth absent,
+  actual Storage listing empty, both places gone, future event gone, journal
+  completed, journal paths scrubbed, billing ID absent, and old login denied.
+  This exercises the deployed server-only service key and real Auth/Storage
+  lifecycle, but not billing cancellation/refunds or injected failure recovery.
+
+### Incomplete checks and new release issue
+
+- Photo **upload through the UI is NOT verified**. The first Add Photos action
+  opened a dialog rather than a chooser. The subsequent documented chooser flow
+  was interrupted/stalled. On resumption actual Storage and photo-row inventory
+  showed only the original fixture image: no member upload had reached Supabase.
+  This is a tooling interruption, not a confirmed application upload defect.
+- The browser captured React production error **418 (text hydration mismatch)**
+  during fixture-event browsing. The page recovered and the actions above passed,
+  but the no-page-errors release criterion does not pass. Likely cause: shared
+  `src/lib/utils/format.ts` and `EventCard` format dates/times using the runtime's
+  local timezone, including client components rendered on the server. Running
+  the actual `formatEventWhen` helper on `2026-10-22T23:24:00Z` independently
+  reproduced `Thu, Oct 22 · 11:24 PM` under `TZ=UTC` versus
+  `Thu, Oct 22 · 4:24 PM` under `TZ=America/Los_Angeles`. This establishes the
+  unstable render input; the minified stack alone does not prove it is the only
+  source of error 418. Prioritize a targeted SSR/client-timezone repair with
+  cross-timezone and midnight/DST tests; do not suppress the warning as a fix.
+- These were interactive hosted checks, **not** a passing full scripted e2e
+  run. Email delivery/recovery/PKCE, photo submission, moderator UI, health JSON
+  behind preview protection, Stripe transactions, concurrency/failure injection
+  and native device/push checks remain pending. No new automation-bypass token
+  was created; no protection, confirmation requirement or feature flag disabled.
+
+### Cleanup independently verified
+
+The application deleted the fixture owner and its photo/content. The task-local
+cleanup runner removed the remaining moderator/member accounts using the
+ownership-marked manifest, Storage-before-Auth ordering and deletion RPC leases.
+All fixture passwords were removed from the manifest after account invalidation.
+Final SQL counts: **1 original Auth account, 0 Storage objects, 0 places,
+0 events, 0 moderators, 0 saved lists, 0 fixture Auth accounts**. Normal scrubbed
+deletion tombstones remain intentionally; no user-level historical records were
+purged. Only temporary test accounts/content were deleted; they are not
+recoverable through normal Auth/Storage operations and can be regenerated.
+
+No application source code, deployed revision, Production settings or billing
+configuration changed in this follow-up. **Release approval remains withheld.**
+
+## Preview deployment follow-up — 2026-10-19
+
+The owner upgraded Vercel to Pro and explicitly authorized copying the existing
+test-project connection values into this project's **Preview environment only**.
+Saved `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and
+`NEXT_PUBLIC_SITE_URL` as intentionally public Config values, and
+`SUPABASE_SERVICE_ROLE_KEY` as a non-revealable Secret. The source URL was checked
+against `ebwgdjocwusxdamojarj.supabase.co` before transfer. No key was printed in
+chat; Production settings, `main`, feature flags, Stripe and cron credentials
+were not changed.
+
+- Set the site origin to the branch alias shown by Vercel:
+  `https://find-maxxing-2-0-git-tier-12a7df-roanokesrivastav-labs-projects.vercel.app`.
+- Redeployed audited commit `e9497e2` on `tier1-owner-controls` to Preview.
+  Deployment `2e6DRJP6oKr2X9Q9cGRGmjPYppg8` reached **Ready**. The default
+  `npm run build` / Next.js Turbopack build, including TypeScript checks,
+  completed successfully on Vercel; this is new hosted build evidence, not a
+  claim that the earlier local port-binding limitation has disappeared.
+- Opened the immutable deployment URL in the signed-in browser:
+  `https://find-maxxing-2-0-ecooxnymb-roanokesrivastav-labs-projects.vercel.app`.
+  Explore rendered its map, taxonomy filters and expected empty-state UI;
+  the sign-in form rendered. The browser error log was empty for these checks.
+- Read-only SQL confirmed migration `0029` and no places, events or moderators.
+  The full browser suite requires disposable fixtures and an email-confirmation
+  path; no fixture records or application accounts were created in this follow-up.
+- Unauthenticated HTTP requests to both preview health URLs returned **302 to
+  Vercel SSO**, not application health JSON. Direct browser navigation to the
+  JSON endpoint was blocked by the browser client. **Application health status
+  is therefore not verified**, despite successful deployment/page smoke checks.
+  Deployment protection remains enabled; unattended tests require an explicitly
+  authorized protected-access method, not disabling protection implicitly.
+
+Configuration and deployment screenshots were saved locally with values masked.
+No Supabase Auth redirect allowlist changes were made. Confirmation/recovery
+email redirects, authenticated user flows, automated browser e2e, administrative
+server-key behavior, Stripe and native execution remain pending; **this is not
+release approval**. Earlier deployment/NOT RUN sections below are historical;
+this section supersedes only the deployment/configuration and smoke results.
+
 ## Hosted follow-up — 2026-10-15
 
 The owner identified `ebwgdjocwusxdamojarj` as a disposable test project with
