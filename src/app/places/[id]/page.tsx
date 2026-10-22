@@ -104,9 +104,11 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
             ) : (
               <span className="text-muted">Community contribution</span>
             )}
-            <span className="inline-flex items-center gap-1 text-muted">
-              <Bookmark size={14} /> {pluralize(place.saveCount, "save")}
-            </span>
+            {place.saveCount > 0 ? (
+              <span className="inline-flex items-center gap-1 text-muted">
+                <Bookmark size={14} /> {pluralize(place.saveCount, "save")}
+              </span>
+            ) : null}
           </div>
         </div>
 
@@ -161,9 +163,7 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
               <MapPin size={18} className="text-muted mt-0.5 shrink-0" />
               <div className="flex-1 min-w-0 text-sm">
                 <p className="font-semibold">{place.address ?? "No street address"}</p>
-                <p className="text-muted">
-                  {[place.neighborhood, place.city].filter(Boolean).join(", ")} · {place.lat.toFixed(4)}, {place.lng.toFixed(4)}
-                </p>
+                <p className="text-muted">{[place.neighborhood, place.city].filter(Boolean).join(", ")}</p>
               </div>
               <DirectionsLink kind="place" id={place.id} href={mapsUrl} className="chip">
                 <Navigation size={14} /> Directions
@@ -185,6 +185,9 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
                 <EventCard key={e.id} event={e} compact />
               ))}
             </div>
+          ) : !place.photos.length && viewer ? (
+            // The photos section above is already an empty state; don't stack a second card.
+            <p className="text-sm text-muted">No upcoming events yet.</p>
           ) : (
             <div className="card p-4 text-sm text-muted flex items-center justify-between gap-3">
               <span>No upcoming events. Be the one who starts the pickup game.</span>

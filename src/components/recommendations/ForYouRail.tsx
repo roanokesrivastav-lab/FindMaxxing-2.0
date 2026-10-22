@@ -24,7 +24,8 @@ export function ForYouRail({ places = [], events = [], title = "For you" }: { pl
       <h2 id="for-you-heading" className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted mb-2">
         <Sparkles size={14} aria-hidden /> {title}
       </h2>
-      <ul className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 list-none m-0 snap-x" aria-label={title}>
+      {/* Bleeds to the screen edge and sizes cards so the next one peeks: reads as a carousel, not a clipped card. */}
+      <ul className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 scroll-px-4 list-none m-0 snap-x" aria-label={title}>
         {cards.map((c, i) => {
           const cat = getCategory(c.category);
           return (

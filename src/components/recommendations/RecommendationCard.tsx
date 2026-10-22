@@ -48,7 +48,7 @@ export function RecommendationCard({
   };
 
   return (
-    <li ref={ref} className="snap-start shrink-0 w-56 relative">
+    <li ref={ref} className="snap-start shrink-0 w-[80%] max-w-64 relative">
       {hidden ? (
         <div className="card p-3 h-full flex flex-col items-start justify-center gap-1 text-sm" role="status">
           <span className="font-semibold">Got it.</span>

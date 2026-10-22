@@ -93,28 +93,55 @@ export function RatingControl({
     });
   };
 
+  // A big average over one or two ratings overstates it; fold it into one line.
+  const few = agg.ratingCount < 3;
+  const label = <p className="text-sm font-semibold">{mine ? "Your rating" : "Rate this place"}</p>;
+  const picker = (
+    <>
+      <StarPicker value={mine} onChange={rate} disabled={pending} size={few ? 26 : 30} />
+      <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+        <p className="text-xs text-muted">{mine ? "Tap to change" : "One rating per person. You can update it anytime."}</p>
+        {mine ? (
+          <button type="button" onClick={remove} disabled={pending} className="text-xs font-semibold text-muted hover:text-danger">
+            Remove
+          </button>
+        ) : null}
+      </div>
+    </>
+  );
+
   return (
-    <div className="card p-4">
-      <div className="flex items-center gap-4">
-        <div className="text-center shrink-0 w-16">
-          <div className="font-display text-4xl font-extrabold leading-none">{formatRating(agg.ratingAvg)}</div>
-          <StarRating value={agg.ratingAvg} size={11} className="mt-1.5" />
-          <div className="text-[11px] text-muted mt-1">{pluralize(agg.ratingCount, "rating")}</div>
+    <div className={few ? "card px-4 py-3" : "card p-4"}>
+      {few ? (
+        <div>
+          <div className="flex items-baseline justify-between gap-3">
+            {label}
+            <p className="text-xs text-muted">
+              {agg.ratingCount ? (
+                <>
+                  <b className="text-ink">{formatRating(agg.ratingAvg)}</b> from {pluralize(agg.ratingCount, "rating")}
+                </>
+              ) : (
+                "No ratings yet"
+              )}
+            </p>
+          </div>
+          {picker}
         </div>
-        <div className="h-12 w-px bg-line" aria-hidden />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold">{mine ? "Your rating" : "Rate this place"}</p>
-          <StarPicker value={mine} onChange={rate} disabled={pending} size={30} />
-          <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-            <p className="text-xs text-muted">{mine ? "Tap to change" : "One rating per person. You can update it anytime."}</p>
-            {mine ? (
-              <button type="button" onClick={remove} disabled={pending} className="text-xs font-semibold text-muted hover:text-danger">
-                Remove
-              </button>
-            ) : null}
+      ) : (
+        <div className="flex items-center gap-4">
+          <div className="text-center shrink-0 w-16">
+            <div className="font-display text-4xl font-extrabold leading-none">{formatRating(agg.ratingAvg)}</div>
+            <StarRating value={agg.ratingAvg} size={11} className="mt-1.5" />
+            <div className="text-[11px] text-muted mt-1">{pluralize(agg.ratingCount, "rating")}</div>
+          </div>
+          <div className="h-12 w-px bg-line" aria-hidden />
+          <div className="flex-1 min-w-0">
+            {label}
+            {picker}
           </div>
         </div>
-      </div>
+      )}
 
       {mine ? (
         <div className="mt-3 pt-3 border-t border-line">
