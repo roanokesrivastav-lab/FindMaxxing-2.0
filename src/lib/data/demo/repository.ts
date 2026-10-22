@@ -284,18 +284,18 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
    * window, and returns the increment to apply once the write succeeds (the
    * database's increment rolls back with a failed insert).
    */
-  const rateLimit = (userId: string, action: RateLimitAction) => {
+  const rateLimit = (userId: string, action: RateLimitAction, amount = 1) => {
     const now = Date.now();
     const start = windowStart(action, now);
     const rule = RATE_LIMITS[action];
     state.rateLimits = state.rateLimits.filter((r) => !(r.userId === userId && r.action === action && r.windowStart < start));
     const row = state.rateLimits.find((r) => r.userId === userId && r.action === action && r.windowStart === start);
-    if ((row?.count ?? 0) >= rule.max) {
+    if ((row?.count ?? 0) + amount > rule.max) {
       throw rateLimitError(action, Math.max(1, Math.ceil((start + rule.windowSeconds * 1000 - now) / 1000)));
     }
     return () => {
-      if (row) row.count += 1;
-      else state.rateLimits.push({ userId, action, windowStart: start, count: 1 });
+      if (row) row.count += amount;
+      else state.rateLimits.push({ userId, action, windowStart: start, count: amount });
     };
   };
 
@@ -1598,8 +1598,11 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
     storage: {
       async uploadImage(image, folder, ownerId) {
         assertActive(ownerId);
-        // The storage insert policy counts the main object only, not its sizes.
+        // Logical photos and physical objects both have bounded quotas.
         const counted = rateLimit(ownerId, folder === "avatars" ? "avatars" : "photos");
+        const countedObjects = folder === "places"
+          ? rateLimit(ownerId, "photo_objects", 1 + Number(!!image.variants?.md) + Number(!!image.variants?.sm))
+          : null;
         // Everything stored has been through the image pipeline, which emits WebP.
         const name = `${folder}-${ownerId.slice(0, 8)}-${newId()}.webp`;
         mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -1612,6 +1615,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         // the authorized /api/photos/[id] route.
         const url = folder === "avatars" ? `/api/uploads/${name}` : placePhotoReference(name);
         counted();
+        countedObjects?.();
         persist();
         return { url, storagePath: name };
       },

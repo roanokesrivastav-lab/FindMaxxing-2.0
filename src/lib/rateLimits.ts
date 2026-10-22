@@ -5,7 +5,7 @@
  */
 import { DataError } from "@/lib/data/types";
 
-export type RateLimitAction = "places" | "events" | "ratings" | "lists" | "reports" | "photos" | "avatars" | "analytics" | "trip_plans" | "messages" | "trip_plans_plus" | "tickets" | "ad_campaigns";
+export type RateLimitAction = "places" | "events" | "ratings" | "lists" | "reports" | "photos" | "photo_objects" | "avatars" | "analytics" | "trip_plans" | "messages" | "trip_plans_plus" | "tickets" | "ad_campaigns";
 
 export interface RateLimitRule {
   max: number;
@@ -24,6 +24,7 @@ export const RATE_LIMITS: Record<RateLimitAction, RateLimitRule> = {
   lists: { max: 30, windowSeconds: DAY, label: "lists" },
   reports: { max: 30, windowSeconds: DAY, label: "reports" },
   photos: { max: 60, windowSeconds: HOUR, label: "photo uploads" },
+  photo_objects: { max: 180, windowSeconds: HOUR, label: "photo objects" },
   avatars: { max: 20, windowSeconds: HOUR, label: "avatar uploads" },
   analytics: { max: 600, windowSeconds: HOUR, label: "analytics events" },
   trip_plans: { max: 10, windowSeconds: DAY, label: "trip plans" },
