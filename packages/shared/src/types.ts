@@ -603,6 +603,30 @@ export interface RecommendOptions {
   limit?: number;
 }
 
+/** The private per-user interaction log (0031_user_interactions.sql). */
+export const INTERACTION_ACTIONS = ["impression", "view", "save", "unsave", "rate", "directions", "share", "join", "leave", "hide"] as const;
+export type InteractionAction = (typeof INTERACTION_ACTIONS)[number];
+export const INTERACTION_SURFACES = ["for_you", "list", "map", "search", "detail", "saved", "profile"] as const;
+export type InteractionSurface = (typeof INTERACTION_SURFACES)[number];
+/** Most rows one log call (one insert statement) may carry. */
+export const MAX_INTERACTION_BATCH = 100;
+
+export interface InteractionInput {
+  itemType: "place" | "event";
+  itemId: string;
+  action: InteractionAction;
+  surface?: InteractionSurface | null;
+  /** Zero-based position in the list the item was shown in. */
+  position?: number | null;
+  /** The score, for "rate" only (1–5). */
+  value?: number | null;
+}
+
+export interface UserInteraction extends Required<InteractionInput> {
+  id: number;
+  createdAt: string;
+}
+
 /** Thrown by repositories for expected, user-facing failures. */
 // ----------------------------------------------------------------------------
 // Messaging

@@ -1,6 +1,7 @@
 "use server";
 
 import { track } from "@/server/analytics";
+import { recordInteractions } from "@/server/interactions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getRepository } from "@/lib/data";
@@ -142,6 +143,8 @@ export async function toggleSaveAction(placeId: string, save: boolean): Promise<
     if (save) await repo.places.save(viewer.id, id.data);
     else await repo.places.unsave(viewer.id, id.data);
     if (save) await track("save_place", { placeId: id.data });
+    // The save and rate controls live on the place page.
+    await recordInteractions([{ itemType: "place", itemId: id.data, action: save ? "save" : "unsave", surface: "detail" }]);
     revalidatePath(`/places/${id.data}`);
     // Unsaving also takes the place out of every list page under /saved.
     revalidatePath("/saved", "layout");
@@ -162,6 +165,7 @@ export async function ratePlaceAction(
     const repo = await getRepository();
     const agg = await repo.places.rate(viewer.id, parsed.data.placeId, parsed.data.score, parsed.data.note);
     await track("rate_place", { placeId: parsed.data.placeId, score: parsed.data.score });
+    await recordInteractions([{ itemType: "place", itemId: parsed.data.placeId, action: "rate", value: parsed.data.score, surface: "detail" }]);
     revalidatePath(`/places/${parsed.data.placeId}`);
     revalidatePath("/");
     return succeed({ ...agg, score: parsed.data.score });

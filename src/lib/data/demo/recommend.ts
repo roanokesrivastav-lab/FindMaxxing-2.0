@@ -1,12 +1,15 @@
 /**
- * Demo twin of recommend_places / recommend_events (0018_recommendations.sql):
- * the same candidates, signals, weights, diversity terms, rounding and order.
+ * Demo twin of recommend_places / recommend_events (0018_recommendations.sql,
+ * as redefined in 0031_user_interactions.sql to leave out what the viewer
+ * marked Not interested): the same candidates, signals, weights, diversity
+ * terms, rounding and order.
  * Visibility comes from the repository's canViewPlace / canViewEvent, the
  * mirrors of the row policies the SQL runs under.
  */
 import type { DemoState, EventRow, PlaceRow } from "./store";
 import type { RecommendationReason } from "../types";
 import { discoveryDistance } from "../discovery";
+import { hiddenItems } from "./interactions";
 
 type Signal = { w: number; kind: string; text: string; ref: string | null };
 const C = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
@@ -46,10 +49,11 @@ export function recommendDemoPlaces(
   const joinedCats = new Set(
     state.eventAttendees.filter((a) => a.userId === viewerId).map((a) => state.events.find((e) => e.id === a.eventId)?.categorySlug).filter(Boolean),
   );
+  const hidden = hiddenItems(state, viewerId, "place");
   const out: { place: PlaceRow; score: number; reason: RecommendationReason }[] = [];
   for (const p of state.places) {
     if (p.status !== "published" || p.creatorId === viewerId || !canView(p)) continue;
-    if (saved.some((s) => s.placeId === p.id) || rated.some((r) => r.placeId === p.id)) continue;
+    if (saved.some((s) => s.placeId === p.id) || rated.some((r) => r.placeId === p.id) || hidden.has(p.id)) continue;
     const signals: Signal[] = [];
     if (p.creatorId && following.has(p.creatorId)) {
       const u = following.get(p.creatorId)!;
@@ -93,6 +97,7 @@ export function recommendDemoEvents(
     state.follows.filter((f) => f.followerId === viewerId).map((f) => [f.followingId, state.profiles.find((p) => p.id === f.followingId)?.username ?? ""]),
   );
   const joined = new Set(state.eventAttendees.filter((a) => a.userId === viewerId).map((a) => a.eventId));
+  const hidden = hiddenItems(state, viewerId, "event");
   // Most common weekday (Columbus time) of events joined but not hosted; ties go to the earliest weekday.
   const dayCounts = new Map<number, number>();
   for (const e of state.events) {
@@ -103,7 +108,7 @@ export function recommendDemoEvents(
   const usual = [...dayCounts.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0] ?? null;
   const out: { event: EventRow; score: number; reason: RecommendationReason }[] = [];
   for (const e of state.events) {
-    if (e.status !== "published" || e.creatorId === viewerId || joined.has(e.id) || !canView(e)) continue;
+    if (e.status !== "published" || e.creatorId === viewerId || joined.has(e.id) || hidden.has(e.id) || !canView(e)) continue;
     if (new Date(e.endsAt ?? e.startsAt).getTime() < now - 3600_000) continue;
     const signals: Signal[] = [];
     if (e.placeId && saved.has(e.placeId)) {

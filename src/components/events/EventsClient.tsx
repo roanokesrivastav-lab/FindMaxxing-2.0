@@ -10,6 +10,7 @@ import { LoadMoreButton, PagedError, usePagedList } from "@/components/shared/Pa
 import { eventHasEnded, formatInZone, relativeDayLabel } from "@/lib/utils/format";
 import { startOfNextDay } from "@/lib/utils/timezone";
 import { useViewerTime, type ViewerTime } from "@/components/time/ViewerTime";
+import { Impression } from "@/components/interactions/Impression";
 
 type When = "all" | "today" | "week" | "mine" | "past";
 type Feed = { when: "all" | "today" | "week"; startsBefore: string | null };
@@ -28,12 +29,15 @@ export function EventsClient({
   initial,
   joined,
   signedIn,
+  logImpressions = false,
 }: {
   /** First page of the unfiltered upcoming feed. */
   initial: Page<Event>;
   /** Every event the viewer joined, past and upcoming, by start time. */
   joined: Event[];
   signedIn: boolean;
+  /** Record which feed cards the viewer saw, with their position (signed in, recommendations on). */
+  logImpressions?: boolean;
 }) {
   const time = useViewerTime();
   const [category, setCategory] = useState<string | null>(null);
@@ -82,6 +86,7 @@ export function EventsClient({
   }, [shown, when, time]);
 
   const feedShown = own === null;
+  const positions = useMemo(() => new Map(shown.map((e, i) => [e.id, i])), [shown]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -140,7 +145,9 @@ export function EventsClient({
               <h2 className="text-xs font-bold uppercase tracking-wider text-muted mb-2">{label}</h2>
               <div className="flex flex-col gap-2">
                 {rows.map((e) => (
-                  <EventCard key={e.id} event={e} />
+                  <Impression key={e.id} impression={logImpressions && feedShown ? { itemType: "event", itemId: e.id, surface: "list", position: positions.get(e.id) ?? null } : null}>
+                    <EventCard event={e} />
+                  </Impression>
                 ))}
               </div>
             </section>

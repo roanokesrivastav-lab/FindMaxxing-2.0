@@ -84,6 +84,7 @@ The beta's go/no-go list, with the command and current status of each gate, is `
    - `supabase/migrations/0017_admin.sql` — admins above moderators, suspension (every write refused in the database), audited moderator grants and taxonomy edits, paged admin reads
    - `supabase/migrations/0018_recommendations.sql` — rule-based, explained "For you" recommendations for places and events, computed under RLS
    - `supabase/migrations/0019_trip_planning.sql` — the daily limit on AI trip plans
+   - `supabase/migrations/0031_user_interactions.sql` — the private per-user interaction log (impressions, views, saves, ratings, joins, Not interested) for future personalization
    - `supabase/migrations/0016_reputation.sql` — contributor reputation (cached levels, moderator reset) and the trusted-locals and followers visibility tiers
    - `supabase/migrations/0025_seed_taxonomy.sql` — required categories and interests, without demo accounts or content
    - `supabase/seed.sql` — optional fictional demo data (generated from `src/lib/seed/seed-data.ts` via `npm run seed:sql`; **do not use the demo users in production**)
@@ -644,6 +645,23 @@ rule-based reason texts (which can name people you follow) are not sent. The ans
 nothing: unknown or repeated ids are dropped, missing ones keep their rule order, and a timeout, API
 error, refusal or unparsable answer falls back to the rule-based order. Only mocked in tests (no key
 was available); see the owner checklist.
+
+**Not interested and the interaction log** (`0031_user_interactions.sql`). Every "For you" card has
+a Not interested button (with undo); the item is then left out of `recommend_places()` /
+`recommend_events()` and the demo twin. With the flag on, signed-in people's interactions go into
+`user_interactions`, for the personalized recommender that comes later (item-item CF, embeddings, a
+learned ranker): impressions of For you cards, list and search results and tapped map pins, with the
+surface and the zero-based position (batched in the browser, sent after a second at half visibility,
+never blocking the page), plus detail views, saves, unsaves, ratings, joins, leaves, shares and
+directions, written after the response is sent. Unlike `analytics_events` (which stays pseudonymous
+and untouched), this is personal data, so: a person can insert, read and delete only their own rows
+(RLS; no admin read), only for items they can see; DNT, GPC and the analytics opt-out stop it (a
+Not interested is still kept, being an explicit choice); suspended or closing accounts cannot write;
+one rate-limit tick per batch of up to 100 rows. Deleting the account deletes the rows, and deleting
+a place or event deletes everyone's rows about it. Training reads go through the service-role-only
+`interaction_item_stats()`, which returns per-item counts, never who did what;
+`purge_user_interactions()` (service role, run by the daily `/api/cron/purge-analytics`) drops
+impressions and views after a year.
 
 ## AI trip planning ("Plan my day")
 

@@ -4,10 +4,13 @@
  * places, events, photos, ratings, saves, lists, follows and attendance;
  * reports they filed stay with the reporter cleared; moderation history they
  * wrote stays with the moderator cleared. Their messages, chat memberships and
- * blocks go; the chats of their events go with the events.
+ * blocks go; the chats of their events go with the events. Their interaction
+ * log goes, and so does everyone's history of the places and events they made
+ * (0031_user_interactions.sql).
  */
 import { recomputeRating, type StoreHandle } from "./store";
 import { deleteMessagingFor, dropEventChats } from "./messaging";
+import { forgetItemInteractions } from "./interactions";
 
 export interface DeletedObjects {
   /** Place photo storage paths (each with its stored sizes) to remove. */
@@ -85,6 +88,10 @@ export function deleteDemoAccount(handle: StoreHandle, userId: string): DeletedO
   state.localRevocations = state.localRevocations.filter((r) => r.userId !== userId);
   for (const r of state.localRevocations) if (r.revokedBy === userId) r.revokedBy = null;
   state.rateLimits = state.rateLimits.filter((r) => r.userId !== userId);
+  // Their interaction history goes, and everyone's history of their places and events.
+  state.userInteractions = state.userInteractions.filter((i) => i.userId !== userId);
+  forgetItemInteractions(state, "place", ownPlaces);
+  forgetItemInteractions(state, "event", ownEvents);
 
   state.profileInterests = state.profileInterests.filter((i) => i.profileId !== userId);
   state.profiles = state.profiles.filter((p) => p.id !== userId);

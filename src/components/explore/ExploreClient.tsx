@@ -17,6 +17,7 @@ import { EventCard } from "@/components/events/EventCard";
 import { SponsoredSlot } from "@/components/ads/SponsoredSlot";
 import { AD_POSITION } from "@/lib/data/ads";
 import { PreviewCard } from "./PreviewCard";
+import { Impression, type ImpressionData } from "@/components/interactions/Impression";
 import { boundsFromPoints, distanceMeters } from "@/lib/utils/geo";
 import { sameBounds } from "@/lib/map/bounds";
 import { useDiscovery } from "./useDiscovery";
@@ -34,7 +35,8 @@ const DEFAULT_FOLDS = { events: true, places: true, panel: true };
 type Kind = DiscoveryRequest["kind"];
 /** Events shown in the mixed list before handing off to /events. */
 const EVENTS_PREVIEW = 4;
-type Selected = { kind: "place"; item: Place } | { kind: "event"; item: Event } | null;
+/** fromMap: opened by tapping a pin (not by hovering a list card), which counts as a map impression. */
+type Selected = (({ kind: "place"; item: Place } | { kind: "event"; item: Event }) & { fromMap?: boolean }) | null;
 
 export interface ExploreViewer {
   displayName: string;
@@ -49,6 +51,7 @@ export function ExploreClient({
   welcome = false,
   forYou = null,
   ads = false,
+  logImpressions = false,
 }: {
   initial: DiscoveryResults;
   initialRequest: DiscoveryRequest;
@@ -59,6 +62,8 @@ export function ExploreClient({
   forYou?: React.ReactNode;
   /** Sponsored cards (ads flag on, viewer not on Plus): one per list, labeled, never in place of a result. */
   ads?: boolean;
+  /** Record which results the viewer saw, with their position (signed in, recommendations on). */
+  logImpressions?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
@@ -120,6 +125,8 @@ export function ExploreClient({
   const { timeZone } = useViewerTime();
   const places = results.places.items;
   const events = results.events.items;
+  const seen = (itemType: "place" | "event", itemId: string, surface: "list" | "search" | "map", position: number | null): ImpressionData | null =>
+    logImpressions ? { itemType, itemId, surface, position } : null;
 
   const markers = useMemo<MapMarker[]>(() => {
     const list = [...(results.placeMarkers?.items ?? []).map(placeMarker), ...(results.eventMarkers?.items ?? []).map((e) => eventMarker(e, timeZone))];
@@ -158,14 +165,14 @@ export function ExploreClient({
     mapRef.current?.flyTo({ lat: m.lat, lng: m.lng }, Math.max(view.zoom, 14));
     const loaded = m.kind === "place" ? places.find((p) => p.id === m.id) : events.find((e) => e.id === m.id);
     if (loaded) {
-      setSelected(m.kind === "place" ? { kind: "place", item: loaded as Place } : { kind: "event", item: loaded as Event });
+      setSelected(m.kind === "place" ? { kind: "place", item: loaded as Place, fromMap: true } : { kind: "event", item: loaded as Event, fromMap: true });
       return;
     }
     try {
       const res = await fetch(`/api/discover/item?kind=${m.kind}&id=${m.id}`);
       if (!res.ok || lastClick.current !== m.id) return;
       const item = await res.json();
-      setSelected(m.kind === "place" ? { kind: "place", item: item as Place } : { kind: "event", item: item as Event });
+      setSelected(m.kind === "place" ? { kind: "place", item: item as Place, fromMap: true } : { kind: "event", item: item as Event, fromMap: true });
     } catch {
       // The pin stays highlighted-free; the viewer can tap again.
     }
@@ -330,7 +337,9 @@ export function ExploreClient({
         {selected ? (
           <div className={cn("absolute inset-x-0 z-30 px-4 md:right-4", panelOpen ? "md:left-[420px]" : "md:left-4")} style={{ bottom: "calc(var(--nav-height) + var(--safe-bottom) + 5.25rem)" }}>
             <div className="max-w-md mx-auto md:mx-0">
-              <PreviewCard selected={selected} onClose={() => setSelected(null)} distanceMeters={geo.location ? distanceMeters(geo.location, selected.item) : null} />
+              <Impression impression={selected.fromMap ? seen(selected.kind, selected.item.id, "map", null) : null}>
+                <PreviewCard selected={selected} onClose={() => setSelected(null)} distanceMeters={geo.location ? distanceMeters(geo.location, selected.item) : null} />
+              </Impression>
             </div>
           </div>
         ) : null}
@@ -424,7 +433,9 @@ export function ExploreClient({
                   <>
                     {(kind === "events" ? events : events.slice(0, EVENTS_PREVIEW)).map((e, i, shown) => (
                       <Fragment key={e.id}>
-                        <EventCard event={e} compact onHover={() => setSelected({ kind: "event", item: e })} />
+                        <Impression impression={seen("event", e.id, searching ? "search" : "list", i)}>
+                          <EventCard event={e} compact onHover={() => setSelected({ kind: "event", item: e })} />
+                        </Impression>
                         {ads && i === Math.min(AD_POSITION.events, shown.length) - 1 ? <SponsoredSlot slot="events" bounds={request.bounds} category={category} /> : null}
                       </Fragment>
                     ))}
@@ -467,7 +478,9 @@ export function ExploreClient({
                   <>
                     {places.map((p, i) => (
                       <Fragment key={p.id}>
-                        <PlaceCard place={p} compact distanceMeters={geo.location ? distanceMeters(geo.location, p) : null} onHover={() => setSelected({ kind: "place", item: p })} />
+                        <Impression impression={seen("place", p.id, searching ? "search" : "list", i)}>
+                          <PlaceCard place={p} compact distanceMeters={geo.location ? distanceMeters(geo.location, p) : null} onHover={() => setSelected({ kind: "place", item: p })} />
+                        </Impression>
                         {ads && i === Math.min(AD_POSITION.places, places.length) - 1 ? <SponsoredSlot slot="places" bounds={request.bounds} category={category} /> : null}
                       </Fragment>
                     ))}

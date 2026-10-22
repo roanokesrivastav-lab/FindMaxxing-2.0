@@ -8,7 +8,7 @@ import { forwardEvent, forwardingEnabled } from "@/lib/analytics/forward";
 import { reportError } from "@/lib/observability";
 
 /** Do Not Track or Global Privacy Control on this request. */
-async function browserSaysNo(): Promise<boolean> {
+export async function browserSaysNo(): Promise<boolean> {
   try {
     const h = await headers();
     return h.get("dnt") === "1" || h.get("sec-gpc") === "1";

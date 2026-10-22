@@ -42,6 +42,7 @@ export default async function ExplorePage({ searchParams }: PageProps<"/">) {
       initialRequest={request}
       welcome={sp.welcome === "1" && !!viewer}
       forYou={<ForYouRail places={forYou} />}
+      logImpressions={!!viewer && featureEnabled("recommendations")}
       ads={featureEnabled("ads") && !(viewer && (await repo.payments.isPlus(viewer.id)))}
       viewer={viewer ? { displayName: viewer.profile.displayName, avatarUrl: viewer.profile.avatarUrl, interests: viewer.profile.interests } : null}
     />

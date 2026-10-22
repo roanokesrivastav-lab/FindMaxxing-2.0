@@ -28,6 +28,7 @@ import { recommendDemoEvents, recommendDemoPlaces } from "./recommend";
 import { createDemoMessaging, dropEventChats, joinEventChat, leaveEventChat } from "./messaging";
 import { createDemoNotifications, notifyOn } from "./notifications";
 import { createDemoAds } from "./ads";
+import { createDemoInteractions, forgetItemInteractions } from "./interactions";
 import { createDemoPayments, isPlusIn, needsTicket, refundOnCancel } from "./payments";
 import { PLUS_LIST_CAP, paymentsError } from "../payments";
 import { LIST_LIMIT_ERROR, MAX_SAVED_LISTS, duplicateListName, listNameKey, normalizeListName } from "../savedLists";
@@ -564,6 +565,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         state.placeRatings = state.placeRatings.filter((r) => r.placeId !== id);
         state.savedPlaces = state.savedPlaces.filter((s) => s.placeId !== id);
         removeListItems((i) => i.placeId === id);
+        forgetItemInteractions(state, "place", new Set([id]));
         // Match ON DELETE SET NULL for linked events while preserving their snapshot location fields.
         for (const event of state.events) if (event.placeId === id) event.placeId = null;
         persist();
@@ -859,6 +861,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         state.eventTags = state.eventTags.filter((t) => t.eventId !== id);
         state.eventAttendees = state.eventAttendees.filter((a) => a.eventId !== id);
         dropEventChats(state, new Set([id]));
+        forgetItemInteractions(state, "event", new Set([id]));
         for (const t of state.tickets) if (t.eventId === id) t.eventId = null;
         persist();
       },
@@ -1534,6 +1537,11 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
     notifications: createDemoNotifications(state, { persist, summary: (id) => profileOf(state, id) }),
 
     ads: createDemoAds(state, { persist, assertActive, rateLimit, isAdmin }),
+    interactions: createDemoInteractions(state, {
+      persist, assertActive, rateLimit,
+      canViewPlace: (p, viewerId) => canViewPlace(state, p, viewerId),
+      canViewEvent: (e, viewerId) => canViewEvent(state, e, viewerId),
+    }),
 
     payments: createDemoPayments(state, { persist, assertActive, rateLimit, canViewEvent: (event, viewerId) => canViewEvent(state, event, viewerId) }),
 

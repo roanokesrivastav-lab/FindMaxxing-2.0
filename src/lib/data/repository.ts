@@ -48,6 +48,8 @@ import type {
   AnalyticsEventName,
   Recommendation,
   RecommendOptions,
+  InteractionInput,
+  UserInteraction,
   AdminContentItem,
   AdminHistoryEntry,
   AdminUser,
@@ -275,6 +277,25 @@ export interface DataRepository {
     places(viewerId: string, opts?: RecommendOptions): Promise<Recommendation<Place>[]>;
     /** `now` pins the clock (tests); defaults to the current time. */
     events(viewerId: string, opts?: RecommendOptions & { now?: string }): Promise<Recommendation<Event>[]>;
+  };
+  /**
+   * The private per-user interaction log (0031_user_interactions.sql): what a
+   * future personalized recommender trains on. Only the person's own rows are
+   * ever written or read here; nobody else's, admins included.
+   */
+  interactions: {
+    /**
+     * Appends rows for the user (at most MAX_INTERACTION_BATCH; one rate-limit
+     * tick per call). Refused as forbidden when an item is not visible to the
+     * user, or (except "hide") when they opted out of analytics.
+     */
+    log(userId: string, rows: InteractionInput[]): Promise<void>;
+    /** The user's own history, newest first. */
+    list(userId: string, opts?: { limit?: number }): Promise<UserInteraction[]>;
+    /** Undoes Not interested: deletes the user's hide rows for the item. */
+    unhide(userId: string, item: { itemType: "place" | "event"; itemId: string }): Promise<void>;
+    /** Deletes the user's whole history; returns how many rows went. */
+    clear(userId: string): Promise<number>;
   };
   /**
    * Direct messages and event group chats (0020_messaging.sql). Only members
