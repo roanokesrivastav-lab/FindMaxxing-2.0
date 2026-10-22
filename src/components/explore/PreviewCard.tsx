@@ -9,6 +9,7 @@ import { useViewerTime } from "@/components/time/ViewerTime";
 import { formatDistance } from "@/lib/utils/geo";
 import { PlaceCover } from "@/components/places/PlaceCover";
 import { KindBadge } from "@/components/ui/Badge";
+import { CategoryIcon } from "@/components/ui/TaxonomyIcon";
 
 type Selected = { kind: "place"; item: Place } | { kind: "event"; item: Event };
 
@@ -21,10 +22,10 @@ export function PreviewCard({ selected, onClose, distanceMeters }: { selected: S
     <div className="card overflow-hidden animate-rise shadow-float flex" role="dialog" aria-label={selected.kind === "place" ? selected.item.name : selected.item.title}>
       <Link href={href} className="w-24 shrink-0 relative">
         {selected.kind === "place" ? (
-          <PlaceCover photoUrl={selected.item.photos[0]?.url} categorySlug={selected.item.categorySlug} name={selected.item.name} emojiSize={30} layout="thumb" />
+          <PlaceCover photoUrl={selected.item.photos[0]?.url} categorySlug={selected.item.categorySlug} name={selected.item.name} layout="thumb" />
         ) : (
           <div className="h-full w-full bg-pulse-50 flex flex-col items-center justify-center text-pulse">
-            <span className="text-2xl">{c.emoji}</span>
+            <CategoryIcon slug={selected.item.categorySlug} size={24} strokeWidth={1.75} />
             <span className="text-[11px] font-bold mt-1">{relativeDayLabel(selected.item.startsAt, time)}</span>
           </div>
         )}

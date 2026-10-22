@@ -112,7 +112,7 @@ export function SavedClient({ places, listId }: { places: Place[]; listId?: stri
         </div>
       ) : (
         <EmptyState
-          emoji="🔍"
+          icon={Search}
           title={`No saved places match “${query}”`}
           body="Try a shorter search, or clear it to see everything you've saved."
           action={

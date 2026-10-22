@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { Flag, Inbox } from "lucide-react";
+import { Flag, Inbox, CircleCheck, Bird } from "lucide-react";
 import { requireViewer } from "@/lib/auth/server";
 import { getRepository } from "@/lib/data";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -49,7 +49,7 @@ export default async function ReportsPage() {
           </>
         ) : (
           <EmptyState
-            emoji="✅"
+            icon={CircleCheck}
             title="Nothing reported"
             body="No one has flagged a place or event you added."
           />
@@ -65,7 +65,7 @@ export default async function ReportsPage() {
           <ReportList entries={filed} perspective="reporter" />
         ) : (
           <EmptyState
-            emoji="🕊️"
+            icon={Bird}
             title="You haven't reported anything"
             body="Use the report link on a place or event if something is wrong, closed, or unsafe."
             action={

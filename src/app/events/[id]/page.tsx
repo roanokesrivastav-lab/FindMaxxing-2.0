@@ -8,7 +8,7 @@ import { featureEnabled, paymentsMode } from "@/lib/config";
 import { TicketButton } from "@/components/payments/TicketButton";
 import { EventPricing } from "@/components/payments/EventPricing";
 import { formatPrice } from "@/lib/data/payments";
-import { getCategory, getInterest } from "@/lib/data/taxonomy";
+import { getInterest } from "@/lib/data/taxonomy";
 import { JoinButton } from "@/components/events/JoinButton";
 import { ReportButton } from "@/components/shared/ReportButton";
 import { Avatar } from "@/components/ui/Avatar";
@@ -23,6 +23,7 @@ import { OwnerActions } from "@/components/shared/OwnerActions";
 import { shareMetadata } from "@/lib/utils/share-metadata";
 import { DEFAULT_TIME_ZONE } from "@/lib/utils/timezone";
 import { getViewerTime } from "@/lib/time/server";
+import { InterestIcon } from "@/components/ui/TaxonomyIcon";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +47,6 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
   const [{ id }, sp, viewer, repo, time] = await Promise.all([params, searchParams, getViewer(), getRepository(), getViewerTime()]);
   const event = await repo.events.get(id, viewer?.id ?? null);
   if (!event) notFound();
-  const category = getCategory(event.categorySlug);
   const ended = eventHasEnded(event.startsAt, event.endsAt, time.now);
   const cancelled = event.status === "cancelled";
   const full = event.capacity !== null && event.attendeeCount >= event.capacity;
@@ -81,9 +81,6 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
           </div>
           <div className="mt-8 flex items-center gap-2">
             <CategoryBadge slug={event.categorySlug} tone="solid" className="bg-white/20" />
-            <span className="text-3xl" aria-hidden>
-              {category.emoji}
-            </span>
           </div>
           <h1 className="mt-2 text-3xl md:text-4xl font-bold leading-tight">{event.title}</h1>
           <div className="mt-4 flex flex-col gap-1.5 text-white/90 text-[15px]">
@@ -152,7 +149,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
                 const i = getInterest(t);
                 return (
                   <Link key={t} href={`/tags/${t}`} className="chip h-8 text-xs" title={`Browse ${i.label}`}>
-                    <span aria-hidden>{i.emoji}</span> {i.label}
+                    <InterestIcon slug={i.slug} /> {i.label}
                   </Link>
                 );
               })}
@@ -195,7 +192,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
           <h2 className="text-lg font-bold mb-2">Meeting point</h2>
           <div className="card overflow-hidden">
             <div className="h-44">
-              <MiniMap lat={event.lat} lng={event.lng} color="#6b4cff" emoji={category.emoji} label={event.title} kind="event" />
+              <MiniMap lat={event.lat} lng={event.lng} color="#6b4cff" categorySlug={event.categorySlug} label={event.title} kind="event" />
             </div>
             <div className="p-4 flex items-start gap-3">
               <MapPin size={18} className="text-muted mt-0.5 shrink-0" />

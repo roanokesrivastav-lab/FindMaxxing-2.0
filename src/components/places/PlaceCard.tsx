@@ -7,6 +7,7 @@ import { formatRating } from "@/lib/utils/format";
 import { formatDistance } from "@/lib/utils/geo";
 import { cn } from "@/lib/utils/cn";
 import { PlaceCover } from "./PlaceCover";
+import { CategoryIcon } from "@/components/ui/TaxonomyIcon";
 
 export function PlaceCard({
   place,
@@ -29,11 +30,11 @@ export function PlaceCard({
       className={cn("card overflow-hidden flex hover:shadow-float transition-shadow group", compact ? "h-[104px]" : "flex-col", className)}
     >
       <div className={cn("relative shrink-0 overflow-hidden", compact ? "w-[104px]" : "aspect-[16/10]")}>
-        <PlaceCover photoUrl={place.photos[0]?.url} categorySlug={place.categorySlug} name={place.name} emojiSize={compact ? 30 : 44} layout={compact ? "thumb" : "card"} />
+        <PlaceCover photoUrl={place.photos[0]?.url} categorySlug={place.categorySlug} name={place.name} layout={compact ? "thumb" : "card"} />
       </div>
       <div className={cn("min-w-0 flex-1 flex flex-col", compact ? "p-3 justify-center gap-1" : "p-4 gap-1.5")}>
         <div className="flex items-center gap-2 text-xs font-semibold" style={{ color: readableInk(c.color) }}>
-          <span>{c.emoji}</span>
+          <CategoryIcon slug={c.slug} size={13} className="shrink-0" />
           <span className="truncate">{c.label}</span>
           {place.neighborhood ? (
             <>

@@ -13,6 +13,7 @@ import { zonedTimeToUtc } from "@/lib/utils/timezone";
 import { useViewerTime } from "@/components/time/ViewerTime";
 import { savePlanAsListAction } from "@/server/actions/trips";
 import type { PlanEvent, TripPlan } from "@/server/trips/planner";
+import { InterestIcon } from "@/components/ui/TaxonomyIcon";
 
 /** Ask for a plan, watch it come together, then save it as a list or turn stops into events. */
 export function TripPlanner({ defaultInterests, start }: { defaultInterests: string[]; start: { lat: number; lng: number; label: string } }) {
@@ -101,7 +102,7 @@ export function TripPlanner({ defaultInterests, start }: { defaultInterests: str
         <div role="group" aria-label="Interests" className="flex flex-wrap gap-2">
           {INTERESTS.map((i) => (
             <Chip key={i.slug} active={interests.includes(i.slug)} onClick={() => setInterests((s) => (s.includes(i.slug) ? s.filter((x) => x !== i.slug) : s.length >= 8 ? s : [...s, i.slug]))}>
-              <span aria-hidden>{i.emoji}</span> {i.label}
+              <InterestIcon slug={i.slug} /> {i.label}
             </Chip>
           ))}
         </div>

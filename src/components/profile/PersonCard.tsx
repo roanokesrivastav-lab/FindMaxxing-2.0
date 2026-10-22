@@ -3,6 +3,7 @@ import type { Profile } from "@/lib/data/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { getInterest } from "@/lib/data/taxonomy";
 import type { ReactNode } from "react";
+import { InterestIcon } from "@/components/ui/TaxonomyIcon";
 
 export function PersonCard({ profile, action, sharedInterests }: { profile: Profile; action?: ReactNode; sharedInterests?: string[] }) {
   const shown = (sharedInterests?.length ? sharedInterests : profile.interests).slice(0, 3);
@@ -21,8 +22,8 @@ export function PersonCard({ profile, action, sharedInterests }: { profile: Prof
             {shown.map((i) => {
               const it = getInterest(i);
               return (
-                <span key={i} className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-semibold text-ink-2">
-                  {it.emoji} {it.label}
+                <span key={i} className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-semibold text-ink-2">
+                  <InterestIcon slug={it.slug} size={12} /> {it.label}
                 </span>
               );
             })}

@@ -9,6 +9,7 @@ import type { TicketStatus } from "@/lib/data/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LocalDate } from "@/components/time/LocalDate";
+import { Ticket } from "lucide-react";
 
 export const metadata: Metadata = { title: "Tickets" };
 export const dynamic = "force-dynamic";
@@ -29,7 +30,7 @@ export default async function TicketsPage() {
     <div className="max-w-2xl mx-auto px-4 md:px-6 pt-4 md:pt-8 pb-nav md:pb-10">
       <PageHeader eyebrow="You" title="Tickets" />
       {tickets.length === 0 ? (
-        <EmptyState emoji="🎟️" title="No tickets yet" body="Tickets you buy for events show up here." />
+        <EmptyState icon={Ticket} title="No tickets yet" body="Tickets you buy for events show up here." />
       ) : (
         <ul className="card divide-y divide-line" aria-label="Tickets">
           {tickets.map((t) => (

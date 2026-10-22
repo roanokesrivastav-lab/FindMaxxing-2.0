@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ButtonLink } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Logo } from "@/components/layout/Logo";
+import { Hand } from "lucide-react";
 
 export const metadata: Metadata = { title: "Profile" };
 export const dynamic = "force-dynamic";
@@ -21,7 +22,7 @@ export default async function MyProfilePage() {
         </div>
         <PageHeader eyebrow="You" title="Your profile" />
         <EmptyState
-          emoji="👋"
+          icon={Hand}
           title="Join FindMaxxing"
           body="Save places, add local knowledge, host events and follow people who are into the same things."
           action={

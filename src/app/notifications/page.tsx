@@ -32,7 +32,7 @@ export default async function NotificationsPage() {
         action={<Link href="/profile/settings#notifications" className="chip"><Settings size={14} /> Settings</Link>}
       />
       {page.items.length === 0 ? (
-        <EmptyState emoji="🔔" title="Nothing yet" body="You'll hear here when people follow you, join your events, or message you." />
+        <EmptyState icon={Bell} title="Nothing yet" body="You'll hear here when people follow you, join your events, or message you." />
       ) : (
         <ul className="card divide-y divide-line overflow-hidden" aria-label="Notifications">
           {page.items.map((n) => {

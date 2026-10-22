@@ -9,6 +9,7 @@ import { ActivityTabs } from "./ActivityTabs";
 import { SignOutButton } from "@/components/auth/SignOutButton";
 import { BlockButton, MessageButton } from "@/components/messages/MessageButtons";
 import { LocalDate } from "@/components/time/LocalDate";
+import { InterestIcon } from "@/components/ui/TaxonomyIcon";
 
 const REMOVED_DATE: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric" };
 
@@ -104,10 +105,10 @@ export function ProfileView({
                 <Link
                   key={slug}
                   href={`/tags/${slug}`}
-                  className="rounded-full bg-surface-2 px-2.5 py-1 text-xs font-semibold text-ink-2 hover:bg-line transition-colors"
+                  className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2.5 py-1 text-xs font-semibold text-ink-2 hover:bg-line transition-colors"
                   title={`Browse ${i.label}`}
                 >
-                  {i.emoji} {i.label}
+                  <InterestIcon slug={i.slug} size={13} /> {i.label}
                 </Link>
               );
             })}

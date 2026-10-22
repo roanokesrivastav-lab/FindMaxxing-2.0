@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { ShieldCheck } from "lucide-react";
+import { ShieldCheck, BrushCleaning } from "lucide-react";
 import { requireViewer } from "@/lib/auth/server";
 import { getRepository } from "@/lib/data";
 import { DataError } from "@/lib/data/types";
@@ -63,7 +63,7 @@ export default async function ModerationQueuePage({ searchParams }: { searchPara
           ))}
         </ul>
       ) : (
-        <EmptyState emoji="🧹" title={cursor ? "No more open reports" : "Queue is clear"} body="Nothing is waiting for review." />
+        <EmptyState icon={BrushCleaning} title={cursor ? "No more open reports" : "Queue is clear"} body="Nothing is waiting for review." />
       )}
       <nav className="mt-6 flex justify-between gap-2" aria-label="Queue pages">
         {cursor ? <Link href="/moderation" className="chip">First page</Link> : <span />}
