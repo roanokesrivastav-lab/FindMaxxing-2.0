@@ -1,9 +1,9 @@
 # Personalized recommendations: staged plan
 
 Status: planning only. Written against `tier1-owner-controls` @ e33d1ec. Nothing here is applied.
-Interaction logging is being built in parallel (branch `claude/laughing-wilson-f4be90`, planned
-migration `0031_user_interactions.sql`). Section 2 is the contract that work should satisfy; where its
-final shape differs, that migration wins and this doc should be updated to match.
+Interaction logging is **in progress** in a parallel session (branch `claude/laughing-wilson-f4be90`,
+draft migration `0031_user_interactions.sql`, uncommitted when this was written). Section 2 describes that
+draft; if it changes before merge, the migration wins and this doc should follow.
 
 ## 1. Current state
 
@@ -42,43 +42,45 @@ at 180 days. That is deliberate product-analytics privacy: it must stay unjoinab
 recommender needs the opposite: rows keyed by the real `user_id`, readable by the owner, joinable to
 `places`/`events`. Keep them separate; do not add a user id to `analytics_events`.
 
-### `public.user_interactions` (expected in `0031_user_interactions.sql`)
+### `public.user_interactions` (in progress: draft `0031_user_interactions.sql`)
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | `bigint generated always as identity` PK | |
-| `user_id` | `uuid not null references profiles(id) on delete cascade` | from `auth.uid()`, never a parameter |
-| `action` | `text not null` check in `impression, view, save, unsave, rate, join, leave, hide, unhide, click` | |
-| `place_id` / `event_id` | `uuid null references places/events on delete cascade` | check: exactly one non-null |
-| `surface` | `text not null` check in `for_you_places, for_you_events, explore_list, explore_map, search, place_detail, event_detail, saved_list, profile, notification` | |
-| `position` | `smallint null` (0-based) | required for `impression` on list surfaces |
-| `request_id` | `uuid null` | one per rendered list; ties a save back to the impression that led to it |
-| `policy` | `text null` (≤40) | e.g. `rules-v1`, `rules-v1+rerank`, `cf-v1`; required on `for_you_*` impressions |
-| `score` | `real null` | score the policy assigned, for offline replay |
-| `rating` | `smallint null` 1–5 | only when `action='rate'` |
-| `created_at` | `timestamptz not null default now()` | server time |
+| `user_id` | `uuid not null default auth.uid()` → `profiles(id) on delete cascade` | insert policy forces `= auth.uid()` |
+| `item_type`, `item_id` | `text` (`place`/`event`), `uuid` | no FK; `forget_item_interactions()` triggers on `places`/`events` delete clean up |
+| `action` | `text` check in `impression, view, save, unsave, rate, directions, share, join, leave, hide` | save/unsave/rate/directions place-only; join/leave event-only |
+| `surface` | `text null` check in `for_you, list, map, search, detail, saved, profile` | |
+| `position` | `integer null` 0–999 | zero-based list position |
+| `value` | `smallint null` 1–5 | required iff `action='rate'` |
+| `created_at` | `timestamptz default now()` | not client-writable (column grants) |
 
-Write path: one `SECURITY DEFINER` RPC `record_interactions(p_rows jsonb)` (batched; impressions arrive in
-groups of up to 20) that sets `user_id := auth.uid()`, checks `can_view_place` / `can_view_event` per row,
-rate-limits, refuses when `account_is_closing(auth.uid())`, and dedupes impressions on
-`(user_id, request_id, place_id|event_id)`. `save/unsave/rate/join/leave` are written by triggers on
-`saved_places`, `place_ratings`, `event_attendees` (so they cannot be faked or missed); the client only sends
-`impression`, `view`, `click`, `hide`, `unhide`. Impression = card ≥50% visible ≥1 s, once per request.
+- **RLS:** owner-only `select` and `delete`; `insert` only for own rows on items the writer can currently see
+  (the subquery runs under the `places`/`events` policies, so locals-only ids cannot be invented); no
+  `update`; no admin read. Service role has select/insert/delete.
+- **Abuse:** `block_suspended_writes()` trigger (so closing accounts from 0027 cannot write); one
+  `check_rate_limit('interactions')` tick per insert statement (600/h), ≤100 rows per batch.
+- **Opt-out:** reuses `profiles.analytics_opt_out`; when set, only `hide` is recorded.
+- **Hides:** "Not interested" is a `hide` row; the draft re-creates `recommend_places` / `recommend_events`
+  (and the demo twin) to exclude hidden items. Undo deletes the hide rows. Retention never touches hides.
+- **Retention:** `purge_user_interactions(365)` (service role) deletes `impression`/`view` older than a year;
+  other actions stay until the account or item is deleted.
+- **Deletion:** account deletion cascades via `profiles`; deleting a place/event deletes everyone's rows
+  about it (also covers places/events removed by the 0027 lifecycle).
+- **Indexes:** `(user_id, created_at)`, `(item_type, item_id)`, partial `(user_id, item_type, item_id) where action='hide'`.
+- **Training read:** `interaction_item_stats(since)`, service role only, per-item counts and distinct people, never who.
 
-RLS: `enable row level security`; `select using (user_id = auth.uid())`; no insert/update/delete grants to
-`anon`/`authenticated`. Jobs read via service role.
+**What the draft does not yet have, and this plan needs (follow-up `0032`, Task 1):**
 
-Indexes: `(user_id, created_at desc)`; `(place_id, created_at desc) where place_id is not null`;
-`(event_id, created_at desc) where event_id is not null`; partial unique on the impression dedupe key;
-`(created_at)` for retention.
+| Gap | Why it matters | Proposed fix |
+|---|---|---|
+| No `request_id` | cannot tie a save back to the impression/list that caused it (section 7) | `request_id uuid null`, unique `(user_id, request_id, item_type, item_id) where action='impression'` |
+| No `policy` / `score` | cannot compare `rules-v1` vs `rules-v1+rerank` vs later models, or replay offline | `policy text null` (≤40), `score real null`, `propensity real null` for exploration slots (section 6) |
+| save/rate/join written by the client | can be missed (client crash) or fabricated without a real save | `after insert/delete` triggers on `saved_places`, `place_ratings`, `event_attendees`; revoke those actions from client inserts |
+| Opt-out shared with analytics | turning off analytics silently degrades recs | decide (open question 3) |
+| `blocks` not applied in `recommend_*` | blocked people's content can be recommended | add exclusion in the same re-create |
 
-Hides need durable state that retention must not erase: `public.hidden_items(user_id, place_id, event_id,
-created_at)` (same XOR, owner-only RLS), read by both `recommend_*` functions as an exclusion.
-
-Account deletion: `on delete cascade` from `profiles` covers the row delete; add `user_interactions` and
-`hidden_items` to the purge list in `0027_account_deletion_lifecycle.sql`'s job and to the export. Retention:
-raw impressions 180 days (matching `purge_analytics`), other actions kept while the account exists.
-Respect an opt-out: either reuse `analytics_opt_out` or add `profiles.personalization_opt_out` (open question 3).
+Impression definition for the client: card ≥50% visible for ≥1 s, once per `request_id`.
 
 ## 3. Staged roadmap
 
@@ -91,7 +93,7 @@ Respect an opt-out: either reuse `analytics_opt_out` or add `profiles.personaliz
 
 ### Stage 0: rules (existing), made measurable
 *Why:* with no data, hand weights with explanations are the right model; learning is impossible.
-*Do:* ship section 2, add `hidden_items` exclusion and `blocks` exclusion to `recommend_places/events`,
+*Do:* land 0031 (hides already excluded there) and the 0032 gaps in section 2, incl. `blocks` exclusion,
 and a fallback for empty profiles: top community places by `save_count` decayed by age within the viewer's
 `home_city`, labelled "Popular with locals". Stamp `policy='rules-v1'` on impressions.
 
@@ -106,7 +108,7 @@ hide −2, ignored-impression −0.1. Score = cosine(w, item tags) per category,
 vector when the category has <3 actions. Replaces the flat "+3 shares a tag" / "+2 per interest" with a graded
 term; `profile_interests` becomes a prior (+1 per tag at stage 1).
 *Where:* materialized table `user_taste(user_id, category_slug, tag, weight)`, rebuilt nightly by a service
-function `refresh_user_taste()` (pg_cron) and incrementally on save/rate via the 0031 triggers. Owner-only RLS.
+function `refresh_user_taste()` (pg_cron) and incrementally on save/rate via the 0032 triggers. Owner-only RLS.
 
 ### Stage 1b: Beli-style pairwise ratings within a category
 Beli's mechanism, as far as public sources show:
@@ -247,13 +249,14 @@ these multipliers instead of hand-setting them.
 
 ## 9. Next 3 tasks (one coding session each)
 
-**Task 1: Wire logging into "For you" and add hides** (after 0031 lands)
-Files: `src/components/recommendations/ForYouRail.tsx`, `src/server/recommendations/index.ts`,
-`src/lib/data/repository.ts` + demo store, new migration `0032_hidden_items.sql`, `0018` functions
-re-created to exclude `hidden_items` and `blocks`, `src/lib/data/demo/recommend.ts`.
-Accept: each rail render has a `request_id`; impressions logged once per visible card with position and
-`policy`; "Not for me" hides and removes the card and it never returns; SQL/demo parity test extended;
-RLS test proves user A cannot read B's rows.
+**Task 1: Close the 0031 gaps for evaluation** (after 0031 merges)
+Files: new migration `0032_interaction_attribution.sql` (`request_id`, `policy`, `score`, impression dedupe
+index, triggers on `saved_places` / `place_ratings` / `event_attendees`, `blocks` exclusion in re-created
+`recommend_*`), `src/server/recommendations/index.ts` (mint `request_id`, set `policy`),
+`src/components/recommendations/ForYouRail.tsx`, demo twins (`src/lib/data/demo/interactions.ts`, `recommend.ts`).
+Accept: each rail render has one `request_id`; a duplicate impression for the same request is rejected;
+saving through the normal UI writes exactly one `save` row server-side and a client-sent `save` is refused;
+blocked users' content never appears; SQL/demo parity and owner-only RLS tests pass.
 
 **Task 2: Offline evaluation harness + cold-start fallback**
 Files: `scripts/recs/eval.ts`, `tests/recs-eval.test.ts`, `recommend_places` fallback branch + demo twin.
@@ -270,7 +273,7 @@ Accept: rating a 1–2 star bar lowers similar bars' scores; no category exceeds
 ## 10. Open questions for the owner
 1. Ship Beli-style comparisons as a new rating UX, or keep 1–5 stars and only use comparisons on the profile list?
 2. One launch city? Stage gates assume per-city density; several thin cities delay stage 2 a lot.
-3. Personalization opt-out: reuse `analytics_opt_out` or a separate toggle (recommended: separate, default on)?
+3. Personalization opt-out: the 0031 draft reuses `analytics_opt_out`. Keep that, or split it (recommended: separate toggle, so declining analytics does not silently turn off personal recs)?
 4. May aggregate jobs train on private saves at all (section 8.3), or only on public ratings and joins?
 5. Embedding provider and budget for stage 2a (per-item cost is small; data leaves the database).
 6. Should "popular" ever appear for cold users, given the thesis favours community and lesser-known places?
