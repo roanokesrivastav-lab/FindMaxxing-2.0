@@ -34,7 +34,7 @@ export default async function SignInPage({ searchParams }: PageProps<"/auth/sign
         ) : null
       }
     >
-      {sp.error === "callback" ? <p className="mb-3 text-sm text-danger font-medium">That sign-in link didn&apos;t work. Try again.</p> : null}
+      {sp.error === "callback" ? <p className="mb-3 text-sm text-danger font-medium">That link couldn&apos;t sign you in here. If you opened it on another device or browser, your email may already be confirmed: sign in with your password.</p> : null}
       <SignInForm next={next} />
     </AuthShell>
   );

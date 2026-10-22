@@ -10,6 +10,7 @@ import { waitPhrase } from "@/lib/rateLimits";
 import { clientIp } from "@/server/http/clientIp";
 import { limiters } from "@/server/limiters";
 import { safeAuthNext } from "@/lib/auth/redirect";
+import { EMAIL_LINK_INVALID, parseEmailLink } from "@/lib/auth/emailLink";
 
 const DEMO_COOKIE_OPTS = {
   httpOnly: true,
@@ -113,4 +114,23 @@ export async function demoQuickSignInAction(formData: FormData): Promise<void> {
     redirect("/auth/sign-in?error=demo");
   }
   redirect(next);
+}
+
+/**
+ * Verifies a token-hash email link. Runs only on a button press, never on
+ * GET, so mail scanners that pre-open links cannot use up the token.
+ */
+export async function confirmEmailLinkAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  const link = parseEmailLink({ tokenHash: str(formData, "token_hash"), type: str(formData, "type"), next: str(formData, "next") });
+  if (!link) return fail(EMAIL_LINK_INVALID);
+  if (getDataMode() !== "supabase") return fail("Email links are not used in demo mode.");
+  try {
+    const { createSupabaseServerClient } = await import("@/lib/supabase/server");
+    const supabase = await createSupabaseServerClient();
+    const { error } = await supabase.auth.verifyOtp({ type: link.type, token_hash: link.tokenHash });
+    if (error) return fail(EMAIL_LINK_INVALID);
+  } catch (err) {
+    return toFailure(err);
+  }
+  redirect(link.next);
 }
