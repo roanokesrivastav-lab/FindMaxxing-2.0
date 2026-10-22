@@ -22,15 +22,21 @@ export function PlaceCard({
   onHover?: () => void;
 }) {
   const c = getCategory(place.categorySlug);
+  const photo = place.photos[0]?.url;
   return (
     <Link
       href={`/places/${place.id}`}
       onMouseEnter={onHover}
       className={cn("card overflow-hidden flex hover:shadow-float transition-shadow group", compact ? "h-[104px]" : "flex-col", className)}
     >
-      <div className={cn("relative shrink-0 overflow-hidden", compact ? "w-[104px]" : "aspect-[16/10]")}>
-        <PlaceCover photoUrl={place.photos[0]?.url} categorySlug={place.categorySlug} name={place.name} emojiSize={compact ? 30 : 44} layout={compact ? "thumb" : "card"} />
-      </div>
+      {compact || photo ? (
+        <div className={cn("relative shrink-0 overflow-hidden", compact ? "w-[104px]" : "aspect-[2/1]")}>
+          <PlaceCover photoUrl={photo} categorySlug={place.categorySlug} name={place.name} emojiSize={30} layout={compact ? "thumb" : "card"} />
+        </div>
+      ) : (
+        // No photo: a slim category band, so the card leads with its title instead of a big flat block.
+        <div className="h-3 shrink-0" style={{ background: c.color }} aria-hidden />
+      )}
       <div className={cn("min-w-0 flex-1 flex flex-col", compact ? "p-3 justify-center gap-1" : "p-4 gap-1.5")}>
         <div className="flex items-center gap-2 text-xs font-semibold" style={{ color: readableInk(c.color) }}>
           <span>{c.emoji}</span>

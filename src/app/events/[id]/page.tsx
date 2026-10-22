@@ -18,7 +18,7 @@ import { MiniMap } from "@/components/map/MiniMap";
 import { NewBanner } from "@/components/shared/NewBanner";
 import { ShareButton } from "@/components/shared/ShareButton";
 import { eventHasEnded, formatEventDateLong, formatTimeRange } from "@/lib/utils/format";
-import { LocalDate, LocalDayLabel, LocalTimeRange } from "@/components/time/LocalDate";
+import { LocalDate, LocalTimeRange } from "@/components/time/LocalDate";
 import { OwnerActions } from "@/components/shared/OwnerActions";
 import { shareMetadata } from "@/lib/utils/share-metadata";
 import { DEFAULT_TIME_ZONE } from "@/lib/utils/timezone";
@@ -76,7 +76,6 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
                 text={`${formatEventDateLong(event.startsAt, time)} at ${event.locationName}`}
                 className="border-white/25 bg-white/15 text-white hover:bg-white/25"
               />
-              <span className="text-sm font-semibold bg-white/15 rounded-full px-3 py-1">{cancelled ? "Cancelled" : ended ? "Ended" : <LocalDayLabel value={event.startsAt} />}</span>
             </div>
           </div>
           <div className="mt-8 flex items-center gap-2">
@@ -84,6 +83,8 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
             <span className="text-3xl" aria-hidden>
               {category.emoji}
             </span>
+            {/* The full date is right below; only a status that changes what the date means gets a label. */}
+            {cancelled || ended ? <span className="ml-auto text-xs font-bold uppercase tracking-wider text-white/80">{cancelled ? "Cancelled" : "Ended"}</span> : null}
           </div>
           <h1 className="mt-2 text-3xl md:text-4xl font-bold leading-tight">{event.title}</h1>
           <div className="mt-4 flex flex-col gap-1.5 text-white/90 text-[15px]">

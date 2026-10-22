@@ -22,11 +22,12 @@ export function ForYouRail({ places = [], events = [], title = "For you" }: { pl
       <h2 id="for-you-heading" className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted mb-2">
         <Sparkles size={14} aria-hidden /> {title}
       </h2>
-      <ul className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 list-none m-0 snap-x" aria-label={title}>
+      {/* Bleeds to the screen edge and sizes cards so the next one peeks: reads as a carousel, not a clipped card. */}
+      <ul className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 scroll-px-4 list-none m-0 snap-x" aria-label={title}>
         {cards.map((c) => {
           const cat = getCategory(c.category);
           return (
-            <li key={c.id} className="snap-start shrink-0 w-56">
+            <li key={c.id} className="snap-start shrink-0 w-[80%] max-w-64">
               <Link href={c.href} className="card p-3 h-full flex flex-col gap-1 hover:border-ink transition-colors">
                 <span className="text-xs font-semibold" style={{ color: readableInk(cat.color) }}><span aria-hidden>{cat.emoji}</span> {cat.label}</span>
                 <span className="font-bold leading-snug line-clamp-2">{c.title}</span>
