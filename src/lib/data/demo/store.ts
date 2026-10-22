@@ -25,7 +25,7 @@ import {
   seedPlaceByName,
   seedUserByName,
 } from "@/lib/seed/seed-data";
-import type { AppNotification, EntitlementStatus, TicketStatus, EventStatus, ModerationLogAction, NotificationSettings, NotificationType, PlaceStatus, ReportReason, ReportStatus, ReportTargetType, ReputationLevel, Visibility } from "../types";
+import type { UserInteraction, AppNotification, EntitlementStatus, TicketStatus, EventStatus, ModerationLogAction, NotificationSettings, NotificationType, PlaceStatus, ReportReason, ReportStatus, ReportTargetType, ReputationLevel, Visibility } from "../types";
 import { refreshDemoReputation } from "./reputation";
 import { syncAllEventChats } from "./messaging";
 import { CATEGORIES, INTERESTS } from "../taxonomy";
@@ -204,6 +204,8 @@ export interface DemoState {
   /** Mirrors 0023_ads.sql (see ./ads). Impressions are aggregated: no user. */
   adCampaigns: AdCampaignRow[];
   adImpressions: { campaignId: string; day: string; slot: "places" | "events"; count: number }[];
+  /** Mirrors 0031_user_interactions.sql (see ./interactions): private, per user. */
+  userInteractions: (UserInteraction & { userId: string })[];
 }
 
 export interface AdCampaignRow {
@@ -306,7 +308,7 @@ export interface SavedListRow {
   updatedAt: string;
 }
 
-export const STATE_VERSION = 12;
+export const STATE_VERSION = 13;
 const DATA_DIR = path.join(process.cwd(), ".data");
 const STATE_FILE = path.join(DATA_DIR, "demo-store.json");
 
@@ -326,7 +328,7 @@ const COLLECTIONS = [
   "conversations", "conversationMembers", "messages", "blocks",
   "notifications", "notificationSettings", "pushSubscriptions", "pushLog",
   "tickets", "hostAccounts", "entitlements", "stripeCustomers", "stripeEvents",
-  "adCampaigns", "adImpressions",
+  "adCampaigns", "adImpressions", "userInteractions",
 ] as const;
 
 const LEGACY_PLACE_UPLOAD = /^\/api\/uploads\/(places-[^/]+)$/;
@@ -431,6 +433,10 @@ const MIGRATIONS: Record<number, (state: LooseState) => void> = {
     state.adCampaigns ??= [];
     state.adImpressions ??= [];
   },
+  // v12 → v13: the per-user interaction log. Nothing recorded yet.
+  12(state) {
+    state.userInteractions ??= [];
+  },
 };
 
 export type MigrationResult =
@@ -515,6 +521,7 @@ export function buildSeedState(now = new Date()): DemoState {
     stripeEvents: [],
     adCampaigns: [],
     adImpressions: [],
+    userInteractions: [],
   };
 
   SEED_USERS.forEach((u, i) => {

@@ -2,6 +2,9 @@ import type { SupabaseClient, PostgrestError } from "@supabase/supabase-js";
 import type { DataRepository } from "../repository";
 import {
   DataError,
+  MAX_INTERACTION_BATCH,
+  type InteractionAction,
+  type InteractionSurface,
   MAX_PLACE_PHOTOS,
   type Event,
   type EventDetail,
@@ -1372,6 +1375,37 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
           target_type: RemovedContent["targetType"]; target_id: string; label: string; reason: string | null; removed_at: string | null;
         }[];
         return rows.map((r) => ({ targetType: r.target_type, targetId: r.target_id, label: r.label, reason: r.reason, removedAt: r.removed_at }));
+      },
+    },
+
+    interactions: {
+      async log(_userId, rows) {
+        if (!rows.length) return;
+        if (rows.length > MAX_INTERACTION_BATCH) throw new DataError("Too many interactions in one batch", "invalid");
+        // One statement: one rate-limit tick. user_id and created_at come from the session and the clock.
+        unwrap(await supabase.from("user_interactions").insert(rows.map((r) => ({
+          item_type: r.itemType, item_id: r.itemId, action: r.action,
+          surface: r.surface ?? null, position: r.position ?? null, value: r.value ?? null,
+        }))));
+      },
+      async list(userId, opts = {}) {
+        const limit = Math.min(Math.max(Math.trunc(opts.limit ?? 100), 1), 1000);
+        const rows = unwrap(await supabase.from("user_interactions")
+          .select("id, item_type, item_id, action, surface, position, value, created_at")
+          .eq("user_id", userId).order("created_at", { ascending: false }).order("id", { ascending: false }).limit(limit)) as {
+          id: number; item_type: "place" | "event"; item_id: string; action: InteractionAction; surface: InteractionSurface | null;
+          position: number | null; value: number | null; created_at: string;
+        }[];
+        return rows.map((r) => ({ id: Number(r.id), itemType: r.item_type, itemId: r.item_id, action: r.action, surface: r.surface, position: r.position, value: r.value, createdAt: r.created_at }));
+      },
+      async unhide(userId, item) {
+        unwrap(await supabase.from("user_interactions").delete()
+          .eq("user_id", userId).eq("action", "hide").eq("item_type", item.itemType).eq("item_id", item.itemId));
+      },
+      async clear(userId) {
+        const { count, error } = await supabase.from("user_interactions").delete({ count: "exact" }).eq("user_id", userId);
+        if (error) throw translate(error);
+        return count ?? 0;
       },
     },
 

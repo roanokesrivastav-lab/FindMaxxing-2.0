@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { featureEnabled } from "@/lib/config";
-import { TrackPlaceView } from "@/components/analytics/TrackPlaceView";
+import { DirectionsLink, TrackView } from "@/components/interactions/TrackView";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { CalendarPlus, MapPin, Navigation, Lightbulb, Bookmark } from "lucide-react";
@@ -63,7 +63,7 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
 
   return (
     <article className="pb-nav md:pb-10">
-      {viewer && featureEnabled("analytics") ? <TrackPlaceView placeId={place.id} /> : null}
+      {viewer && (featureEnabled("analytics") || featureEnabled("recommendations")) ? <TrackView kind="place" id={place.id} /> : null}
       {/* Hero */}
       <div className="relative h-[260px] md:h-[360px] md:mx-6 md:mt-6 md:rounded-3xl overflow-hidden">
         <PlaceCover photoUrl={place.photos[0]?.url} categorySlug={place.categorySlug} name={place.name} emojiSize={72} layout="hero" priority />
@@ -71,7 +71,7 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
           <BackButton fallback="/" />
           <div className="flex items-center gap-2">
             {isOwner ? <OwnerActions kind="place" id={place.id} canEdit canDelete /> : null}
-            <ShareButton title={place.name} text={place.localTip ?? place.description} />
+            <ShareButton title={place.name} text={place.localTip ?? place.description} item={{ kind: "place", id: place.id }} />
             <SaveButton placeId={place.id} saved={place.viewerSaved} signedIn={!!viewer} lists={lists} memberIds={memberIds} variant="icon" />
           </div>
         </div>
@@ -164,9 +164,9 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
                   {[place.neighborhood, place.city].filter(Boolean).join(", ")} · {place.lat.toFixed(4)}, {place.lng.toFixed(4)}
                 </p>
               </div>
-              <a href={mapsUrl} target="_blank" rel="noreferrer" className="chip" data-active="true">
+              <DirectionsLink kind="place" id={place.id} href={mapsUrl} className="chip">
                 <Navigation size={14} /> Directions
-              </a>
+              </DirectionsLink>
             </div>
           </div>
         </section>

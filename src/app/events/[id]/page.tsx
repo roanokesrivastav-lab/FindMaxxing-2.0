@@ -17,6 +17,7 @@ import { CategoryBadge } from "@/components/ui/Badge";
 import { MiniMap } from "@/components/map/MiniMap";
 import { NewBanner } from "@/components/shared/NewBanner";
 import { ShareButton } from "@/components/shared/ShareButton";
+import { DirectionsLink, TrackView } from "@/components/interactions/TrackView";
 import { eventHasEnded, formatEventDateLong, formatTimeRange } from "@/lib/utils/format";
 import { LocalDate, LocalDayLabel, LocalTimeRange } from "@/components/time/LocalDate";
 import { OwnerActions } from "@/components/shared/OwnerActions";
@@ -64,6 +65,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
 
   return (
     <article className="pb-nav md:pb-10">
+      {viewer && featureEnabled("recommendations") ? <TrackView kind="event" id={event.id} /> : null}
       <div className="relative bg-pulse text-white md:mx-6 md:mt-6 md:rounded-3xl overflow-hidden">
         <div className="absolute inset-0 opacity-30 bg-[radial-gradient(circle_at_80%_20%,white,transparent_45%)]" aria-hidden />
         <div className="relative max-w-2xl mx-auto px-4 md:px-6 pt-4 pb-8">
@@ -72,6 +74,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
             <div className="flex items-center gap-2">
               {viewer?.id === event.creatorId ? <OwnerActions kind="event" id={event.id} canEdit={!cancelled && !ended} canCancel={!cancelled && !ended} canDelete={!event.attendees.some((attendee) => attendee.id !== event.creatorId)} /> : null}
               <ShareButton
+                item={{ kind: "event", id: event.id }}
                 title={event.title}
                 text={`${formatEventDateLong(event.startsAt, time)} at ${event.locationName}`}
                 className="border-white/25 bg-white/15 text-white hover:bg-white/25"
@@ -203,9 +206,9 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
                 <p className="font-semibold">{event.locationName}</p>
                 <p className="text-muted">{event.address ?? `${event.lat.toFixed(4)}, ${event.lng.toFixed(4)}`}</p>
               </div>
-              <a href={mapsUrl} target="_blank" rel="noreferrer" className="chip" data-active="true">
+              <DirectionsLink kind="event" id={event.id} href={mapsUrl} className="chip">
                 <Navigation size={14} /> Directions
-              </a>
+              </DirectionsLink>
             </div>
           </div>
         </section>

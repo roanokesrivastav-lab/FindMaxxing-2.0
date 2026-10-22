@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 import { CalendarPlus } from "lucide-react";
 import { getRepository } from "@/lib/data";
 import { getViewer } from "@/lib/auth/server";
+import { featureEnabled } from "@/lib/config";
 import { EventsClient } from "@/components/events/EventsClient";
 import { PageHeader } from "@/components/ui/PageHeader";
 
@@ -32,7 +33,7 @@ export default async function EventsPage() {
         }
       />
       <ForYouRail events={forYou} title="Events for you" />
-      <EventsClient initial={initial} joined={joined} signedIn={!!viewer} />
+      <EventsClient initial={initial} joined={joined} signedIn={!!viewer} logImpressions={!!viewer && featureEnabled("recommendations")} />
     </div>
   );
 }
