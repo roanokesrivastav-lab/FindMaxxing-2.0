@@ -12,8 +12,8 @@ import type { ShellViewer } from "./AppShell";
 export function BottomNav({ viewer, badge = 0 }: { viewer: ShellViewer | null; badge?: number }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  // Hide on full-screen forms/auth to give them room.
-  const hidden = /^\/(places\/new|events\/new|profile\/edit|auth)/.test(pathname);
+  // Hide on full-screen forms/auth/onboarding to give them room.
+  const hidden = /^\/(places\/new|events\/new|profile\/edit|auth|welcome)/.test(pathname);
   if (hidden) return null;
 
   const items = NAV_ITEMS.filter((i) => i.href !== "/people");
