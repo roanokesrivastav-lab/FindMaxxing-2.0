@@ -14,6 +14,7 @@ import { Logo } from "@/components/layout/Logo";
 import { finishOnboardingAction, saveOnboardingStepAction } from "@/server/actions/onboarding";
 import { formatInZone } from "@/lib/utils/format";
 import { useViewerTime } from "@/components/time/ViewerTime";
+import { InterestIcon } from "@/components/ui/TaxonomyIcon";
 
 interface Person {
   id: string;
@@ -132,7 +133,7 @@ export function WelcomeFlow({
               <div className="flex flex-wrap gap-2" role="group" aria-label="Interests">
                 {INTERESTS.map((i) => (
                   <Chip key={i.slug} active={interests.includes(i.slug)} onClick={() => toggle(i.slug)}>
-                    <span aria-hidden>{i.emoji}</span> {i.label}
+                    <InterestIcon slug={i.slug} /> {i.label}
                   </Chip>
                 ))}
               </div>

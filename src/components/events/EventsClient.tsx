@@ -11,6 +11,8 @@ import { eventHasEnded, formatInZone, relativeDayLabel } from "@/lib/utils/forma
 import { startOfNextDay } from "@/lib/utils/timezone";
 import { useViewerTime, type ViewerTime } from "@/components/time/ViewerTime";
 import { Impression } from "@/components/interactions/Impression";
+import { History, Ticket, CalendarDays } from "lucide-react";
+import { CategoryIcon } from "@/components/ui/TaxonomyIcon";
 
 type When = "all" | "today" | "week" | "mine" | "past";
 type Feed = { when: "all" | "today" | "week"; startsBefore: string | null };
@@ -108,7 +110,7 @@ export function EventsClient({
       <ChipRow>
         {EVENT_CATEGORIES.map((c) => (
           <Chip key={c.slug} active={category === c.slug} onClick={() => setCategory(category === c.slug ? null : c.slug)} color={c.color}>
-            <span aria-hidden>{c.emoji}</span> {c.label}
+            <CategoryIcon slug={c.slug} /> {c.label}
           </Chip>
         ))}
       </ChipRow>
@@ -117,7 +119,7 @@ export function EventsClient({
 
       {groups.length === 0 && !(feedShown && list.loading) ? (
         <EmptyState
-          emoji={when === "past" ? "🕰️" : when === "mine" ? "🎟️" : "📅"}
+          icon={when === "past" ? History : when === "mine" ? Ticket : CalendarDays}
           title={
             when === "past"
               ? "Nothing behind you yet"

@@ -140,7 +140,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
           key={`${m.kind}-${m.id}`}
           longitude={m.lng}
           latitude={m.lat}
-          anchor={m.kind === "place" ? "bottom" : "center"}
+          anchor="bottom"
           style={{ zIndex: m.id === activeMarkerId ? 20 : m.kind === "event" ? 5 : 1 }}
           onClick={(e) => {
             e.originalEvent.stopPropagation();
@@ -148,9 +148,9 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
           }}
         >
           {m.kind === "place" ? (
-            <PlacePin color={m.color} emoji={m.emoji} active={m.id === activeMarkerId} label={m.label} />
+            <PlacePin color={m.color} categorySlug={m.categorySlug} active={m.id === activeMarkerId} label={m.label} />
           ) : (
-            <EventPin color={m.color} emoji={m.emoji} active={m.id === activeMarkerId} label={m.label} />
+            <EventPin color={m.color} categorySlug={m.categorySlug} active={m.id === activeMarkerId} label={m.label} />
           )}
         </Marker>
       ))}

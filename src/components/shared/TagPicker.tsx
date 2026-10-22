@@ -3,6 +3,7 @@ import { useState } from "react";
 import { INTERESTS } from "@/lib/data/taxonomy";
 import { Chip } from "@/components/ui/Chip";
 import { FieldError, FieldLabel } from "@/components/ui/Field";
+import { InterestIcon } from "@/components/ui/TaxonomyIcon";
 
 export function TagPicker({
   name,
@@ -28,7 +29,7 @@ export function TagPicker({
       <div className="flex flex-wrap gap-2">
         {INTERESTS.map((i) => (
           <Chip key={i.slug} active={selected.includes(i.slug)} onClick={() => toggle(i.slug)}>
-            <span aria-hidden>{i.emoji}</span> {i.label}
+            <InterestIcon slug={i.slug} /> {i.label}
           </Chip>
         ))}
       </div>

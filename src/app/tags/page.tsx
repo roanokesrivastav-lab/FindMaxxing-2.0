@@ -5,6 +5,7 @@ import { getViewer } from "@/lib/auth/server";
 import { INTERESTS } from "@/lib/data/taxonomy";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { pluralize } from "@/lib/utils/format";
+import { InterestIcon } from "@/components/ui/TaxonomyIcon";
 
 export const metadata: Metadata = { title: "Interests" };
 export const dynamic = "force-dynamic";
@@ -41,8 +42,8 @@ export default async function TagsIndexPage() {
                 className="card p-4 flex flex-col gap-2 h-full hover:bg-surface-2 hover:-translate-y-0.5 transition-all"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <span className="text-2xl leading-none" aria-hidden>
-                    {i.emoji}
+                  <span className="h-9 w-9 rounded-xl bg-paper-2 text-ink-2 inline-flex items-center justify-center">
+                    <InterestIcon slug={i.slug} size={18} />
                   </span>
                   {yours ? <span className="rounded-full bg-flare/10 text-flare-ink text-[10px] font-bold uppercase tracking-wide px-2 py-0.5">Yours</span> : null}
                 </div>

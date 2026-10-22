@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, MessageCircle } from "lucide-react";
 import { featureEnabled } from "@/lib/config";
 import { requireViewer } from "@/lib/auth/server";
 import { getRepository } from "@/lib/data";
@@ -27,7 +27,7 @@ export default async function MessagesPage() {
     <div className="max-w-2xl mx-auto px-4 md:px-6 pt-4 md:pt-8 pb-nav md:pb-10">
       <PageHeader eyebrow="Messages" title="Messages" subtitle="Chats for the events you're going to, and messages with people you know." />
       {conversations.length === 0 ? (
-        <EmptyState emoji="💬" title="No conversations yet" body={`Join an event to get its group chat. ${DIRECT_MESSAGE_RULE}`} />
+        <EmptyState icon={MessageCircle} title="No conversations yet" body={`Join an event to get its group chat. ${DIRECT_MESSAGE_RULE}`} />
       ) : (
         <ul className="card divide-y divide-line overflow-hidden" aria-label="Conversations">
           {conversations.map((c) => {

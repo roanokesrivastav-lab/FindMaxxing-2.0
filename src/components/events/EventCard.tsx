@@ -8,6 +8,7 @@ import { eventHasEnded, formatEventDate, formatInZone, formatTimeRange, relative
 import { useViewerTime } from "@/components/time/ViewerTime";
 import { cn } from "@/lib/utils/cn";
 import { AvatarStack } from "@/components/ui/Avatar";
+import { CategoryIcon } from "@/components/ui/TaxonomyIcon";
 
 export function EventCard({
   event,
@@ -42,7 +43,7 @@ export function EventCard({
       <div className="min-w-0 flex-1 flex flex-col gap-1">
         <div className="flex items-center gap-2 text-xs font-semibold flex-wrap">
           <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5" style={{ background: `${c.color}1a`, color: readableInk(c.color) }}>
-            {c.emoji} {c.label}
+            <CategoryIcon slug={c.slug} size={13} /> {c.label}
           </span>
           {cancelled ? (
             <span className="rounded-full bg-danger-100 text-danger px-2 py-0.5">Cancelled</span>

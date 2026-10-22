@@ -2,6 +2,7 @@ import { cn } from "@/lib/utils/cn";
 import { getCategory } from "@/lib/data/taxonomy";
 import { readableInk } from "@/lib/utils/contrast";
 import type { ReactNode } from "react";
+import { CategoryIcon } from "@/components/ui/TaxonomyIcon";
 
 export function Badge({ children, className, style }: { children: ReactNode; className?: string; style?: React.CSSProperties }) {
   return (
@@ -26,7 +27,7 @@ export function CategoryBadge({ slug, className, tone = "soft" }: { slug: string
           : { background: `${c.color}1a`, color: ink }
       }
     >
-      <span aria-hidden>{c.emoji}</span>
+      <CategoryIcon slug={c.slug} size={13} />
       {c.label}
     </Badge>
   );

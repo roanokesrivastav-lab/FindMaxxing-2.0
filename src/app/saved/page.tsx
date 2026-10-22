@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { ButtonLink } from "@/components/ui/Button";
 import { ListCards } from "@/components/saved/ListCards";
 import { NewListButton } from "@/components/saved/NewListButton";
+import { Bookmark, Map as MapIcon } from "lucide-react";
 
 export const metadata: Metadata = { title: "Saved" };
 export const dynamic = "force-dynamic";
@@ -19,7 +20,7 @@ export default async function SavedPage() {
       <div className="max-w-2xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-nav">
         <PageHeader eyebrow="Your list" title="Saved places" />
         <EmptyState
-          emoji="🔖"
+          icon={Bookmark}
           title="Sign in to keep a list"
           body="Save the spots you want to try. They'll sync across your devices."
           action={<ButtonLink href="/auth/sign-in?next=/saved" variant="ink">Sign in</ButtonLink>}
@@ -54,7 +55,7 @@ export default async function SavedPage() {
         <SavedClient places={places} />
       ) : (
         <EmptyState
-          emoji="🗺️"
+          icon={MapIcon}
           title="Nothing saved yet"
           body="Tap the bookmark on any place to add it here."
           action={

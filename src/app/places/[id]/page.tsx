@@ -27,6 +27,7 @@ import { VisibilityNotice } from "@/components/places/VisibilityNotice";
 import { shareMetadata } from "@/lib/utils/share-metadata";
 import { neighborhoodHref } from "@/lib/utils/neighborhoods";
 import { LocalDate } from "@/components/time/LocalDate";
+import { InterestIcon } from "@/components/ui/TaxonomyIcon";
 
 export const dynamic = "force-dynamic";
 
@@ -66,7 +67,7 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
       {viewer && (featureEnabled("analytics") || featureEnabled("recommendations")) ? <TrackView kind="place" id={place.id} /> : null}
       {/* Hero */}
       <div className="relative h-[260px] md:h-[360px] md:mx-6 md:mt-6 md:rounded-3xl overflow-hidden">
-        <PlaceCover photoUrl={place.photos[0]?.url} categorySlug={place.categorySlug} name={place.name} emojiSize={72} layout="hero" priority />
+        <PlaceCover photoUrl={place.photos[0]?.url} categorySlug={place.categorySlug} name={place.name} layout="hero" priority />
         <div className="absolute inset-x-0 top-0 p-4 flex items-center justify-between">
           <BackButton fallback="/" />
           <div className="flex items-center gap-2">
@@ -75,7 +76,7 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
             <SaveButton placeId={place.id} saved={place.viewerSaved} signedIn={!!viewer} lists={lists} memberIds={memberIds} variant="icon" />
           </div>
         </div>
-        <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-ink/50 to-transparent" aria-hidden />
+        {place.photos[0] ? <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-ink/50 to-transparent" aria-hidden /> : null}
       </div>
 
       <div className="max-w-2xl mx-auto px-4 md:px-6 -mt-6 relative">
@@ -138,7 +139,7 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
                 const i = getInterest(t);
                 return (
                   <Link key={t} href={`/tags/${t}`} className="chip h-8 text-xs" title={`Browse ${i.label}`}>
-                    <span aria-hidden>{i.emoji}</span> {i.label}
+                    <InterestIcon slug={i.slug} /> {i.label}
                   </Link>
                 );
               })}
@@ -154,7 +155,7 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
           <h2 className="text-lg font-bold mb-2">Where</h2>
           <div className="card overflow-hidden">
             <div className="h-44">
-              <MiniMap lat={place.lat} lng={place.lng} color={category.color} emoji={category.emoji} label={place.name} kind="place" />
+              <MiniMap lat={place.lat} lng={place.lng} color={category.color} categorySlug={place.categorySlug} label={place.name} kind="place" />
             </div>
             <div className="p-4 flex items-start gap-3">
               <MapPin size={18} className="text-muted mt-0.5 shrink-0" />

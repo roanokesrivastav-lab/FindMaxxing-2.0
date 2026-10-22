@@ -23,11 +23,10 @@ export function eventPinLabel(e: { title: string; categorySlug: string; startsAt
 /** Accepts a full place or a compact map record. */
 export function placeMarker(p: Pick<Place, "id" | "lat" | "lng" | "categorySlug" | "name"> & Partial<Pick<Place, "ratingAvg" | "ratingCount">>): MapMarker {
   const c = getCategory(p.categorySlug);
-  return { id: p.id, kind: "place", lat: p.lat, lng: p.lng, color: c.color, emoji: c.emoji, label: placePinLabel(p) };
+  return { id: p.id, kind: "place", lat: p.lat, lng: p.lng, color: c.color, categorySlug: p.categorySlug, label: placePinLabel(p) };
 }
 
 /** Accepts a full event or a compact map record; times are labelled in `timeZone`. */
 export function eventMarker(e: Pick<Event, "id" | "lat" | "lng" | "categorySlug" | "title"> & Partial<Pick<Event, "startsAt">>, timeZone: string): MapMarker {
-  const c = getCategory(e.categorySlug);
-  return { id: e.id, kind: "event", lat: e.lat, lng: e.lng, color: "#6b4cff", emoji: c.emoji, label: eventPinLabel(e, timeZone) };
+  return { id: e.id, kind: "event", lat: e.lat, lng: e.lng, color: "#6b4cff", categorySlug: e.categorySlug, label: eventPinLabel(e, timeZone) };
 }

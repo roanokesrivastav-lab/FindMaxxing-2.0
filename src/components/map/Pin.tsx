@@ -1,5 +1,7 @@
 "use client";
+import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
+import { CategoryIcon } from "@/components/ui/TaxonomyIcon";
 
 /**
  * Pins are buttons, so they are in the tab order, announce their name and
@@ -8,8 +10,20 @@ import { cn } from "@/lib/utils/cn";
  */
 const PIN_BUTTON = "rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ink focus-visible:ring-offset-2 focus-visible:ring-offset-white";
 
-/** Teardrop pin for places. */
-export function PlacePin({ color, emoji, active, label }: { color: string; emoji: string; active?: boolean; label: string }) {
+/** Category-colored teardrop with a white line icon; places and events share it. */
+function PinHead({ color, categorySlug }: { color: string; categorySlug: string }) {
+  return (
+    <div
+      className="h-9 w-9 rounded-full rounded-br-[4px] rotate-45 flex items-center justify-center border-[2.5px] border-white"
+      style={{ background: color, boxShadow: "var(--shadow-pin)" }}
+    >
+      <CategoryIcon slug={categorySlug} size={16} strokeWidth={2.25} className="-rotate-45 text-white" />
+    </div>
+  );
+}
+
+/** Place pin: the teardrop in the category's color. */
+export function PlacePin({ color, categorySlug, active, label }: { color: string; categorySlug: string; active?: boolean; label: string }) {
   return (
     <button
       type="button"
@@ -17,38 +31,27 @@ export function PlacePin({ color, emoji, active, label }: { color: string; emoji
       aria-pressed={!!active}
       className={cn(PIN_BUTTON, "relative flex flex-col items-center transition-transform duration-150", active ? "scale-125 z-10" : "hover:scale-110 focus-visible:scale-110")}
     >
-      <div
-        className="h-9 w-9 rounded-full rounded-br-[4px] rotate-45 flex items-center justify-center border-[2.5px] border-white"
-        style={{ background: color, boxShadow: "var(--shadow-pin)" }}
-      >
-        <span className="-rotate-45 text-[15px] leading-none select-none" aria-hidden>
-          {emoji}
-        </span>
-      </div>
+      <PinHead color={color} categorySlug={categorySlug} />
       <span className="h-1.5 w-3 rounded-full bg-ink/25 blur-[1px] -mt-0.5" aria-hidden />
     </button>
   );
 }
 
-/** Rounded-square pin with pulse ring for events. */
-export function EventPin({ color, emoji, active, label }: { color: string; emoji: string; active?: boolean; label: string }) {
+/** Event pin: the same teardrop in the event color, with a pulse ring and dot. */
+export function EventPin({ color, categorySlug, active, label }: { color: string; categorySlug: string; active?: boolean; label: string }) {
   return (
     <button
       type="button"
       aria-label={label}
       aria-pressed={!!active}
-      className={cn(PIN_BUTTON, "relative flex items-center justify-center transition-transform duration-150", active ? "scale-125 z-10" : "hover:scale-110 focus-visible:scale-110")}
+      className={cn(PIN_BUTTON, "relative flex flex-col items-center transition-transform duration-150", active ? "scale-125 z-10" : "hover:scale-110 focus-visible:scale-110")}
     >
-      <span className="absolute h-9 w-9 rounded-xl animate-pulse-ring" style={{ background: color, opacity: 0.35 }} aria-hidden />
-      <div
-        className="relative h-9 w-9 rounded-xl flex items-center justify-center border-[2.5px] border-white"
-        style={{ background: color, boxShadow: "var(--shadow-pin)" }}
-      >
-        <span className="text-[15px] leading-none select-none" aria-hidden>
-          {emoji}
-        </span>
-        <span className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-pulse border-2 border-white" aria-hidden />
-      </div>
+      <span className="absolute top-0 h-9 w-9 rounded-full animate-pulse-ring" style={{ background: color, opacity: 0.25 }} aria-hidden />
+      <span className="relative">
+        <PinHead color={color} categorySlug={categorySlug} />
+        <span className="absolute -top-1 -right-1 h-3.5 w-3.5 rounded-full bg-pulse border-2 border-white" aria-hidden />
+      </span>
+      <span className="h-1.5 w-3 rounded-full bg-ink/25 blur-[1px] -mt-0.5" aria-hidden />
     </button>
   );
 }
@@ -66,9 +69,7 @@ export function DraftPin() {
   return (
     <div className="flex flex-col items-center animate-pop">
       <div className="h-10 w-10 rounded-full rounded-br-[4px] rotate-45 flex items-center justify-center border-[3px] border-white bg-ink shadow-pin">
-        <span className="-rotate-45 text-white text-lg leading-none" aria-hidden>
-          +
-        </span>
+        <Plus size={18} strokeWidth={2.5} className="-rotate-45 text-white" aria-hidden />
       </div>
       <span className="h-1.5 w-3 rounded-full bg-ink/25 blur-[1px] -mt-0.5" aria-hidden />
     </div>

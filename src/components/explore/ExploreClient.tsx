@@ -1,7 +1,7 @@
 "use client";
 import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, List, Loader2, LocateFixed, Map as MapIcon, PanelLeftClose, PanelLeftOpen, RotateCw, Search, SlidersHorizontal, X } from "lucide-react";
+import { ChevronDown, List, Loader2, LocateFixed, Map as MapIcon, PanelLeftClose, PanelLeftOpen, RotateCw, Search, SlidersHorizontal, X, Compass, Sparkles, CalendarDays, MapPin } from "lucide-react";
 import type { Event, GeoBounds, Place } from "@/lib/data/types";
 import type { MapCanvasHandle } from "@/components/map/MapCanvas";
 import { MapView } from "@/components/map/MapView";
@@ -28,6 +28,7 @@ import { Logo } from "@/components/layout/Logo";
 import { Avatar } from "@/components/ui/Avatar";
 import { Sheet } from "@/components/ui/Sheet";
 import { usePersistentJson } from "@/lib/utils/usePersistentJson";
+import { CategoryIcon, InterestIcon } from "@/components/ui/TaxonomyIcon";
 
 const FOLD_STORAGE_KEY = "findmaxxing:explore-folds";
 const DEFAULT_FOLDS = { events: true, places: true, panel: true };
@@ -253,17 +254,17 @@ export function ExploreClient({
           </div>
           <ChipRow>
             <Link href="/new" className="chip shrink-0 snap-start" title="What locals added in the last 7 days">
-              ✨ New
+              <Sparkles size={14} aria-hidden /> New
             </Link>
             <Link href="/neighborhoods" className="chip shrink-0 snap-start md:hidden" title="Browse by neighborhood">
-              🗺️ Areas
+              <MapIcon size={14} aria-hidden /> Areas
             </Link>
             <Chip active={kind === "events"} onClick={() => setKind(kind === "events" ? "all" : "events")} color="#6b4cff">
-              📅 Events
+              <CalendarDays size={14} aria-hidden /> Events
             </Chip>
             {CATEGORIES.filter((c) => c.slug !== "other" && c.slug !== "watch-party").map((c) => (
               <Chip key={c.slug} active={category === c.slug} onClick={() => setCategory(category === c.slug ? null : c.slug)} color={c.color}>
-                <span aria-hidden>{c.emoji}</span> {c.label}
+                <CategoryIcon slug={c.slug} /> {c.label}
               </Chip>
             ))}
           </ChipRow>
@@ -405,7 +406,7 @@ export function ExploreClient({
             ) : null}
             {totalResults === 0 && discovery.status !== "loading" ? (
               <EmptyState
-                emoji="🧭"
+                icon={Compass}
                 title="Nothing here yet"
                 body={
                   searching
@@ -515,7 +516,7 @@ export function ExploreClient({
             <div className="flex gap-2">
               {(["all", "places", "events"] as Kind[]).map((k) => (
                 <Chip key={k} active={kind === k} onClick={() => setKind(k)}>
-                  {k === "all" ? "Everything" : k === "places" ? "📍 Places" : "📅 Events"}
+                  {k === "all" ? "Everything" : k === "places" ? <><MapPin size={14} aria-hidden /> Places</> : <><CalendarDays size={14} aria-hidden /> Events</>}
                 </Chip>
               ))}
             </div>
@@ -525,7 +526,7 @@ export function ExploreClient({
             <div className="flex flex-wrap gap-2">
               {CATEGORIES.map((c) => (
                 <Chip key={c.slug} active={category === c.slug} onClick={() => setCategory(category === c.slug ? null : c.slug)} color={c.color}>
-                  <span aria-hidden>{c.emoji}</span> {c.label}
+                  <CategoryIcon slug={c.slug} /> {c.label}
                 </Chip>
               ))}
             </div>
@@ -538,7 +539,7 @@ export function ExploreClient({
                 const i = getInterest(slug);
                 return (
                   <Chip key={slug} active={interests.includes(slug)} onClick={() => toggleInterest(slug)}>
-                    <span aria-hidden>{i.emoji}</span> {i.label}
+                    <InterestIcon slug={i.slug} /> {i.label}
                   </Chip>
                 );
               })}

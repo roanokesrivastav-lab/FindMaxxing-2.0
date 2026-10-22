@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ReviewButtons } from "@/components/ads/CampaignActions";
 import { requireAdmin, ADMIN_DATE } from "../guard";
 import { LocalDate } from "@/components/time/LocalDate";
+import { Megaphone } from "lucide-react";
 
 export const metadata: Metadata = { title: "Sponsored cards · Admin" };
 export const dynamic = "force-dynamic";
@@ -21,7 +22,7 @@ export default async function AdReviewPage() {
     <div className="max-w-2xl mx-auto px-4 md:px-6 pt-4 md:pt-8 pb-nav md:pb-10">
       <PageHeader eyebrow="Admin" title="Sponsored cards" subtitle="Local listings only, honest copy, nothing that imitates an organic result." />
       {queue.length === 0 ? (
-        <EmptyState emoji="📣" title="Nothing to review" />
+        <EmptyState icon={Megaphone} title="Nothing to review" />
       ) : (
         <ul className="flex flex-col gap-3" aria-label="Campaigns to review">
           {queue.map((c) => (

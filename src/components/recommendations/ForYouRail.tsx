@@ -4,6 +4,7 @@ import { getCategory } from "@/lib/data/taxonomy";
 import { readableInk } from "@/lib/utils/contrast";
 import { LocalDate } from "@/components/time/LocalDate";
 import { RecommendationCard } from "./RecommendationCard";
+import { CategoryIcon } from "@/components/ui/TaxonomyIcon";
 
 const WHEN: Intl.DateTimeFormatOptions = { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" };
 
@@ -28,7 +29,7 @@ export function ForYouRail({ places = [], events = [], title = "For you" }: { pl
           const cat = getCategory(c.category);
           return (
             <RecommendationCard key={c.id} kind={c.kind} id={c.id} position={i} href={c.href} title={c.title}>
-              <span className="text-xs font-semibold" style={{ color: readableInk(cat.color) }}><span aria-hidden>{cat.emoji}</span> {cat.label}</span>
+              <span className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: readableInk(cat.color) }}><CategoryIcon slug={cat.slug} size={13} /> {cat.label}</span>
               <span className="font-bold leading-snug line-clamp-2">{c.title}</span>
               <span className="text-xs text-muted truncate">{c.meta}</span>
               <span className="mt-auto text-xs text-ink-2 line-clamp-2">{c.why}</span>

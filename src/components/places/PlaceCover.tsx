@@ -1,10 +1,19 @@
 import { getCategory } from "@/lib/data/taxonomy";
 import { cn } from "@/lib/utils/cn";
 import { PHOTO_LAYOUT_SIZES, photoSrc, photoSrcSet } from "@/lib/images/sizes";
+import { readableInk } from "@/lib/utils/contrast";
+import { CategoryIcon } from "@/components/ui/TaxonomyIcon";
+
+const TILE: Record<keyof typeof PHOTO_LAYOUT_SIZES, { box: number; icon: number }> = {
+  thumb: { box: 40, icon: 20 },
+  card: { box: 52, icon: 26 },
+  gallery: { box: 52, icon: 26 },
+  hero: { box: 72, icon: 34 },
+};
 
 /**
  * Visual for a place: the first photo if one exists, otherwise a generated
- * category-colored cover so listings never look empty.
+ * quiet category-tinted cover so listings never look empty.
  *
  * `layout` sets `sizes`, which decides the file a phone downloads; `priority`
  * is for the one above-the-fold hero, everything else loads lazily.
@@ -14,7 +23,6 @@ export function PlaceCover({
   categorySlug,
   name,
   className,
-  emojiSize = 40,
   layout,
   priority = false,
 }: {
@@ -22,7 +30,6 @@ export function PlaceCover({
   categorySlug: string;
   name: string;
   className?: string;
-  emojiSize?: number;
   layout: keyof typeof PHOTO_LAYOUT_SIZES;
   priority?: boolean;
 }) {
@@ -44,23 +51,25 @@ export function PlaceCover({
       />
     );
   }
-  const seed = name.length % 4;
+  // No photo: a quiet tint of the category color with a dot grid and the
+  // category icon, so listings without photos read as intentional.
+  const ink = readableInk(c.color);
+  const tile = TILE[layout];
   return (
-    <div className={cn("relative w-full h-full overflow-hidden", className)} style={{ background: c.color }} aria-hidden>
-      <svg className="absolute inset-0 w-full h-full opacity-[0.22]" viewBox="0 0 200 120" preserveAspectRatio="none">
-        {[0, 1, 2, 3, 4].map((i) => (
-          <path
-            key={i}
-            d={`M-10 ${20 + i * 22 + seed * 3} C 40 ${i * 18 + seed * 6}, 90 ${60 + i * 14}, 130 ${25 + i * 20} S 190 ${70 + i * 10}, 220 ${30 + i * 18}`}
-            fill="none"
-            stroke="white"
-            strokeWidth="1.4"
-          />
-        ))}
-      </svg>
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.25),transparent_55%)]" />
-      <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 drop-shadow-sm select-none" style={{ fontSize: emojiSize }}>
-        {c.emoji}
+    <div
+      className={cn("relative w-full h-full overflow-hidden flex items-center justify-center", className)}
+      style={{
+        backgroundColor: `color-mix(in srgb, ${c.color} 14%, var(--color-paper))`,
+        backgroundImage: `radial-gradient(color-mix(in srgb, ${c.color} 28%, transparent) 1px, transparent 1.5px)`,
+        backgroundSize: "14px 14px",
+      }}
+      aria-hidden
+    >
+      <span
+        className="inline-flex items-center justify-center rounded-2xl bg-surface/90 shadow-card"
+        style={{ width: tile.box, height: tile.box, color: ink }}
+      >
+        <CategoryIcon slug={categorySlug} size={tile.icon} strokeWidth={1.75} />
       </span>
     </div>
   );
