@@ -14,7 +14,9 @@ import { browserSaysNo } from "./analytics";
  * Only while recommendations are on, and never when the browser (DNT, GPC) or
  * the person (the analytics opt-out) said no; the database applies the
  * opt-out again. "hide" is not passive tracking but the person's own choice,
- * so Not interested goes through hideItemAction instead of this.
+ * so Not interested goes through hideItemAction instead of this. Saves,
+ * ratings and attendance are not sent from here at all: the database logs
+ * them as they happen (0033_interaction_attribution.sql).
  *
  * The write runs after the response is sent, so logging never slows the
  * action down, and it never throws.

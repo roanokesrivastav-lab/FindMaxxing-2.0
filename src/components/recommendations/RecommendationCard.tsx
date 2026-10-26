@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { X } from "lucide-react";
-import { useImpression } from "@/components/interactions/impressions";
+import { useImpression, type Attribution } from "@/components/interactions/impressions";
 import { useToast } from "@/components/ui/Toast";
 import { notInterestedAction, undoNotInterestedAction } from "@/server/actions/interactions";
 
@@ -12,16 +12,17 @@ import { notInterestedAction, undoNotInterestedAction } from "@/server/actions/i
  * takes it out of the viewer's recommendations (with an undo).
  */
 export function RecommendationCard({
-  kind, id, position, href, title, children,
+  kind, id, position, attribution, href, title, children,
 }: {
   kind: "place" | "event";
   id: string;
   position: number;
+  attribution: Attribution;
   href: string;
   title: string;
   children: React.ReactNode;
 }) {
-  const ref = useImpression<HTMLLIElement>({ itemType: kind, itemId: id, surface: "for_you", position });
+  const ref = useImpression<HTMLLIElement>({ itemType: kind, itemId: id, surface: "for_you", position, ...attribution });
   const [hidden, setHidden] = useState(false);
   const [pending, start] = useTransition();
   const { toast } = useToast();
@@ -29,7 +30,7 @@ export function RecommendationCard({
   const hide = () => {
     setHidden(true);
     start(async () => {
-      const res = await notInterestedAction(kind, id, position);
+      const res = await notInterestedAction(kind, id, position, attribution);
       if (!res.ok) {
         setHidden(false);
         toast(res.error, "error");

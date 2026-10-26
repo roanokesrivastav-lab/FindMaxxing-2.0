@@ -287,7 +287,10 @@ export interface DataRepository {
     /**
      * Appends rows for the user (at most MAX_INTERACTION_BATCH; one rate-limit
      * tick per call). Refused as forbidden when an item is not visible to the
-     * user, or (except "hide") when they opted out of analytics.
+     * user, when the action is not one of CLIENT_INTERACTION_ACTIONS (saves,
+     * ratings and attendance are logged by the store itself when they happen),
+     * or (except "hide") when they opted out of analytics. A repeated
+     * impression for the same requestId is dropped.
      */
     log(userId: string, rows: InteractionInput[]): Promise<void>;
     /** The user's own history, newest first. */

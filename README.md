@@ -85,6 +85,7 @@ The beta's go/no-go list, with the command and current status of each gate, is `
    - `supabase/migrations/0018_recommendations.sql` — rule-based, explained "For you" recommendations for places and events, computed under RLS
    - `supabase/migrations/0019_trip_planning.sql` — the daily limit on AI trip plans
    - `supabase/migrations/0031_user_interactions.sql` — the private per-user interaction log (impressions, views, saves, ratings, joins, Not interested) for future personalization
+   - `supabase/migrations/0033_interaction_attribution.sql` — request id, policy and score on impressions (one per rendered rail and item); saves, ratings and attendance logged by the database itself; blocked people left out of "For you"
    - `supabase/migrations/0016_reputation.sql` — contributor reputation (cached levels, moderator reset) and the trusted-locals and followers visibility tiers
    - `supabase/migrations/0025_seed_taxonomy.sql` — required categories and interests, without demo accounts or content
    - `supabase/seed.sql` — optional fictional demo data (generated from `src/lib/seed/seed-data.ts` via `npm run seed:sql`; **do not use the demo users in production**)
@@ -662,6 +663,17 @@ a place or event deletes everyone's rows about it. Training reads go through the
 `interaction_item_stats()`, which returns per-item counts, never who did what;
 `purge_user_interactions()` (service role, run by the daily `/api/cron/purge-analytics`) drops
 impressions and views after a year.
+
+**Attribution** (`0033_interaction_attribution.sql`). Each rendering of a For you rail gets a
+`request_id` and a `policy` (`rules-v1`, or `rules-v1+rerank` when Claude's order was used); every
+card's impression carries both plus its score, and a repeat impression for the same request and item
+is dropped. Saves, unsaves, ratings, joins and leaves are no longer sent by the app: triggers on
+`saved_places`, `place_ratings` and `event_attendees` write them when they happen, so they can be
+neither missed nor invented, and clients may insert only impressions, views, shares, directions and
+hides. The triggers record only the person's own action (not seeds, service jobs or cascades), honor
+the analytics opt-out and cost no rate-limit tick; unlike the app-sent rows they do not see the
+browser's DNT/GPC signal or the recommendations flag. For you also leaves out places and events made
+by anyone blocked either way, and their saves, ratings, hosting and attendance as reasons.
 
 ## AI trip planning ("Plan my day")
 

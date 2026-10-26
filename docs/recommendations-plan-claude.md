@@ -70,7 +70,7 @@ recommender needs the opposite: rows keyed by the real `user_id`, readable by th
 - **Indexes:** `(user_id, created_at)`, `(item_type, item_id)`, partial `(user_id, item_type, item_id) where action='hide'`.
 - **Training read:** `interaction_item_stats(since)`, service role only, per-item counts and distinct people, never who.
 
-**What the draft does not yet have, and this plan needs (follow-up `0032`, Task 1):**
+**What the draft did not have (closed by `0033_interaction_attribution.sql`, Task 1, except the opt-out question):**
 
 | Gap | Why it matters | Proposed fix |
 |---|---|---|
@@ -93,7 +93,7 @@ Impression definition for the client: card ≥50% visible for ≥1 s, once per `
 
 ### Stage 0: rules (existing), made measurable
 *Why:* with no data, hand weights with explanations are the right model; learning is impossible.
-*Do:* land 0031 (hides already excluded there) and the 0032 gaps in section 2, incl. `blocks` exclusion,
+*Do:* land 0031 (hides already excluded there) and the 0033 gaps in section 2, incl. `blocks` exclusion,
 and a fallback for empty profiles: top community places by `save_count` decayed by age within the viewer's
 `home_city`, labelled "Popular with locals". Stamp `policy='rules-v1'` on impressions.
 
@@ -108,7 +108,7 @@ hide −2, ignored-impression −0.1. Score = cosine(w, item tags) per category,
 vector when the category has <3 actions. Replaces the flat "+3 shares a tag" / "+2 per interest" with a graded
 term; `profile_interests` becomes a prior (+1 per tag at stage 1).
 *Where:* materialized table `user_taste(user_id, category_slug, tag, weight)`, rebuilt nightly by a service
-function `refresh_user_taste()` (pg_cron) and incrementally on save/rate via the 0032 triggers. Owner-only RLS.
+function `refresh_user_taste()` (pg_cron) and incrementally on save/rate via the 0033 triggers. Owner-only RLS.
 
 ### Stage 1b: Beli-style pairwise ratings within a category
 Beli's mechanism, as far as public sources show:
@@ -249,8 +249,9 @@ these multipliers instead of hand-setting them.
 
 ## 9. Next 3 tasks (one coding session each)
 
-**Task 1: Close the 0031 gaps for evaluation** (after 0031 merges)
-Files: new migration `0032_interaction_attribution.sql` (`request_id`, `policy`, `score`, impression dedupe
+**Task 1: Close the 0031 gaps for evaluation** — done in `0033_interaction_attribution.sql` (0032 was taken by
+the photo delete policy fix). Saves/rates/joins written by triggers no longer see DNT/GPC or the feature flag.
+Files: new migration `0033_interaction_attribution.sql` (`request_id`, `policy`, `score`, impression dedupe
 index, triggers on `saved_places` / `place_ratings` / `event_attendees`, `blocks` exclusion in re-created
 `recommend_*`), `src/server/recommendations/index.ts` (mint `request_id`, set `policy`),
 `src/components/recommendations/ForYouRail.tsx`, demo twins (`src/lib/data/demo/interactions.ts`, `recommend.ts`).

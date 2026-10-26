@@ -1386,17 +1386,22 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
         unwrap(await supabase.from("user_interactions").insert(rows.map((r) => ({
           item_type: r.itemType, item_id: r.itemId, action: r.action,
           surface: r.surface ?? null, position: r.position ?? null, value: r.value ?? null,
+          request_id: r.requestId ?? null, policy: r.policy ?? null, score: r.score ?? null, propensity: r.propensity ?? null,
         }))));
       },
       async list(userId, opts = {}) {
         const limit = Math.min(Math.max(Math.trunc(opts.limit ?? 100), 1), 1000);
         const rows = unwrap(await supabase.from("user_interactions")
-          .select("id, item_type, item_id, action, surface, position, value, created_at")
+          .select("id, item_type, item_id, action, surface, position, value, request_id, policy, score, propensity, created_at")
           .eq("user_id", userId).order("created_at", { ascending: false }).order("id", { ascending: false }).limit(limit)) as {
           id: number; item_type: "place" | "event"; item_id: string; action: InteractionAction; surface: InteractionSurface | null;
-          position: number | null; value: number | null; created_at: string;
+          position: number | null; value: number | null; request_id: string | null; policy: string | null;
+          score: number | null; propensity: number | null; created_at: string;
         }[];
-        return rows.map((r) => ({ id: Number(r.id), itemType: r.item_type, itemId: r.item_id, action: r.action, surface: r.surface, position: r.position, value: r.value, createdAt: r.created_at }));
+        return rows.map((r) => ({
+          id: Number(r.id), itemType: r.item_type, itemId: r.item_id, action: r.action, surface: r.surface, position: r.position, value: r.value,
+          requestId: r.request_id, policy: r.policy, score: r.score, propensity: r.propensity, createdAt: r.created_at,
+        }));
       },
       async unhide(userId, item) {
         unwrap(await supabase.from("user_interactions").delete()

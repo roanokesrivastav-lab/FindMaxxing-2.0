@@ -597,6 +597,13 @@ export interface Recommendation<T> {
   reason: RecommendationReason;
 }
 
+/** One rendering of a "For you" rail, for attribution in the interaction log. */
+export interface ForYou<T> {
+  requestId: string;
+  policy: string;
+  items: Recommendation<T>[];
+}
+
 export interface RecommendOptions {
   near?: { lat: number; lng: number } | null;
   /** Clamped to [1, 50]; defaults to 12. */
@@ -608,8 +615,15 @@ export const INTERACTION_ACTIONS = ["impression", "view", "save", "unsave", "rat
 export type InteractionAction = (typeof INTERACTION_ACTIONS)[number];
 export const INTERACTION_SURFACES = ["for_you", "list", "map", "search", "detail", "saved", "profile"] as const;
 export type InteractionSurface = (typeof INTERACTION_SURFACES)[number];
+/**
+ * What a client may log itself (0033_interaction_attribution.sql). The database
+ * writes save, unsave, rate, join and leave when they happen.
+ */
+export const CLIENT_INTERACTION_ACTIONS = ["impression", "view", "directions", "share", "hide"] as const satisfies readonly InteractionAction[];
 /** Most rows one log call (one insert statement) may carry. */
 export const MAX_INTERACTION_BATCH = 100;
+/** A policy name: rules-v1, rules-v1+rerank, ... */
+export const INTERACTION_POLICY_PATTERN = /^[a-z0-9][a-z0-9.+_-]{0,39}$/;
 
 export interface InteractionInput {
   itemType: "place" | "event";
@@ -620,6 +634,13 @@ export interface InteractionInput {
   position?: number | null;
   /** The score, for "rate" only (1–5). */
   value?: number | null;
+  /** The rendering of a recommendation rail the item was shown in. */
+  requestId?: string | null;
+  /** What produced that rendering, and the score it gave the item. */
+  policy?: string | null;
+  score?: number | null;
+  /** For exploration slots: the chance the item had of being shown, in (0, 1]. */
+  propensity?: number | null;
 }
 
 export interface UserInteraction extends Required<InteractionInput> {

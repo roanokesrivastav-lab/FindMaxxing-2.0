@@ -1,9 +1,12 @@
 /**
- * The private per-user interaction log (0031_user_interactions.sql): own rows
- * only, visible items only, the opt-out honored except for Not interested,
- * one rate-limit tick per batch, gone with the account or the item, a
- * service-only training aggregate, and the same behavior in the demo store.
- * "Not interested" leaves the item out of recommendations on both sides.
+ * The private per-user interaction log (0031_user_interactions.sql, with
+ * attribution from 0033_interaction_attribution.sql): own rows only, visible
+ * items only, the opt-out honored except for Not interested, one rate-limit
+ * tick per batch, one impression per request, saves, ratings and attendance
+ * written by the database rather than the client, gone with the account or
+ * the item, a service-only training aggregate, and the same behavior in the
+ * demo store. "Not interested" and blocks leave items out of recommendations
+ * on both sides.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
@@ -41,9 +44,10 @@ describe("user_interactions in the database", () => {
 
   it("lets a person write and read only their own rows, with the server's clock", async () => {
     await as(maya, `${insertSql} ('place', $1, 'impression', 'for_you', 0, null), ('place', $2, 'impression', 'for_you', 1, null), ('event', $3, 'view', 'detail', null, null)`, [place, otherPlace, event]);
-    await as(nina, `${insertSql} ('place', $1, 'rate', 'detail', null, 4)`, [place]);
+    await as(nina, `${insertSql} ('place', $1, 'view', 'detail', null, null)`, [place]);
+    // Nothing from the seed's saves, ratings and attendance: only what people do themselves.
     expect((await mine(maya)).map((r) => r.action)).toEqual(["impression", "impression", "view"]);
-    expect(await mine(nina)).toEqual([{ action: "rate", item_id: place }]);
+    expect(await mine(nina)).toEqual([{ action: "view", item_id: place }]);
     // Not as someone else, not with a chosen timestamp, not changed afterwards, not anonymously.
     await expect(as(maya, "insert into public.user_interactions (user_id, item_type, item_id, action) values ($1, 'place', $2, 'view')", [nina, place])).rejects.toThrow(/row-level security/);
     await expect(as(maya, "insert into public.user_interactions (item_type, item_id, action, created_at) values ('place', $1, 'view', now() - interval '1 year')", [place])).rejects.toThrow(/permission denied/);
@@ -55,13 +59,17 @@ describe("user_interactions in the database", () => {
     expect(await mine(nina)).toHaveLength(1);
   });
 
-  it("checks the shape: actions per item type, rate values, positions", async () => {
-    await expect(as(maya, `${insertSql} ('event', $1, 'save', null, null, null)`, [event])).rejects.toThrow(/check constraint/);
-    await expect(as(maya, `${insertSql} ('place', $1, 'join', null, null, null)`, [place])).rejects.toThrow(/check constraint/);
-    await expect(as(maya, `${insertSql} ('place', $1, 'rate', null, null, null)`, [place])).rejects.toThrow(/check constraint/);
+  it("checks the shape: actions, rate values, positions, policies", async () => {
+    // What the database sees happen is not the client's to send, real or made up.
+    for (const [type, id, action, value] of [["place", place, "save", null], ["place", place, "unsave", null], ["place", place, "rate", 5], ["event", event, "join", null], ["event", event, "leave", null]]) {
+      await expect(as(maya, `${insertSql} ($1, $2, $3, 'detail', null, $4)`, [type, id, action, value])).rejects.toThrow(/row-level security/);
+    }
     await expect(as(maya, `${insertSql} ('place', $1, 'view', null, null, 3)`, [place])).rejects.toThrow(/check constraint/);
+    await expect(as(maya, "insert into public.user_interactions (item_type, item_id, action, policy) values ('place', $1, 'view', 'Rules v1!')", [place])).rejects.toThrow(/check constraint/);
+    await expect(as(maya, "insert into public.user_interactions (item_type, item_id, action, propensity) values ('place', $1, 'view', 0)", [place])).rejects.toThrow(/check constraint/);
     await expect(as(maya, `${insertSql} ('place', $1, 'impression', 'list', -1, null)`, [place])).rejects.toThrow(/check constraint/);
-    await expect(as(maya, `${insertSql} ('place', $1, 'like', null, null, null)`, [place])).rejects.toThrow(/check constraint/);
+    // An unknown action fails the policy's action list before the check constraint.
+    await expect(as(maya, `${insertSql} ('place', $1, 'like', null, null, null)`, [place])).rejects.toThrow(/row-level security/);
   });
 
   it("only accepts items the writer can see", async () => {
@@ -78,7 +86,7 @@ describe("user_interactions in the database", () => {
     await expect(as(nina, `${insertSql} ('place', $1, 'impression', 'list', 0, null)`, [otherPlace])).rejects.toThrow(/row-level security/);
     await as(nina, `${insertSql} ('place', $1, 'hide', 'for_you', 0, null)`, [otherPlace]);
     await db.query("update public.profiles set analytics_opt_out = false where id = $1", [nina]);
-    expect((await mine(nina)).map((r) => r.action)).toEqual(["rate", "hide"]);
+    expect((await mine(nina)).map((r) => r.action)).toEqual(["view", "hide"]);
   });
 
   it("counts one rate-limit tick per batch and caps a batch at 100 rows", async () => {
@@ -131,7 +139,9 @@ describe("user_interactions in the database", () => {
     const id = crypto.randomUUID();
     await db.query("insert into auth.users(id,email,raw_user_meta_data) values ($1,$2,$3)", [id, `${id}@example.test`, JSON.stringify({ username: `i_${id.slice(0, 8)}`, display_name: "Interactions test" })]);
     const [own] = (await db.query<{ id: string }>(`insert into public.places(name,description,category_slug,lat,lng,city,creator_id) values ('Interaction place','Long enough description',(select slug from public.categories where scope in ('place','both') limit 1),39.96,-83,'Columbus',$1) returning id`, [id])).rows;
-    await as(id, `${insertSql} ('place', $1, 'impression', 'list', 0, null), ('place', $2, 'save', 'detail', null, null)`, [place, own.id]);
+    await as(id, `${insertSql} ('place', $1, 'impression', 'list', 0, null)`, [place]);
+    await as(id, "insert into public.saved_places (user_id, place_id) values ($1, $2)", [id, own.id]);
+    expect((await as<{ action: string }>(id, "select action from public.user_interactions order by id")).map((r) => r.action)).toEqual(["impression", "save"]);
     await as(maya, `${insertSql} ('place', $1, 'view', 'detail', null, null)`, [own.id]);
     await db.query("delete from auth.users where id = $1", [id]);
     expect((await db.query("select 1 from public.user_interactions where user_id = $1", [id])).rows).toHaveLength(0);
@@ -152,15 +162,18 @@ describe("user interactions in the demo store", () => {
     const p = publicPlace();
     await repo.interactions.log(maya, [
       { itemType: "place", itemId: p.id, action: "impression", surface: "list", position: 0 },
-      { itemType: "place", itemId: p.id, action: "rate", value: 5, surface: "detail" },
+      { itemType: "place", itemId: p.id, action: "view", surface: "detail" },
     ]);
     const rows = await repo.interactions.list(maya);
-    expect(rows.map((r) => r.action)).toEqual(["rate", "impression"]);
+    expect(rows.map((r) => r.action)).toEqual(["view", "impression"]);
     expect(rows[1]).toMatchObject({ itemType: "place", itemId: p.id, surface: "list", position: 0, value: null });
     expect(await repo.interactions.list(nina)).toEqual([]);
     await expect(repo.interactions.log(maya, [{ itemType: "place", itemId: crypto.randomUUID(), action: "view" }])).rejects.toMatchObject({ code: "forbidden" });
     await expect(repo.interactions.log(maya, [{ itemType: "place", itemId: p.id, action: "join" }])).rejects.toMatchObject({ code: "invalid" });
     await expect(repo.interactions.log(maya, [{ itemType: "place", itemId: p.id, action: "rate" }])).rejects.toMatchObject({ code: "invalid" });
+    await expect(repo.interactions.log(maya, [{ itemType: "place", itemId: p.id, action: "rate", value: 5 }])).rejects.toMatchObject({ code: "forbidden" });
+    await expect(repo.interactions.log(maya, [{ itemType: "place", itemId: p.id, action: "save" }])).rejects.toMatchObject({ code: "forbidden" });
+    await expect(repo.interactions.log(maya, [{ itemType: "place", itemId: p.id, action: "view", policy: "Rules v1!" }])).rejects.toMatchObject({ code: "invalid" });
     const many = Array.from({ length: 101 }, (_, i) => ({ itemType: "place" as const, itemId: p.id, action: "impression" as const, position: i }));
     await expect(repo.interactions.log(maya, many)).rejects.toMatchObject({ code: "invalid" });
     // One tick per batch.
@@ -196,11 +209,12 @@ describe("user interactions in the demo store", () => {
   it("clears on request, purges old passive rows, and goes with the account and its items", async () => {
     const p = publicPlace();
     const own = await repo.places.create({ name: "Interaction place", description: "Long enough description", localTip: null, categorySlug: p.categorySlug, lat: 39.96, lng: -83, address: null, neighborhood: null, city: "Columbus", tags: [], visibility: "public", photos: [] }, jules);
-    await repo.interactions.log(jules, [{ itemType: "place", itemId: p.id, action: "view" }, { itemType: "place", itemId: own.id, action: "save" }]);
-    await repo.interactions.log(maya, [{ itemType: "place", itemId: own.id, action: "impression", surface: "list", position: 3 }, { itemType: "place", itemId: p.id, action: "save" }]);
+    await repo.interactions.log(jules, [{ itemType: "place", itemId: p.id, action: "view" }]);
+    await repo.places.save(jules, own.id);
+    await repo.interactions.log(maya, [{ itemType: "place", itemId: own.id, action: "impression", surface: "list", position: 3 }, { itemType: "place", itemId: p.id, action: "hide" }]);
     for (const r of store.state.userInteractions) r.createdAt = new Date(Date.now() - 400 * 86_400_000).toISOString();
     expect(purgeDemoInteractions(store.state, 365)).toBe(2);
-    expect(store.state.userInteractions.map((r) => r.action)).toEqual(["save", "save"]);
+    expect(store.state.userInteractions.map((r) => r.action)).toEqual(["save", "hide"]);
     deleteDemoAccount(store, jules);
     expect(store.state.userInteractions.map((r) => [r.userId, r.itemId])).toEqual([[maya, p.id]]);
     expect(await repo.interactions.clear(maya)).toBe(1);
@@ -267,7 +281,7 @@ vi.mock("next/headers", () => ({ headers: async () => ctx.headers }));
 describe("recordInteractions()", async () => {
   const { recordInteractions } = await import("../src/server/interactions");
   let store: ReturnType<typeof createIsolatedStore>;
-  const row = () => ({ itemType: "place" as const, itemId: store.state.places.find((p) => p.status === "published" && p.visibility === "public")!.id, action: "save" as const, surface: "detail" as const });
+  const row = () => ({ itemType: "place" as const, itemId: store.state.places.find((p) => p.status === "published" && p.visibility === "public")!.id, action: "view" as const, surface: "detail" as const });
   beforeEach(() => {
     store = createIsolatedStore();
     ctx.repo = createDemoRepository(store);

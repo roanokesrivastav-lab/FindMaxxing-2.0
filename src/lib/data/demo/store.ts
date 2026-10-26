@@ -308,7 +308,7 @@ export interface SavedListRow {
   updatedAt: string;
 }
 
-export const STATE_VERSION = 13;
+export const STATE_VERSION = 14;
 const DATA_DIR = path.join(process.cwd(), ".data");
 const STATE_FILE = path.join(DATA_DIR, "demo-store.json");
 
@@ -436,6 +436,15 @@ const MIGRATIONS: Record<number, (state: LooseState) => void> = {
   // v12 → v13: the per-user interaction log. Nothing recorded yet.
   12(state) {
     state.userInteractions ??= [];
+  },
+  // v13 → v14: attribution columns on the interaction log, null for old rows.
+  13(state) {
+    for (const i of (state.userInteractions ?? []) as Partial<DemoState["userInteractions"][number]>[]) {
+      i.requestId ??= null;
+      i.policy ??= null;
+      i.score ??= null;
+      i.propensity ??= null;
+    }
   },
 };
 

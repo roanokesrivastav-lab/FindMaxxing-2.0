@@ -1,7 +1,6 @@
 "use server";
 
 import { track } from "@/server/analytics";
-import { recordInteractions } from "@/server/interactions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getRepository } from "@/lib/data";
@@ -125,7 +124,6 @@ export async function toggleAttendanceAction(eventId: string, join: boolean): Pr
     if (join) await repo.events.join(viewer.id, id.data);
     else await repo.events.leave(viewer.id, id.data);
     if (join) await track("join_event", { eventId: id.data });
-    await recordInteractions([{ itemType: "event", itemId: id.data, action: join ? "join" : "leave", surface: "detail" }]);
     revalidatePath(`/events/${id.data}`);
     revalidatePath("/events");
     revalidatePath("/profile");

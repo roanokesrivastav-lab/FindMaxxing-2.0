@@ -1,8 +1,9 @@
 /**
  * Demo twin of recommend_places / recommend_events (0018_recommendations.sql,
  * as redefined in 0031_user_interactions.sql to leave out what the viewer
- * marked Not interested): the same candidates, signals, weights, diversity
- * terms, rounding and order.
+ * marked Not interested and in 0033_interaction_attribution.sql to leave out
+ * anyone blocked either way): the same candidates, signals, weights,
+ * diversity terms, rounding and order.
  * Visibility comes from the repository's canViewPlace / canViewEvent, the
  * mirrors of the row policies the SQL runs under.
  */
@@ -14,6 +15,25 @@ import { hiddenItems } from "./interactions";
 type Signal = { w: number; kind: string; text: string; ref: string | null };
 const C = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
+
+/** Mirrors is_blocked_between(viewer, other). */
+function blockedWith(state: DemoState, viewerId: string): Set<string> {
+  const out = new Set<string>();
+  for (const b of state.blocks) {
+    if (b.blockerId === viewerId) out.add(b.blockedId);
+    if (b.blockedId === viewerId) out.add(b.blockerId);
+  }
+  return out;
+}
+
+/** The people the viewer follows and has no block with, by id, with their usernames. */
+function followingOf(state: DemoState, viewerId: string, blocked: Set<string>): Map<string, string> {
+  return new Map(
+    state.follows
+      .filter((f) => f.followerId === viewerId && !blocked.has(f.followingId))
+      .map((f) => [f.followingId, state.profiles.find((p) => p.id === f.followingId)?.username ?? ""]),
+  );
+}
 
 function best(signals: Signal[]): RecommendationReason {
   const top = [...signals].sort((a, b) => b.w - a.w || C(a.kind, b.kind))[0];
@@ -43,16 +63,15 @@ export function recommendDemoPlaces(
     ...rated.filter((r) => r.score >= 4).map((r) => ({ placeId: r.placeId, at: r.updatedAt, how: "rated" as const })),
   ];
   const tagsOf = (placeId: string) => state.placeTags.filter((t) => t.placeId === placeId).map((t) => t.interestSlug);
-  const following = new Map(
-    state.follows.filter((f) => f.followerId === viewerId).map((f) => [f.followingId, state.profiles.find((p) => p.id === f.followingId)?.username ?? ""]),
-  );
+  const blocked = blockedWith(state, viewerId);
+  const following = followingOf(state, viewerId, blocked);
   const joinedCats = new Set(
     state.eventAttendees.filter((a) => a.userId === viewerId).map((a) => state.events.find((e) => e.id === a.eventId)?.categorySlug).filter(Boolean),
   );
   const hidden = hiddenItems(state, viewerId, "place");
   const out: { place: PlaceRow; score: number; reason: RecommendationReason }[] = [];
   for (const p of state.places) {
-    if (p.status !== "published" || p.creatorId === viewerId || !canView(p)) continue;
+    if (p.status !== "published" || p.creatorId === viewerId || !canView(p) || (p.creatorId && blocked.has(p.creatorId))) continue;
     if (saved.some((s) => s.placeId === p.id) || rated.some((r) => r.placeId === p.id) || hidden.has(p.id)) continue;
     const signals: Signal[] = [];
     if (p.creatorId && following.has(p.creatorId)) {
@@ -93,9 +112,8 @@ export function recommendDemoEvents(
   now: number,
 ): { event: EventRow; score: number; reason: RecommendationReason }[] {
   const saved = new Set(state.savedPlaces.filter((s) => s.userId === viewerId).map((s) => s.placeId));
-  const following = new Map(
-    state.follows.filter((f) => f.followerId === viewerId).map((f) => [f.followingId, state.profiles.find((p) => p.id === f.followingId)?.username ?? ""]),
-  );
+  const blocked = blockedWith(state, viewerId);
+  const following = followingOf(state, viewerId, blocked);
   const joined = new Set(state.eventAttendees.filter((a) => a.userId === viewerId).map((a) => a.eventId));
   const hidden = hiddenItems(state, viewerId, "event");
   // Most common weekday (Columbus time) of events joined but not hosted; ties go to the earliest weekday.
@@ -109,6 +127,7 @@ export function recommendDemoEvents(
   const out: { event: EventRow; score: number; reason: RecommendationReason }[] = [];
   for (const e of state.events) {
     if (e.status !== "published" || e.creatorId === viewerId || joined.has(e.id) || hidden.has(e.id) || !canView(e)) continue;
+    if (e.creatorId && blocked.has(e.creatorId)) continue;
     if (new Date(e.endsAt ?? e.startsAt).getTime() < now - 3600_000) continue;
     const signals: Signal[] = [];
     if (e.placeId && saved.has(e.placeId)) {

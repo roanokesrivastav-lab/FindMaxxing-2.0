@@ -3,18 +3,26 @@
 import { z } from "zod";
 import { getViewer } from "@/lib/auth/server";
 import { getRepository } from "@/lib/data";
-import { INTERACTION_SURFACES, MAX_INTERACTION_BATCH } from "@/lib/data/types";
+import { INTERACTION_POLICY_PATTERN, INTERACTION_SURFACES, MAX_INTERACTION_BATCH } from "@/lib/data/types";
 import { uuidSchema } from "@/lib/validation/schemas";
 import { track } from "@/server/analytics";
 import { recordInteractions } from "@/server/interactions";
 import { fail, succeed, toFailure, type ActionResult } from "./result";
 
 const itemType = z.enum(["place", "event"]);
+/** Which rendering of a "For you" rail showed the card (absent elsewhere). */
+const attribution = {
+  requestId: uuidSchema.optional(),
+  policy: z.string().regex(INTERACTION_POLICY_PATTERN).optional(),
+  score: z.number().finite().optional(),
+};
+const attributionSchema = z.object(attribution).nullable();
 const impressionsSchema = z.array(z.object({
   itemType,
   itemId: uuidSchema,
   surface: z.enum(INTERACTION_SURFACES),
   position: z.number().int().min(0).max(999).nullable(),
+  ...attribution,
 })).min(1).max(MAX_INTERACTION_BATCH);
 
 /** A batch of cards the viewer saw (sent by the browser's impression queue). Fire and forget. */
@@ -40,16 +48,17 @@ export async function logItemAction(type: string, id: string, action: string): P
  * own visible choice, and undone by undoNotInterestedAction. No revalidation:
  * the card stays to offer the undo, and the rails are rendered per request.
  */
-export async function notInterestedAction(type: string, id: string, position: number | null = null): Promise<ActionResult> {
+export async function notInterestedAction(type: string, id: string, position: number | null = null, from: unknown = null): Promise<ActionResult> {
   const viewer = await getViewer();
   if (!viewer) return fail("Sign in first", undefined, "unauthenticated");
   const kind = itemType.safeParse(type);
   const item = uuidSchema.safeParse(id);
   const at = z.number().int().min(0).max(999).nullable().safeParse(position);
-  if (!kind.success || !item.success || !at.success) return fail("Invalid item");
+  const source = attributionSchema.safeParse(from);
+  if (!kind.success || !item.success || !at.success || !source.success) return fail("Invalid item");
   try {
     const repo = await getRepository();
-    await repo.interactions.log(viewer.id, [{ itemType: kind.data, itemId: item.data, action: "hide", surface: "for_you", position: at.data }]);
+    await repo.interactions.log(viewer.id, [{ itemType: kind.data, itemId: item.data, action: "hide", surface: "for_you", position: at.data, ...source.data }]);
   } catch (err) {
     return toFailure(err);
   }

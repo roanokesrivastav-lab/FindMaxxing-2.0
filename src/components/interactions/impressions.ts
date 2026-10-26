@@ -5,7 +5,14 @@ import type { InteractionSurface } from "@/lib/data/types";
 import { MAX_INTERACTION_BATCH } from "@/lib/data/types";
 import { logImpressionsAction } from "@/server/actions/interactions";
 
-export interface Impression {
+/** Which rendering of a recommendation rail showed the card, and what produced it. */
+export interface Attribution {
+  requestId: string;
+  policy: string;
+  score: number;
+}
+
+export interface Impression extends Partial<Attribution> {
   itemType: "place" | "event";
   itemId: string;
   surface: InteractionSurface;
@@ -54,7 +61,7 @@ export function useImpression<T extends Element>(impression: Impression | null):
   const seenKey = useRef<string | null>(null);
   const observer = useRef<IntersectionObserver | null>(null);
   const dwell = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const key = impression ? `${impression.surface}:${impression.itemType}:${impression.itemId}:${impression.position}` : null;
+  const key = impression ? JSON.stringify(impression) : null;
 
   const stop = useCallback(() => {
     observer.current?.disconnect();
@@ -69,18 +76,13 @@ export function useImpression<T extends Element>(impression: Impression | null):
       stop();
       if (!node || !key || seenKey.current === key || typeof IntersectionObserver === "undefined") return;
       // The key carries every field, so this copy is the impression for it.
-      const [surface, itemType, itemId, position] = key.split(":");
+      const seen = JSON.parse(key) as Impression;
       observer.current = new IntersectionObserver(
         ([entry]) => {
           if (entry?.isIntersecting && entry.intersectionRatio >= 0.5) {
             dwell.current ??= setTimeout(() => {
               seenKey.current = key;
-              queueImpression({
-                surface: surface as InteractionSurface,
-                itemType: itemType as Impression["itemType"],
-                itemId,
-                position: position === "null" ? null : Number(position),
-              });
+              queueImpression(seen);
               stop();
             }, DWELL_MS);
           } else if (dwell.current) {

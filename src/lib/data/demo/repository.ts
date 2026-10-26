@@ -28,7 +28,7 @@ import { recommendDemoEvents, recommendDemoPlaces } from "./recommend";
 import { createDemoMessaging, dropEventChats, joinEventChat, leaveEventChat } from "./messaging";
 import { createDemoNotifications, notifyOn } from "./notifications";
 import { createDemoAds } from "./ads";
-import { createDemoInteractions, forgetItemInteractions } from "./interactions";
+import { createDemoInteractions, forgetItemInteractions, recordOwnInteraction } from "./interactions";
 import { createDemoPayments, isPlusIn, needsTicket, refundOnCancel } from "./payments";
 import { PLUS_LIST_CAP, paymentsError } from "../payments";
 import { LIST_LIMIT_ERROR, MAX_SAVED_LISTS, duplicateListName, listNameKey, normalizeListName } from "../savedLists";
@@ -676,6 +676,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         if (state.savedPlaces.some((s) => s.userId === userId && s.placeId === placeId)) return;
         state.savedPlaces.push({ userId, placeId, createdAt: new Date().toISOString() });
         notifyOn.save(state, placeId, userId);
+        recordOwnInteraction(state, userId, { itemType: "place", itemId: placeId, action: "save" });
         persist();
       },
       async unsave(userId, placeId) {
@@ -685,6 +686,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           state.savedPlaces.splice(idx, 1);
           // saved_list_items cascade from the bookmark: unsaving leaves every list.
           removeListItems((i) => i.ownerId === userId && i.placeId === placeId);
+          recordOwnInteraction(state, userId, { itemType: "place", itemId: placeId, action: "unsave" });
           persist();
         }
       },
@@ -707,6 +709,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           notifyOn.rate(state, placeId, userId);
         }
         recomputeRating(state, placeId);
+        recordOwnInteraction(state, userId, { itemType: "place", itemId: placeId, action: "rate", value: score });
         counted();
         persist();
         return { ratingAvg: place.ratingAvg, ratingCount: place.ratingCount };
@@ -878,6 +881,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         state.eventAttendees.push({ eventId, userId, createdAt: new Date().toISOString() });
         joinEventChat(state, eventId, userId);
         notifyOn.join(state, eventId, userId);
+        recordOwnInteraction(state, userId, { itemType: "event", itemId: eventId, action: "join" });
         persist();
       },
       async leave(userId, eventId) {
@@ -886,6 +890,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         if (idx >= 0) {
           state.eventAttendees.splice(idx, 1);
           leaveEventChat(state, eventId, userId);
+          recordOwnInteraction(state, userId, { itemType: "event", itemId: eventId, action: "leave" });
           persist();
         }
       },

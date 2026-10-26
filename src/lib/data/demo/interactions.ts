@@ -1,11 +1,17 @@
 /**
- * Demo twin of 0031_user_interactions.sql: the private per-user interaction
- * log. The checks mirror the table's: constraints, the insert policy (own
- * rows, visible items, the analytics opt-out except for "hide"), the
- * suspended-account trigger and one rate-limit tick per batch.
+ * Demo twin of 0031_user_interactions.sql and 0033_interaction_attribution.sql:
+ * the private per-user interaction log. The checks mirror the table's:
+ * constraints, the insert policy (own rows, client actions only, visible
+ * items, the analytics opt-out except for "hide"), the suspended-account
+ * trigger, one rate-limit tick per batch and one impression per request.
+ * recordOwnInteraction mirrors the triggers that write save, unsave, rate,
+ * join and leave.
  */
 import type { DataRepository } from "../repository";
-import { DataError, INTERACTION_ACTIONS, INTERACTION_SURFACES, MAX_INTERACTION_BATCH, type InteractionInput, type UserInteraction } from "../types";
+import {
+  CLIENT_INTERACTION_ACTIONS, DataError, INTERACTION_ACTIONS, INTERACTION_POLICY_PATTERN, INTERACTION_SURFACES, MAX_INTERACTION_BATCH,
+  type InteractionAction, type InteractionInput, type UserInteraction,
+} from "../types";
 import type { RateLimitAction } from "@/lib/rateLimits";
 import type { DemoState, EventRow, PlaceRow } from "./store";
 
@@ -31,8 +37,32 @@ export function hiddenItems(state: DemoState, userId: string, itemType: "place" 
   return new Set(state.userInteractions.filter((i) => i.userId === userId && i.action === "hide" && i.itemType === itemType).map((i) => i.itemId));
 }
 
+type Row = DemoState["userInteractions"][number];
+
+function nextId(state: DemoState): number {
+  return state.userInteractions.reduce((max, i) => Math.max(max, i.id), 0) + 1;
+}
+
+/**
+ * Mirrors record_own_interaction(): the person's own save, unsave, rating,
+ * join or leave, unless they opted out. No rate-limit tick.
+ */
+export function recordOwnInteraction(
+  state: DemoState,
+  userId: string,
+  row: { itemType: "place" | "event"; itemId: string; action: Extract<InteractionAction, "save" | "unsave" | "rate" | "join" | "leave">; value?: number },
+): void {
+  const profile = state.profiles.find((p) => p.id === userId);
+  if (!profile || profile.analyticsOptOut) return;
+  state.userInteractions.push({
+    id: nextId(state), userId, itemType: row.itemType, itemId: row.itemId, action: row.action,
+    surface: null, position: null, value: row.action === "rate" ? row.value ?? null : null,
+    requestId: null, policy: null, score: null, propensity: null, createdAt: new Date().toISOString(),
+  });
+}
+
 function validRow(row: InteractionInput): boolean {
-  const { itemType, action, surface = null, position = null, value = null } = row;
+  const { itemType, action, surface = null, position = null, value = null, policy = null, score = null, propensity = null } = row;
   if (itemType !== "place" && itemType !== "event") return false;
   if (!(INTERACTION_ACTIONS as readonly string[]).includes(action)) return false;
   if (surface !== null && !(INTERACTION_SURFACES as readonly string[]).includes(surface)) return false;
@@ -41,8 +71,13 @@ function validRow(row: InteractionInput): boolean {
   if (value !== null && !(Number.isInteger(value) && value >= 1 && value <= 5)) return false;
   if (PLACE_ONLY.has(action) && itemType !== "place") return false;
   if (EVENT_ONLY.has(action) && itemType !== "event") return false;
+  if (policy !== null && !INTERACTION_POLICY_PATTERN.test(policy)) return false;
+  if (score !== null && !Number.isFinite(score)) return false;
+  if (propensity !== null && !(propensity > 0 && propensity <= 1)) return false;
   return true;
 }
+
+const clientMayWrite = (row: InteractionInput) => (CLIENT_INTERACTION_ACTIONS as readonly string[]).includes(row.action);
 
 export function createDemoInteractions(state: DemoState, h: {
   persist(): void;
@@ -69,16 +104,21 @@ export function createDemoInteractions(state: DemoState, h: {
       if (rows.length > MAX_INTERACTION_BATCH) throw new DataError("Too many interactions in one batch", "invalid");
       if (!rows.every(validRow)) throw new DataError("Invalid interaction", "invalid");
       // The insert policy: one refused row refuses the whole statement.
-      if (rows.some((r) => (r.action !== "hide" && profile.analyticsOptOut) || !visible(userId, r))) {
+      if (rows.some((r) => !clientMayWrite(r) || (r.action !== "hide" && profile.analyticsOptOut) || !visible(userId, r))) {
         throw new DataError("Interaction not allowed", "forbidden");
       }
       const counted = h.rateLimit(userId, "interactions");
       const now = new Date().toISOString();
-      let id = state.userInteractions.reduce((max, i) => Math.max(max, i.id), 0);
+      let id = nextId(state);
+      const seen = (r: InteractionInput) => state.userInteractions.some((i) =>
+        i.userId === userId && i.action === "impression" && i.requestId === r.requestId && i.itemType === r.itemType && i.itemId === r.itemId);
       for (const r of rows) {
+        // skip_repeat_impressions(): one impression per request and item.
+        if (r.action === "impression" && r.requestId && seen(r)) continue;
         state.userInteractions.push({
-          id: ++id, userId, itemType: r.itemType, itemId: r.itemId, action: r.action,
-          surface: r.surface ?? null, position: r.position ?? null, value: r.value ?? null, createdAt: now,
+          id: id++, userId, itemType: r.itemType, itemId: r.itemId, action: r.action,
+          surface: r.surface ?? null, position: r.position ?? null, value: r.value ?? null,
+          requestId: r.requestId ?? null, policy: r.policy ?? null, score: r.score ?? null, propensity: r.propensity ?? null, createdAt: now,
         });
       }
       counted();
@@ -105,6 +145,9 @@ export function createDemoInteractions(state: DemoState, h: {
   };
 }
 
-function toPublic(i: DemoState["userInteractions"][number]): UserInteraction {
-  return { id: i.id, itemType: i.itemType, itemId: i.itemId, action: i.action, surface: i.surface, position: i.position, value: i.value, createdAt: i.createdAt };
+function toPublic(i: Row): UserInteraction {
+  return {
+    id: i.id, itemType: i.itemType, itemId: i.itemId, action: i.action, surface: i.surface, position: i.position, value: i.value,
+    requestId: i.requestId, policy: i.policy, score: i.score, propensity: i.propensity, createdAt: i.createdAt,
+  };
 }
