@@ -30,7 +30,7 @@ export default function NewEvent() {
       const perm = await Location.requestForegroundPermissionsAsync();
       if (!perm.granted) throw new Error("Allow location to pin the event where you are.");
       const here = await Location.getCurrentPositionAsync({});
-      const id = await createEvent(userId, {
+      const id = await createEvent({
         title: title.trim(), description: description.trim(), locationName: locationName.trim(), lat: here.coords.latitude, lng: here.coords.longitude,
         startsAt: new Date(Date.now() + hours * 3600_000).toISOString(), categorySlug: category, capacity: capacity ? Number(capacity) : null, tags: [],
       });

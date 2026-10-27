@@ -38,13 +38,25 @@ place where you are with a camera photo (stored under your own folder, as the
 storage policy requires, through `create_place_with_details`), Saved, an Inbox
 with messages (live through Supabase Realtime) and notifications, and Profile.
 
+## Session and photo privacy
+
+The Supabase session is kept in the OS keystore (`expo-secure-store`, chunked
+under its 2 KB value limit; `lib/secureStorage.ts`), not AsyncStorage; a session
+an older build left in AsyncStorage is moved over on first launch. The web build
+keeps AsyncStorage. Photos have their EXIF (GPS, camera), XMP and other metadata
+removed on the phone before upload, keeping only the orientation
+(`lib/jpegMetadata.ts`); anything that is not a JPEG is refused. Events are
+created with `create_event_with_details`, one transaction.
+
 ## Push
 
 On a real device, once signed in, the app asks for notification permission and
 stores its Expo push token with `save_expo_push_token` in `push_subscriptions`
 (kind `expo`). The web app's scheduler (`/api/cron/notifications`) then sends to
 it through Expo's push service with the same rules as web push: per-type
-preferences, quiet hours, at most five a day, never twice. Building a push-capable
+preferences, quiet hours, at most five a day, never twice. Signing out deletes
+this phone's token from `push_subscriptions` and unregisters the device before
+the session ends (`lib/pushLifecycle.ts`). Building a push-capable
 binary needs an EAS project id (`eas init`) and, for iOS, an Apple developer
 account.
 

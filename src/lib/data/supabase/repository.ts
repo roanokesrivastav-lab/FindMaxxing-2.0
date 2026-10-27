@@ -938,32 +938,24 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
         return detail;
       },
       async create(input, creatorId) {
-        const row = unwrap(
-          await supabase
-            .from("events")
-            .insert({
-              title: input.title,
-              description: input.description,
-              place_id: input.placeId ?? null,
-              location_name: input.locationName,
-              address: input.address ?? null,
-              lat: input.lat,
-              lng: input.lng,
-              starts_at: input.startsAt,
-              ends_at: input.endsAt ?? null,
-              creator_id: creatorId,
-              category_slug: input.categorySlug,
-              capacity: input.capacity ?? null,
-            })
-            .select("id")
-            .single(),
-        ) as { id: string };
-        if (input.tags.length) {
-          unwrap(await supabase.from("event_tags").insert(input.tags.map((t) => ({ event_id: row.id, interest_slug: t }))));
-        }
-        // Creator attends by default (also enforced as a default by the join rules).
-        await repo.events.join(creatorId, row.id);
-        const created = await repo.events.get(row.id, creatorId);
+        // Event, tags and the creator's attendance in one transaction (0036_create_event_with_details.sql).
+        const id = unwrap(
+          await supabase.rpc("create_event_with_details", {
+            p_title: input.title,
+            p_description: input.description,
+            p_place_id: input.placeId ?? null,
+            p_location_name: input.locationName,
+            p_address: input.address ?? null,
+            p_lat: input.lat,
+            p_lng: input.lng,
+            p_starts_at: input.startsAt,
+            p_ends_at: input.endsAt ?? null,
+            p_category_slug: input.categorySlug,
+            p_capacity: input.capacity ?? null,
+            p_tags: input.tags,
+          }),
+        ) as string;
+        const created = await repo.events.get(id, creatorId);
         if (!created) throw new DataError("Event not found after create", "not_found");
         return created;
       },

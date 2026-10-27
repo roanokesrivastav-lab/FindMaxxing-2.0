@@ -120,17 +120,15 @@ export async function createPlace(input: {
   })) as string;
 }
 
-export async function createEvent(userId: string, input: {
+/** Event, tags and your attendance in one transaction (0036_create_event_with_details.sql). */
+export async function createEvent(input: {
   title: string; description: string; locationName: string; lat: number; lng: number; startsAt: string; categorySlug: string; capacity: number | null; tags: string[];
 }): Promise<string> {
-  const sb = requireSupabase();
-  const row = check(await sb.from("events").insert({
-    title: input.title, description: input.description, location_name: input.locationName, lat: input.lat, lng: input.lng,
-    starts_at: input.startsAt, creator_id: userId, category_slug: input.categorySlug, capacity: input.capacity,
-  }).select("id").single()) as { id: string };
-  if (input.tags.length) check(await sb.from("event_tags").insert(input.tags.map((t) => ({ event_id: row.id, interest_slug: t }))));
-  await join(row.id, userId);
-  return row.id;
+  return check(await requireSupabase().rpc("create_event_with_details", {
+    p_title: input.title, p_description: input.description, p_place_id: null, p_location_name: input.locationName, p_address: null,
+    p_lat: input.lat, p_lng: input.lng, p_starts_at: input.startsAt, p_ends_at: null, p_category_slug: input.categorySlug,
+    p_capacity: input.capacity, p_tags: input.tags,
+  })) as string;
 }
 
 export async function conversations(): Promise<ConversationSummary[]> {
