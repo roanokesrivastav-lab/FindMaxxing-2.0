@@ -20,6 +20,14 @@ async function follow(repo: ReturnType<typeof createDemoRepository>, target: str
   await repo.profiles.unfollow(actor, target);
   await repo.profiles.follow(actor, target);
 }
+// Seed events are scheduled relative to now, and these users attend some: at
+// some hours one falls in the reminder window and adds pushes these tests did
+// not ask for. Reminders have their own test in notifications.test.ts.
+function isolatedStore() {
+  const h = createIsolatedStore();
+  h.state.eventAttendees = h.state.eventAttendees.filter((a) => a.userId !== member && a.userId !== other);
+  return h;
+}
 beforeEach(() => { vi.clearAllMocks(); }); afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 describe("transport readiness", () => {
@@ -41,7 +49,7 @@ describe("transport readiness", () => {
 
 describe("ready-only queue consumption", () => {
   it("Expo-only sender leaves browser-only work pending, then web readiness delivers it", async () => {
-    const h = createIsolatedStore(), repo = createDemoRepository(h); const send = vi.fn(async () => ({ ok: true as const }));
+    const h = isolatedStore(), repo = createDemoRepository(h); const send = vi.fn(async () => ({ ok: true as const }));
     await repo.notifications.addDevice(member, web); await repo.notifications.addDevice(other, expo);
     await follow(repo, member); await follow(repo, other);
     expect(await runNotificationJobs(repo, combinedSender(null, { send }))).toMatchObject({ claimed: 1, sent: 1 });
@@ -50,7 +58,7 @@ describe("ready-only queue consumption", () => {
     expect(await runNotificationJobs(repo, combinedSender({ send }, null))).toMatchObject({ claimed: 1, sent: 1 });
   });
   it("mixed devices receive the ready kind first and delayed kind later, without duplicate sends or cap charges", async () => {
-    const h = createIsolatedStore(), repo = createDemoRepository(h);
+    const h = isolatedStore(), repo = createDemoRepository(h);
     await repo.notifications.addDevice(member, web); await repo.notifications.addDevice(member, expo); await follow(repo, member);
     const expoSend = vi.fn(async () => ({ ok: true as const })), webSend = vi.fn(async () => ({ ok: true as const }));
     expect(await runNotificationJobs(repo, combinedSender(null, { send: expoSend }))).toMatchObject({ claimed: 1, sent: 1 });
@@ -62,14 +70,14 @@ describe("ready-only queue consumption", () => {
     expect(h.state.pushLog.filter((l) => l.notificationId === n.id)).toHaveLength(1);
   });
   it("missing/empty readiness does not claim work", async () => {
-    const h = createIsolatedStore(), repo = createDemoRepository(h); await repo.notifications.addDevice(member, web); await follow(repo, member);
+    const h = isolatedStore(), repo = createDemoRepository(h); await repo.notifications.addDevice(member, web); await follow(repo, member);
     const claim = vi.spyOn(repo.notifications, "claimPushes");
     expect(await runNotificationJobs(repo, null)).toMatchObject({ claimed: 0 });
     expect(await runNotificationJobs(repo, { supportedKinds: [], send: vi.fn() })).toMatchObject({ claimed: 0 });
     expect(claim).not.toHaveBeenCalled(); expect(h.state.notifications.find((n) => n.userId === member)?.pushState).toBe("pending");
   });
   it("an unsendable oldest notification does not starve another transport behind a small batch limit", async () => {
-    const h = createIsolatedStore(), repo = createDemoRepository(h);
+    const h = isolatedStore(), repo = createDemoRepository(h);
     await repo.notifications.addDevice(member, web); await repo.notifications.addDevice(other, expo);
     await follow(repo, member); await follow(repo, other);
     const browser = h.state.notifications.find((n) => n.userId === member)!; browser.createdAt = new Date(Date.now() - 60000).toISOString();
@@ -77,7 +85,7 @@ describe("ready-only queue consumption", () => {
     expect(browser.pushState).toBe("pending");
   });
   it("a ready transport failure is reported, but does not consume the unready transport", async () => {
-    const h = createIsolatedStore(), repo = createDemoRepository(h);
+    const h = isolatedStore(), repo = createDemoRepository(h);
     await repo.notifications.addDevice(member, web); await repo.notifications.addDevice(member, expo); await follow(repo, member);
     const sender: PushSender = { supportedKinds: ["expo"], send: vi.fn(async () => ({ ok: false, gone: false })) };
     expect(await runNotificationJobs(repo, sender)).toMatchObject({ claimed: 1, sent: 0, failed: 1 });
@@ -91,7 +99,7 @@ describe("actual notification cron configuration", () => {
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", ""); vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "");
     vi.stubEnv("NEXT_PUBLIC_FEATURES", features); vi.stubEnv("CRON_SECRET", "test-cron");
     vi.stubEnv("VAPID_PUBLIC_KEY", vapid ? "pub" : ""); vi.stubEnv("VAPID_PRIVATE_KEY", vapid ? "priv" : "");
-    globalThis.__findmaxxingDemoStore = createIsolatedStore(); const repo = createDemoRepository(globalThis.__findmaxxingDemoStore);
+    globalThis.__findmaxxingDemoStore = isolatedStore(); const repo = createDemoRepository(globalThis.__findmaxxingDemoStore);
     const fetcher = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ data: { status: "ok", id: "mock_receipt" } }), { status: 200 }));
     vi.stubGlobal("fetch", fetcher); mocks.webSend.mockResolvedValue({ ok: true });
     mocks.webFactory.mockResolvedValue({ supportedKinds: ["web"], send: mocks.webSend });
