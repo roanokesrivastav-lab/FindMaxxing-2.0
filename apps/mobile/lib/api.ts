@@ -4,6 +4,7 @@
  * session. Nothing here can do more than RLS allows the signed-in person.
  */
 import type { AppNotification, ConversationSummary, Event, Place, SavedList } from "@findmaxxing/shared/types";
+import { stripJpegMetadata } from "./jpegMetadata";
 import { requireSupabase } from "./supabase";
 
 const PROFILE = "id, username, display_name, avatar_url";
@@ -96,11 +97,14 @@ export async function addToList(listId: string, placeId: string) {
   check(await requireSupabase().rpc("add_to_saved_list", { p_list_id: listId, p_place_id: placeId }));
 }
 
-/** A photo from the camera, stored under the user's own folder as the storage policy requires. */
+/**
+ * A photo from the camera, stored under the user's own folder as the storage
+ * policy requires, with its location and other metadata stripped first.
+ */
 export async function uploadPlacePhoto(userId: string, uri: string): Promise<{ url: string; storagePath: string }> {
   const sb = requireSupabase();
   const path = `${userId}/${globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36)}.jpg`;
-  const body = await (await fetch(uri)).arrayBuffer();
+  const body = stripJpegMetadata(new Uint8Array(await (await fetch(uri)).arrayBuffer()));
   check(await sb.storage.from("place-photos").upload(path, body, { contentType: "image/jpeg", upsert: false }));
   return { url: `storage:place-photos/${path}`, storagePath: path };
 }
