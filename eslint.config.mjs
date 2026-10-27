@@ -17,6 +17,8 @@ const eslintConfig = defineConfig([
     // Vendored MapLibre worker copied from node_modules on install.
     "public/maplibre/**",
     ".data/**",
+    // Agent worktrees are full copies of the repo; lint the real source only.
+    ".claude/**",
   ]),
 ]);
 

@@ -49,3 +49,6 @@ next-env.d.ts
 
 # CI browser-run screenshots
 /artifacts/
+
+# vexp code index: rewritten by the local indexer on every run
+.vexp/manifest.json
