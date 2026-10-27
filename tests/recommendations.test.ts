@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeAll, vi } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import { createSeededDb, queryAs } from "./helpers/pglite";
+import { alignDbWithDemo } from "./helpers/parity";
 import { createIsolatedStore } from "../src/lib/data/demo/store";
 import { createDemoRepository } from "../src/lib/data/demo/repository";
 import { SEED_USERS } from "../src/lib/seed/seed-data";
@@ -83,15 +84,7 @@ describe("recommendation parity", () => {
     const db = await createSeededDb();
     const store = createIsolatedStore();
     const repo = createDemoRepository(store);
-    // Same timestamps on both sides: "the most recent save" picks the explanation.
-    for (const s of store.state.savedPlaces) await db.query("update public.saved_places set created_at = $3 where user_id = $1 and place_id = $2", [s.userId, s.placeId, s.createdAt]);
-    // The updated_at trigger would stamp now() over the value being copied in.
-    await db.exec("alter table public.place_ratings disable trigger place_ratings_updated_at;");
-    for (const r of store.state.placeRatings) await db.query("update public.place_ratings set updated_at = $3 where user_id = $1 and place_id = $2", [r.userId, r.placeId, r.updatedAt]);
-    await db.exec("alter table public.place_ratings enable trigger place_ratings_updated_at;");
-    await db.exec("alter table public.events disable trigger guard_owner_event_change;");
-    for (const e of store.state.events) await db.query("update public.events set starts_at = $2, ends_at = $3 where id = $1", [e.id, e.startsAt, e.endsAt]);
-    await db.exec("alter table public.events enable trigger guard_owner_event_change;");
+    await alignDbWithDemo(db, store);
     const near = { lat: 39.9612, lng: -82.9988 };
     for (const viewer of SEED_USERS.map((u) => u.id)) {
       for (const n of [null, near]) {

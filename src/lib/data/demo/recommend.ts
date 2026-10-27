@@ -1,9 +1,10 @@
 /**
  * Demo twin of recommend_places / recommend_events (0018_recommendations.sql,
  * as redefined in 0031_user_interactions.sql to leave out what the viewer
- * marked Not interested and in 0033_interaction_attribution.sql to leave out
- * anyone blocked either way): the same candidates, signals, weights,
- * diversity terms, rounding and order.
+ * marked Not interested, in 0033_interaction_attribution.sql to leave out
+ * anyone blocked either way and in 0034_cold_start_fallback.sql to fill in
+ * with places popular in the viewer's home city): the same candidates,
+ * signals, weights, diversity terms, rounding and order.
  * Visibility comes from the repository's canViewPlace / canViewEvent, the
  * mirrors of the row policies the SQL runs under.
  */
@@ -55,6 +56,7 @@ export function recommendDemoPlaces(
   canView: (p: PlaceRow) => boolean,
   near: { lat: number; lng: number } | null,
   limit: number,
+  now = Date.now(),
 ): { place: PlaceRow; score: number; reason: RecommendationReason }[] {
   const saved = state.savedPlaces.filter((s) => s.userId === viewerId);
   const rated = state.placeRatings.filter((r) => r.userId === viewerId);
@@ -69,6 +71,7 @@ export function recommendDemoPlaces(
     state.eventAttendees.filter((a) => a.userId === viewerId).map((a) => state.events.find((e) => e.id === a.eventId)?.categorySlug).filter(Boolean),
   );
   const hidden = hiddenItems(state, viewerId, "place");
+  const homeCity = state.profiles.find((p) => p.id === viewerId)?.homeCity ?? null;
   const out: { place: PlaceRow; score: number; reason: RecommendationReason }[] = [];
   for (const p of state.places) {
     if (p.status !== "published" || p.creatorId === viewerId || !canView(p) || (p.creatorId && blocked.has(p.creatorId))) continue;
@@ -91,9 +94,16 @@ export function recommendDemoPlaces(
     const interest = interestSignal(state, viewerId, tags);
     if (interest) signals.push(interest);
     if (joinedCats.has(p.categorySlug)) signals.push({ w: 1, kind: "event_category", text: "Like the events you join", ref: p.categorySlug });
-    if (!signals.length) continue;
-    const nearby = near ? 2 * Math.exp(-discoveryDistance(p, near) / 3000) : 0;
     const saves = state.savedPlaces.filter((s) => s.placeId === p.id).length;
+    if (!signals.length) {
+      // The cold-start fallback: saved in the viewer's home city, decayed by the place's age in whole days.
+      if (homeCity === null || p.city !== homeCity || saves === 0) continue;
+      const ageDays = Math.floor((now - Date.parse(p.createdAt)) / 86_400_000);
+      const popularity = saves * Math.exp(-ageDays / 180);
+      out.push({ place: p, score: round3(0.9 * (1 - Math.exp(-popularity / 3))), reason: { kind: "popular_local", text: "Popular with locals", ref: p.city } });
+      continue;
+    }
+    const nearby = near ? 2 * Math.exp(-discoveryDistance(p, near) / 3000) : 0;
     const score = round3(signals.reduce((sum, s) => sum + s.w, 0) + nearby + (p.source === "community" ? 1.5 : 0) + 1.5 / (1 + saves));
     out.push({ place: p, score, reason: best(signals) });
   }

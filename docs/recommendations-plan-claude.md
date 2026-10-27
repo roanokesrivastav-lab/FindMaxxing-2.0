@@ -259,7 +259,9 @@ Accept: each rail render has one `request_id`; a duplicate impression for the sa
 saving through the normal UI writes exactly one `save` row server-side and a client-sent `save` is refused;
 blocked users' content never appears; SQL/demo parity and owner-only RLS tests pass.
 
-**Task 2: Offline evaluation harness + cold-start fallback**
+**Task 2: Offline evaluation harness + cold-start fallback** — done: `scripts/recs/eval.ts`,
+`0034_cold_start_fallback.sql` (all published places, not only community ones, since the seed has none),
+online query in `docs/recommendations-metrics.md`.
 Files: `scripts/recs/eval.ts`, `tests/recs-eval.test.ts`, `recommend_places` fallback branch + demo twin.
 Accept: on the demo dataset `eval.ts` prints recall@12 / NDCG@12 for `rules-v1` from a time split; a brand-new
 user with only `home_city` gets ≥6 places labelled "Popular with locals"; metrics query for save/hide rate

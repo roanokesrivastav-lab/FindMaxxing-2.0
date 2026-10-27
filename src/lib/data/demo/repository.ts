@@ -148,7 +148,7 @@ function toEvent(state: DemoState, row: EventRow): Event {
  * that is public, locals-only with the viewer a local, trusted-only with the
  * viewer a trusted local, or followers-only with a mutual follow.
  */
-function canViewPlace(state: DemoState, p: PlaceRow, viewerId: string | null): boolean {
+export function canViewPlace(state: DemoState, p: PlaceRow, viewerId: string | null): boolean {
   if (viewerId && p.creatorId === viewerId && p.status !== "removed") return true;
   if (p.status !== "published") return false;
   if (p.visibility === "public") return true;
@@ -196,7 +196,7 @@ const ownerEditable = (p: PlaceRow) => p.status === "published" || p.status === 
 const visiblePlace = (p: PlaceRow) => p.status === "published" && p.visibility === "public";
 const visibleEvent = (e: EventRow) => e.status === "published";
 
-function canViewEvent(state: DemoState, event: EventRow, viewerId: string | null): boolean {
+export function canViewEvent(state: DemoState, event: EventRow, viewerId: string | null): boolean {
   if (viewerId && event.creatorId === viewerId && event.status !== "removed") return true;
   if (event.status === "cancelled") {
     return !!viewerId && state.eventAttendees.some((a) => a.eventId === event.id && a.userId === viewerId);

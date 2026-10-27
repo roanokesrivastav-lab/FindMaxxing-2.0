@@ -86,6 +86,7 @@ The beta's go/no-go list, with the command and current status of each gate, is `
    - `supabase/migrations/0019_trip_planning.sql` — the daily limit on AI trip plans
    - `supabase/migrations/0031_user_interactions.sql` — the private per-user interaction log (impressions, views, saves, ratings, joins, Not interested) for future personalization
    - `supabase/migrations/0033_interaction_attribution.sql` — request id, policy and score on impressions (one per rendered rail and item); saves, ratings and attendance logged by the database itself; blocked people left out of "For you"
+   - `supabase/migrations/0034_cold_start_fallback.sql` — "Popular with locals": places saved most in the viewer's home city fill in behind recommendations that have a reason of their own
    - `supabase/migrations/0016_reputation.sql` — contributor reputation (cached levels, moderator reset) and the trusted-locals and followers visibility tiers
    - `supabase/migrations/0025_seed_taxonomy.sql` — required categories and interests, without demo accounts or content
    - `supabase/seed.sql` — optional fictional demo data (generated from `src/lib/seed/seed-data.ts` via `npm run seed:sql`; **do not use the demo users in production**)
@@ -674,6 +675,13 @@ hides. The triggers record only the person's own action (not seeds, service jobs
 the analytics opt-out and cost no rate-limit tick; unlike the app-sent rows they do not see the
 browser's DNT/GPC signal or the recommendations flag. For you also leaves out places and events made
 by anyone blocked either way, and their saves, ratings, hosting and attendance as reasons.
+
+**Cold start and evaluation** (`0034_cold_start_fallback.sql`). Places with no reason of their own, in
+the viewer's home city and saved by someone, fill in as "Popular with locals" (save count decayed by
+the place's age; scored below 0.9, so they never push out a place with a reason), so someone who has
+only picked a city still gets a rail. `npx tsx scripts/recs/eval.ts` replays the recommender on a
+per-person time split and prints recall@12 and NDCG@12; the online metrics query (save, join, hide
+and click rate per impression, by policy) is in `docs/recommendations-metrics.md`.
 
 ## AI trip planning ("Plan my day")
 

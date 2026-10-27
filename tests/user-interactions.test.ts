@@ -11,6 +11,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import { createSeededDb, queryAs } from "./helpers/pglite";
+import { alignDbWithDemo } from "./helpers/parity";
 import { createIsolatedStore, migrateDemoState, STATE_VERSION } from "../src/lib/data/demo/store";
 import { createDemoRepository } from "../src/lib/data/demo/repository";
 import { deleteDemoAccount } from "../src/lib/data/demo/account";
@@ -248,13 +249,7 @@ describe("Not interested parity", () => {
     const db = await createSeededDb();
     const store = createIsolatedStore();
     const repo = createDemoRepository(store);
-    for (const s of store.state.savedPlaces) await db.query("update public.saved_places set created_at = $3 where user_id = $1 and place_id = $2", [s.userId, s.placeId, s.createdAt]);
-    await db.exec("alter table public.place_ratings disable trigger place_ratings_updated_at;");
-    for (const r of store.state.placeRatings) await db.query("update public.place_ratings set updated_at = $3 where user_id = $1 and place_id = $2", [r.userId, r.placeId, r.updatedAt]);
-    await db.exec("alter table public.place_ratings enable trigger place_ratings_updated_at;");
-    await db.exec("alter table public.events disable trigger guard_owner_event_change;");
-    for (const e of store.state.events) await db.query("update public.events set starts_at = $2, ends_at = $3 where id = $1", [e.id, e.startsAt, e.endsAt]);
-    await db.exec("alter table public.events enable trigger guard_owner_event_change;");
+    await alignDbWithDemo(db, store);
     for (const viewer of [maya, nina]) {
       const places = await repo.recommendations.places(viewer, { limit: 50 });
       const events = await repo.recommendations.events(viewer, { limit: 50, now: NOW });
