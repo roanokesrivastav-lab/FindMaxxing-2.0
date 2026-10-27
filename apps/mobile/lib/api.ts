@@ -164,6 +164,10 @@ export async function markNotificationsRead() {
 export async function savePushToken(token: string) {
   check(await requireSupabase().rpc("save_expo_push_token", { p_token: token }));
 }
+/** This phone's token out of push_subscriptions, before signing out (RLS: only your own devices). */
+export async function removePushToken(token: string) {
+  check(await requireSupabase().from("push_subscriptions").delete().eq("kind", "expo").eq("endpoint", token));
+}
 
 export async function profile(userId: string) {
   return check(await requireSupabase().from("profiles").select("id, username, display_name, avatar_url, bio, home_city, supporter").eq("id", userId).maybeSingle()) as Row | null;

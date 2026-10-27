@@ -10,7 +10,7 @@ import { Muted, Screen, Title, colors } from "@/components/ui";
 
 /** Signed out: only the sign-in screen. Signed in: the tabs, and push is offered. */
 function Gate() {
-  const { session, loading } = useSession();
+  const { session, userId, loading } = useSession();
   const segments = useSegments();
   const router = useRouter();
   useEffect(() => {
@@ -19,9 +19,10 @@ function Gate() {
     if (!session && !onSignIn) router.replace("/sign-in");
     if (session && onSignIn) router.replace("/");
   }, [session, loading, segments, router]);
+  // Once per account, not on every token refresh.
   useEffect(() => {
-    if (session) registerForPush().catch(() => {});
-  }, [session]);
+    if (userId) registerForPush().catch(() => {});
+  }, [userId]);
   return (
     <Stack screenOptions={{ headerTintColor: colors.ink, headerStyle: { backgroundColor: colors.paper }, contentStyle: { backgroundColor: colors.paper } }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
