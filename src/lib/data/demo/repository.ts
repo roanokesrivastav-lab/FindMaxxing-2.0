@@ -24,7 +24,7 @@ import { MAX_MODERATION_REASON, MODERATION_ACTIONS, REPORT_TARGET_TYPES, SUSPEND
 import { homeCityCooldownMessage, nextHomeCityChange, sameCity } from "../localTier";
 import { createHash } from "node:crypto";
 import { LEVEL_RANK, refreshDemoReputation } from "./reputation";
-import { recommendDemoEvents, recommendDemoPlaces } from "./recommend";
+import { demoTaste, recommendDemoEvents, recommendDemoPlaces } from "./recommend";
 import { createDemoMessaging, dropEventChats, joinEventChat, leaveEventChat } from "./messaging";
 import { createDemoNotifications, notifyOn } from "./notifications";
 import { createDemoAds } from "./ads";
@@ -1571,7 +1571,9 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
       async places(viewerId, opts = {}) {
         if (!state.profiles.some((p) => p.id === viewerId)) return [];
         const limit = clampLimit(opts.limit, 12, 50);
-        return recommendDemoPlaces(state, viewerId, (p) => canViewPlace(state, p, viewerId), validateNear(opts.near), limit)
+        const canView = (p: PlaceRow) => canViewPlace(state, p, viewerId);
+        const taste = demoTaste(state, viewerId, canView, (e) => canViewEvent(state, e, viewerId));
+        return recommendDemoPlaces(state, viewerId, canView, validateNear(opts.near), limit, Date.now(), taste)
           .map((r) => ({ item: toPlace(state, r.place), score: r.score, reason: r.reason }));
       },
       async events(viewerId, opts = {}) {

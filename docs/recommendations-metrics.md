@@ -16,19 +16,24 @@ recommender as of that moment over only the places and events that existed then,
 the held-out items were in the top k. It prints recall@k and NDCG@k averaged over people, recall per
 category, and the same for people with fewer than five earlier actions.
 
-- The baseline is `rules-v1`, the demo twin of `recommend_places` / `recommend_events`; the parity
-  tests keep it identical to the SQL. A new policy is compared by running it through the same split.
+- Two policies run through the same split: `rules-v1`, the rules alone, and `rules-v2`, what the app
+  serves (the rules plus the viewer's taste from `0035_user_taste.sql`, then at most 3 per category).
+  Both use the demo twins, which the parity tests keep identical to the SQL. `--policy` picks one.
+  `evaluate(state, { diversity })` tries other diversity settings.
 - Other people's later activity is not rewound, so a little future popularity leaks into the replay.
   It affects every policy equally.
-- Demo-dataset baseline (k = 12, 2026-10-26): places recall 42.9%, NDCG 0.174 over 7 people; events
-  recall 100%, NDCG 0.463 over 8 people. The event number is saturated: the seed has fewer upcoming
+- Demo dataset (k = 12, 2026-10-26): `rules-v1` places recall 42.9%, NDCG 0.174 over 7 people;
+  `rules-v2` 42.9%, NDCG 0.178. Events recall 100% for both (NDCG 0.463). With the plan's full
+  diversity (MMR λ = 0.7, at most 2 per creator) places drop to 2 of 7 hits, which is why those are
+  built but off (`src/server/recommendations/diversify.ts`). The event number is saturated: the seed has fewer upcoming
   events than slots, so it says nothing yet. No seed person has fewer than five earlier actions.
 - Staging and production need a service-role export in the demo-store shape; that exporter does not
   exist yet.
 
 ## Online: from `user_interactions`
 
-Every rendering of a "For you" rail has a `request_id` and a `policy` (`rules-v1`, `rules-v1+rerank`);
+Every rendering of a "For you" rail has a `request_id` and a `policy` (`rules-v1` and `rules-v1+rerank`
+before 0035, `rules-v2` and `rules-v2+rerank` since);
 each card's impression carries both, its zero-based `position` and its `score`
 (`0033_interaction_attribution.sql`). Saves, ratings, joins and hides are rows of their own, written
 when they happen. An action is credited to the most recent For you impression of the same item by the

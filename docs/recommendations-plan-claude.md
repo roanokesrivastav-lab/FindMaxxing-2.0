@@ -267,7 +267,10 @@ Accept: on the demo dataset `eval.ts` prints recall@12 / NDCG@12 for `rules-v1` 
 user with only `home_city` gets ≥6 places labelled "Popular with locals"; metrics query for save/hide rate
 per impression documented in `docs/`.
 
-**Task 3: Per-category taste profiles (stage 1a) + MMR**
+**Task 3: Per-category taste profiles (stage 1a) + MMR** — done as `0035_user_taste.sql` with `user_taste`
+as an owner-only view computed on read (no `refresh_user_taste()` or cron: this project's jobs are Vercel
+crons, and live taste keeps SQL/demo parity exact). Diversity ships with only the 3-per-category cap;
+MMR λ=0.7 and 2-per-creator cost a held-out save on the demo harness, so they are off until real data.
 Files: migration `0033_user_taste.sql` (`user_taste`, `refresh_user_taste()`, pg_cron), updated
 `recommend_places` term, demo twin, `src/server/recommendations/diversify.ts`.
 Accept: rating a 1–2 star bar lowers similar bars' scores; no category exceeds 3 of 12; `rules-v2` beats

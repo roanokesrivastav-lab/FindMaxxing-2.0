@@ -3,8 +3,9 @@
  * as redefined in 0031_user_interactions.sql to leave out what the viewer
  * marked Not interested, in 0033_interaction_attribution.sql to leave out
  * anyone blocked either way and in 0034_cold_start_fallback.sql to fill in
- * with places popular in the viewer's home city): the same candidates,
- * signals, weights, diversity terms, rounding and order.
+ * with places popular in the viewer's home city), and of the taste term and
+ * user_taste view (0035_user_taste.sql): the same candidates, signals,
+ * weights, diversity terms, rounding and order.
  * Visibility comes from the repository's canViewPlace / canViewEvent, the
  * mirrors of the row policies the SQL runs under.
  */
@@ -50,6 +51,101 @@ function interestSignal(state: DemoState, viewerId: string, tags: string[]): Sig
   return { w: 2 * matching.length, kind: "interest", text: `Matches your interest in ${matching[0].label}`, ref: matching[0].slug };
 }
 
+/** Overall (key null) and per-category tag weights. */
+export type Taste = Map<string | null, Map<string, number>>;
+
+const RATING_WEIGHT: Record<number, number> = { 5: 2, 4: 1, 3: 0, 2: -1, 1: -2 };
+
+/**
+ * Mirrors the user_taste view: the viewer's actions on items they can see,
+ * weighted, decayed by age in whole days and spread over the items' tags,
+ * plus +1 per chosen interest. Categories with three nonzero actions get
+ * their own vector.
+ */
+export function demoTaste(
+  state: DemoState,
+  viewerId: string,
+  canViewPlace: (p: PlaceRow) => boolean,
+  canViewEvent: (e: EventRow) => boolean,
+  now = Date.now(),
+): Taste {
+  type Act = { itemType: "place" | "event"; itemId: string; category: string; weight: number; at: string };
+  const place = (id: string) => { const p = state.places.find((x) => x.id === id); return p && canViewPlace(p) ? p : null; };
+  const event = (id: string) => { const e = state.events.find((x) => x.id === id); return e && canViewEvent(e) ? e : null; };
+  const acts: Act[] = [];
+  for (const sv of state.savedPlaces) {
+    const p = sv.userId === viewerId ? place(sv.placeId) : null;
+    if (p) acts.push({ itemType: "place", itemId: p.id, category: p.categorySlug, weight: 1, at: sv.createdAt });
+  }
+  for (const r of state.placeRatings) {
+    const p = r.userId === viewerId ? place(r.placeId) : null;
+    if (p) acts.push({ itemType: "place", itemId: p.id, category: p.categorySlug, weight: RATING_WEIGHT[r.score] ?? -2, at: r.updatedAt });
+  }
+  for (const a of state.eventAttendees) {
+    const e = a.userId === viewerId ? event(a.eventId) : null;
+    if (e && e.creatorId !== viewerId) acts.push({ itemType: "event", itemId: e.id, category: e.categorySlug, weight: 1, at: a.createdAt });
+  }
+  const mine = state.userInteractions.filter((i) => i.userId === viewerId);
+  const itemOf = (type: "place" | "event", id: string) => (type === "place" ? place(id) : event(id));
+  for (const h of mine) {
+    const item = h.action === "hide" ? itemOf(h.itemType, h.itemId) : null;
+    if (item) acts.push({ itemType: h.itemType, itemId: h.itemId, category: item.categorySlug, weight: -2, at: h.createdAt });
+  }
+  // Seen three or more times, never opened, saved, rated, joined or hidden.
+  const seen = new Map<string, typeof mine>();
+  for (const i of mine) if (i.action === "impression") seen.set(`${i.itemType}:${i.itemId}`, [...(seen.get(`${i.itemType}:${i.itemId}`) ?? []), i]);
+  for (const rows of seen.values()) {
+    const { itemType, itemId } = rows[0];
+    const item = itemOf(itemType, itemId);
+    if (!item || rows.length < 3) continue;
+    if (mine.some((o) => o.itemType === itemType && o.itemId === itemId && ["view", "save", "rate", "join", "hide"].includes(o.action))) continue;
+    if (itemType === "place" && (state.savedPlaces.some((x) => x.userId === viewerId && x.placeId === itemId) || state.placeRatings.some((x) => x.userId === viewerId && x.placeId === itemId))) continue;
+    if (itemType === "event" && state.eventAttendees.some((x) => x.userId === viewerId && x.eventId === itemId)) continue;
+    acts.push({ itemType, itemId, category: item.categorySlug, weight: -0.1, at: rows.map((r) => r.createdAt).sort(C).at(-1)! });
+  }
+  const tagsOf = (a: Act) => (a.itemType === "place"
+    ? state.placeTags.filter((t) => t.placeId === a.itemId)
+    : state.eventTags.filter((t) => t.eventId === a.itemId)).map((t) => t.interestSlug);
+  const counts = new Map<string, number>();
+  for (const a of acts) if (a.weight !== 0) counts.set(a.category, (counts.get(a.category) ?? 0) + 1);
+  const own = new Set([...counts].filter(([, n]) => n >= 3).map(([c]) => c));
+  const prior = state.profileInterests.filter((i) => i.profileId === viewerId).map((i) => i.interestSlug);
+  const taste: Taste = new Map();
+  const add = (scope: string | null, tag: string, w: number) => {
+    const v = taste.get(scope) ?? new Map<string, number>();
+    v.set(tag, (v.get(tag) ?? 0) + w);
+    taste.set(scope, v);
+  };
+  for (const a of acts) {
+    const w = a.weight * Math.exp(-Math.floor((now - Date.parse(a.at)) / 86_400_000) / 90);
+    for (const tag of tagsOf(a)) {
+      add(null, tag, w);
+      if (own.has(a.category)) add(a.category, tag, w);
+    }
+  }
+  for (const tag of prior) {
+    add(null, tag, 1);
+    for (const c of own) add(c, tag, 1);
+  }
+  return taste;
+}
+
+/** Mirrors the fit CTE: cosine between the taste vector for the category and the place's tags. */
+export function tasteFit(taste: Taste, category: string, tags: string[]): number {
+  if (!tags.length) return 0;
+  const v = taste.get(taste.has(category) ? category : null);
+  if (!v) return 0;
+  let norm = 0;
+  for (const w of v.values()) norm += w * w;
+  if (!norm) return 0;
+  const dot = tags.reduce((sum, t) => sum + (v.get(t) ?? 0), 0);
+  return dot / (Math.sqrt(norm) * Math.sqrt(tags.length));
+}
+
+/**
+ * rules-v2 (the SQL) passes the viewer's taste; rules-v1, kept for the
+ * offline evaluation, passes null and has no taste term.
+ */
 export function recommendDemoPlaces(
   state: DemoState,
   viewerId: string,
@@ -57,6 +153,7 @@ export function recommendDemoPlaces(
   near: { lat: number; lng: number } | null,
   limit: number,
   now = Date.now(),
+  taste: Taste | null = null,
 ): { place: PlaceRow; score: number; reason: RecommendationReason }[] {
   const saved = state.savedPlaces.filter((s) => s.userId === viewerId);
   const rated = state.placeRatings.filter((r) => r.userId === viewerId);
@@ -104,7 +201,8 @@ export function recommendDemoPlaces(
       continue;
     }
     const nearby = near ? 2 * Math.exp(-discoveryDistance(p, near) / 3000) : 0;
-    const score = round3(signals.reduce((sum, s) => sum + s.w, 0) + nearby + (p.source === "community" ? 1.5 : 0) + 1.5 / (1 + saves));
+    const fit = taste ? 3 * tasteFit(taste, p.categorySlug, tags) : 0;
+    const score = round3(signals.reduce((sum, s) => sum + s.w, 0) + nearby + (p.source === "community" ? 1.5 : 0) + 1.5 / (1 + saves) + fit);
     out.push({ place: p, score, reason: best(signals) });
   }
   return out.sort((a, b) => b.score - a.score || C(a.place.id, b.place.id)).slice(0, limit);

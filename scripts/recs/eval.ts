@@ -10,15 +10,17 @@
  * and NDCG@k, averaged over people, plus recall per category and for people
  * with fewer than five earlier actions.
  *
- * The baseline is `rules-v1`: the demo twin of recommend_places /
- * recommend_events, which the parity tests keep identical to the SQL.
+ * Policies: `rules-v1`, the rules alone (the SQL before 0035), and
+ * `rules-v2`, the rules with the viewer's taste followed by the diversity
+ * pass, which is what the app serves (src/server/recommendations). Both use
+ * the demo twins, which the parity tests keep identical to the SQL.
  * Other people's activity is not rewound, so their later saves leak a little
  * popularity into the replay; with a few dozen people that is noise, not
  * signal, and it is the same for every policy compared.
  *
  *   npx tsx scripts/recs/eval.ts                 # the demo dataset
  *   npx tsx scripts/recs/eval.ts --state x.json  # a demo-store JSON (data/demo-store.json)
- *   npx tsx scripts/recs/eval.ts --k 20 --json
+ *   npx tsx scripts/recs/eval.ts --k 20 --json --policy rules-v2
  *
  * Staging/production need a service-role export in the demo-store shape;
  * that exporter does not exist yet.
@@ -27,9 +29,13 @@ import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { createIsolatedStore, migrateDemoState, type DemoState } from "../../src/lib/data/demo/store";
 import { canViewEvent, canViewPlace } from "../../src/lib/data/demo/repository";
-import { recommendDemoEvents, recommendDemoPlaces } from "../../src/lib/data/demo/recommend";
+import { demoTaste, recommendDemoEvents, recommendDemoPlaces } from "../../src/lib/data/demo/recommend";
+import { diversify, type DiversifyOptions } from "../../src/server/recommendations/diversify";
 
-export const BASELINE_POLICY = "rules-v1";
+export const POLICIES = ["rules-v1", "rules-v2"] as const;
+export type Policy = (typeof POLICIES)[number];
+/** What rules-v2 diversifies from, as the app does. */
+const POOL = 50;
 /** Fewer earlier actions than this counts as a sparse (cold-ish) profile. */
 export const SPARSE_ACTIONS = 5;
 
@@ -43,7 +49,7 @@ export interface Metrics {
 }
 
 export interface EvalReport {
-  policy: string;
+  policy: Policy;
   k: number;
   holdout: number;
   places: Metrics & { byCategory: Record<string, { heldOut: number; hits: number; recall: number }>; sparse: Metrics };
@@ -91,7 +97,28 @@ function earlierActions(state: DemoState, userId: string): number {
     + state.eventAttendees.filter((a) => a.userId === userId).length;
 }
 
-function cases(state: DemoState, kind: Kind, k: number, holdout: number): Case[] {
+function rank(past: DemoState, userId: string, kind: Kind, k: number, splitAt: number, policy: Policy, diversity: DiversifyOptions): string[] {
+  const existed = (iso: string) => Date.parse(iso) <= splitAt;
+  const placeOk = (p: DemoState["places"][number]) => existed(p.createdAt) && canViewPlace(past, p, userId);
+  const eventOk = (e: DemoState["events"][number]) => existed(e.createdAt) && canViewEvent(past, e, userId);
+  if (policy === "rules-v1") {
+    return kind === "place"
+      ? recommendDemoPlaces(past, userId, placeOk, null, k, splitAt).map((r) => r.place.id)
+      : recommendDemoEvents(past, userId, eventOk, null, k, splitAt).map((r) => r.event.id);
+  }
+  const tagsOf = (rows: { interestSlug: string }[]) => rows.map((t) => t.interestSlug);
+  if (kind === "place") {
+    const taste = demoTaste(past, userId, placeOk, eventOk, splitAt);
+    const pool = recommendDemoPlaces(past, userId, placeOk, null, POOL, splitAt, taste);
+    return diversify(pool, (r) => ({ category: r.place.categorySlug, tags: tagsOf(past.placeTags.filter((t) => t.placeId === r.place.id)), creatorId: r.place.creatorId, score: r.score }), { ...diversity, k })
+      .map((r) => r.place.id);
+  }
+  const pool = recommendDemoEvents(past, userId, eventOk, null, POOL, splitAt);
+  return diversify(pool, (r) => ({ category: r.event.categorySlug, tags: tagsOf(past.eventTags.filter((t) => t.eventId === r.event.id)), creatorId: r.event.creatorId, score: r.score }), { ...diversity, k })
+    .map((r) => r.event.id);
+}
+
+function cases(state: DemoState, kind: Kind, k: number, holdout: number, policy: Policy, diversity: DiversifyOptions): Case[] {
   const positives = kind === "place"
     ? state.savedPlaces.map((s) => ({ userId: s.userId, itemId: s.placeId, at: s.createdAt }))
     // Hosts are attendees of their own events; that is not a choice to go.
@@ -105,10 +132,7 @@ function cases(state: DemoState, kind: Kind, k: number, holdout: number): Case[]
     const held = mine.slice(mine.length - n);
     const splitAt = Date.parse(held[0].at);
     const past = rewindPerson(state, profile.id, splitAt);
-    const existed = (iso: string) => Date.parse(iso) <= splitAt;
-    const ranked = kind === "place"
-      ? recommendDemoPlaces(past, profile.id, (p) => existed(p.createdAt) && canViewPlace(past, p, profile.id), null, k, splitAt).map((r) => r.place.id)
-      : recommendDemoEvents(past, profile.id, (e) => existed(e.createdAt) && canViewEvent(past, e, profile.id), null, k, splitAt).map((r) => r.event.id);
+    const ranked = rank(past, profile.id, kind, k, splitAt, policy, diversity);
     out.push({ userId: profile.id, splitAt, heldOut: held.map((h) => h.itemId), ranked, earlierActions: earlierActions(past, profile.id) });
   }
   return out;
@@ -128,11 +152,14 @@ function summarize(list: Case[], k: number): Metrics {
   return { people, heldOut, hits, recall: people ? recall / people : 0, ndcg: people ? ndcg / people : 0 };
 }
 
-export function evaluate(state: DemoState, opts: { k?: number; holdout?: number } = {}): EvalReport {
+/** `diversity` overrides the rules-v2 diversity pass, for tuning it. */
+export function evaluate(state: DemoState, opts: { k?: number; holdout?: number; policy?: Policy; diversity?: DiversifyOptions } = {}): EvalReport {
   const k = opts.k ?? 12;
   const holdout = opts.holdout ?? 0.2;
-  const placeCases = cases(state, "place", k, holdout);
-  const eventCases = cases(state, "event", k, holdout);
+  const policy = opts.policy ?? "rules-v2";
+  const diversity = opts.diversity ?? {};
+  const placeCases = cases(state, "place", k, holdout, policy, diversity);
+  const eventCases = cases(state, "event", k, holdout, policy, diversity);
   const byCategory: EvalReport["places"]["byCategory"] = {};
   for (const c of placeCases) {
     const top = new Set(c.ranked.slice(0, k));
@@ -146,7 +173,7 @@ export function evaluate(state: DemoState, opts: { k?: number; holdout?: number 
   for (const row of Object.values(byCategory)) row.recall = row.hits / row.heldOut;
   const sparse = (list: Case[]) => summarize(list.filter((c) => c.earlierActions < SPARSE_ACTIONS), k);
   return {
-    policy: BASELINE_POLICY,
+    policy,
     k,
     holdout,
     places: { ...summarize(placeCases, k), byCategory, sparse: sparse(placeCases) },
@@ -185,8 +212,11 @@ function main() {
   const value = (flag: string) => { const i = args.indexOf(flag); return i >= 0 ? args[i + 1] ?? null : null; };
   const k = Number(value("--k") ?? 12);
   if (!Number.isInteger(k) || k < 1 || k > 50) throw new Error("--k must be an integer from 1 to 50");
-  const report = evaluate(loadState(value("--state")), { k });
-  console.log(args.includes("--json") ? JSON.stringify(report, null, 2) : formatReport(report));
+  const asked = value("--policy");
+  if (asked !== null && !(POLICIES as readonly string[]).includes(asked)) throw new Error(`--policy must be one of ${POLICIES.join(", ")}`);
+  const state = loadState(value("--state"));
+  const reports = (asked ? [asked as Policy] : [...POLICIES]).map((policy) => evaluate(state, { k, policy }));
+  console.log(args.includes("--json") ? JSON.stringify(reports, null, 2) : reports.map(formatReport).join("\n\n"));
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) main();

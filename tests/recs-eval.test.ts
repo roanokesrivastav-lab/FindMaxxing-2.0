@@ -48,7 +48,7 @@ describe("the time split", () => {
   });
 
   it("reports rules-v1 recall@12 and NDCG@12 on the demo dataset, deterministically", () => {
-    const report = evaluate(createIsolatedStore().state);
+    const report = evaluate(createIsolatedStore().state, { policy: "rules-v1" });
     expect(report).toMatchObject({ policy: "rules-v1", k: 12 });
     expect(report.places.people).toBeGreaterThan(0);
     expect(report.events.people).toBeGreaterThan(0);
@@ -61,7 +61,7 @@ describe("the time split", () => {
     }
     const categories = Object.values(report.places.byCategory);
     expect(categories.reduce((n, c) => n + c.heldOut, 0)).toBe(report.places.heldOut);
-    expect(evaluate(createIsolatedStore().state)).toEqual(report);
+    expect(evaluate(createIsolatedStore().state, { policy: "rules-v1" })).toEqual(report);
     expect(formatReport(report)).toMatch(/recall@12 .*NDCG@12/);
   });
 });

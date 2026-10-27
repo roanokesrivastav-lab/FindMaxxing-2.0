@@ -87,6 +87,7 @@ The beta's go/no-go list, with the command and current status of each gate, is `
    - `supabase/migrations/0031_user_interactions.sql` — the private per-user interaction log (impressions, views, saves, ratings, joins, Not interested) for future personalization
    - `supabase/migrations/0033_interaction_attribution.sql` — request id, policy and score on impressions (one per rendered rail and item); saves, ratings and attendance logged by the database itself; blocked people left out of "For you"
    - `supabase/migrations/0034_cold_start_fallback.sql` — "Popular with locals": places saved most in the viewer's home city fill in behind recommendations that have a reason of their own
+   - `supabase/migrations/0035_user_taste.sql` — the viewer's own tag-weight taste (`user_taste` view, overall and per category) and a 3 × cosine taste term in `recommend_places` (policy `rules-v2`)
    - `supabase/migrations/0016_reputation.sql` — contributor reputation (cached levels, moderator reset) and the trusted-locals and followers visibility tiers
    - `supabase/migrations/0025_seed_taxonomy.sql` — required categories and interests, without demo accounts or content
    - `supabase/seed.sql` — optional fictional demo data (generated from `src/lib/seed/seed-data.ts` via `npm run seed:sql`; **do not use the demo users in production**)
@@ -666,7 +667,7 @@ a place or event deletes everyone's rows about it. Training reads go through the
 impressions and views after a year.
 
 **Attribution** (`0033_interaction_attribution.sql`). Each rendering of a For you rail gets a
-`request_id` and a `policy` (`rules-v1`, or `rules-v1+rerank` when Claude's order was used); every
+`request_id` and a `policy` (`rules-v2`, or `rules-v2+rerank` when Claude's order was used); every
 card's impression carries both plus its score, and a repeat impression for the same request and item
 is dropped. Saves, unsaves, ratings, joins and leaves are no longer sent by the app: triggers on
 `saved_places`, `place_ratings` and `event_attendees` write them when they happen, so they can be
@@ -682,6 +683,15 @@ the place's age; scored below 0.9, so they never push out a place with a reason)
 only picked a city still gets a rail. `npx tsx scripts/recs/eval.ts` replays the recommender on a
 per-person time split and prints recall@12 and NDCG@12; the online metrics query (save, join, hide
 and click rate per impression, by policy) is in `docs/recommendations-metrics.md`.
+
+**Taste and diversity** (`0035_user_taste.sql`, `src/server/recommendations/diversify.ts`). `user_taste`
+is a view of the signed-in viewer's own tag weights (saves +1, ratings +2…−2, joins +1, Not interested
+−2, cards ignored three times −0.1, each decayed over about three months, plus +1 per chosen interest),
+per category once it has three actions, otherwise overall. It is computed when asked, so a rating
+counts immediately and there is no refresh job. `recommend_places` adds 3 × the cosine between that
+taste and a place's tags, so a 1-star bar pulls similar bars down. The rails fetch the strongest 50 and
+keep at most 3 per category in 12; MMR and a per-creator cap are built but off until real data shows
+they do not cost recall (see `docs/recommendations-metrics.md`).
 
 ## AI trip planning ("Plan my day")
 
