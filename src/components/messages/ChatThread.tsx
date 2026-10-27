@@ -54,6 +54,8 @@ export function ChatThread({
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
+  // The last refresh failed (offline, server down); polling keeps retrying.
+  const [stale, setStale] = useState(false);
   const bottom = useRef<HTMLDivElement>(null);
   const lastSeen = useRef<string | null>(null);
   const { toast } = useToast();
@@ -61,12 +63,17 @@ export function ChatThread({
 
   /** Fetches the newest page (or an older one) through the members-only route. */
   const fetchPage = useCallback(async (cursor?: string | null): Promise<Snapshot | null> => {
-    const res = await fetch(`/api/messages/${conversationId}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`, { cache: "no-store" });
-    return res.ok ? ((await res.json()) as Snapshot) : null;
+    try {
+      const res = await fetch(`/api/messages/${conversationId}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`, { cache: "no-store" });
+      return res.ok ? ((await res.json()) as Snapshot) : null;
+    } catch {
+      return null;
+    }
   }, [conversationId]);
 
   const refresh = useCallback(async () => {
     const snap = await fetchPage();
+    setStale(!snap);
     if (!snap) return;
     setMembers(snap.members);
     setCanSend(snap.canSend);
@@ -125,7 +132,10 @@ export function ChatThread({
     setLoadingOlder(true);
     const snap = await fetchPage(olderCursor);
     setLoadingOlder(false);
-    if (!snap) return;
+    if (!snap) {
+      toast("Couldn't load earlier messages. Try again.", "error");
+      return;
+    }
     setMessages((cur) => merge(cur, snap.page.items));
     setOlderCursor(snap.page.nextCursor);
   };
@@ -140,7 +150,7 @@ export function ChatThread({
   return (
     <div className="flex flex-col gap-3">
       {olderCursor ? (
-        <button type="button" onClick={loadOlder} disabled={loadingOlder} className="self-center text-sm font-semibold text-muted hover:text-ink">
+        <button type="button" onClick={loadOlder} disabled={loadingOlder} className="self-center min-h-11 px-3 text-sm font-semibold text-muted hover:text-ink">
           {loadingOlder ? "Loading…" : "Load earlier messages"}
         </button>
       ) : null}
@@ -165,11 +175,16 @@ export function ChatThread({
           );
         })}
       </ol>
+      {stale ? (
+        <p className="text-xs text-muted text-center" role="status">
+          Can&apos;t reach the server. New messages will show up when you&apos;re back online.
+        </p>
+      ) : null}
       {seenLabel ? <p className="text-xs text-muted text-right -mt-1" data-testid="seen">{seenLabel}</p> : null}
       <div ref={bottom} />
       {canSend ? (
         <form
-          className="sticky bottom-[calc(var(--nav-height)+var(--safe-bottom)+0.5rem)] md:bottom-4 flex items-end gap-2 card p-2"
+          className="sticky bottom-[calc(var(--nav-height)+var(--safe-bottom)+0.5rem)] md:bottom-4 flex items-end gap-2 card p-2 focus-within:border-ink"
           onSubmit={(e) => {
             e.preventDefault();
             void send();

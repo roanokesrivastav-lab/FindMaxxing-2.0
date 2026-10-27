@@ -49,6 +49,7 @@ export default async function ReportsPage() {
           </>
         ) : (
           <EmptyState
+            heading="h3"
             icon={CircleCheck}
             title="Nothing reported"
             body="No one has flagged a place or event you added."
@@ -65,6 +66,7 @@ export default async function ReportsPage() {
           <ReportList entries={filed} perspective="reporter" />
         ) : (
           <EmptyState
+            heading="h3"
             icon={Bird}
             title="You haven't reported anything"
             body="Use the report link on a place or event if something is wrong, closed, or unsafe."

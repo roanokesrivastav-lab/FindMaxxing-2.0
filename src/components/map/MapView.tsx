@@ -67,7 +67,7 @@ export const MapView = forwardRef<MapCanvasHandle, MapViewProps>(function MapVie
 
 export function MapSkeleton() {
   return (
-    <div className="h-full w-full paper-grid relative overflow-hidden">
+    <div className="h-full w-full paper-grid relative overflow-hidden" role="status">
       <div className="absolute inset-0 animate-pulse bg-[radial-gradient(circle_at_50%_45%,rgba(255,77,46,0.10),transparent_45%)]" />
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-2 rounded-full bg-surface/90 px-3 py-1.5 text-xs font-semibold text-muted border border-line">
         <span className="h-2 w-2 rounded-full bg-flare animate-pulse" />

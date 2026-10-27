@@ -3,7 +3,8 @@ import { Skeleton } from "./EmptyState";
 /** Placeholder for a place or event detail page: hero, title card, body. */
 export function DetailPageSkeleton() {
   return (
-    <div className="pb-nav md:pb-10" aria-busy="true" aria-label="Loading">
+    <div className="pb-nav md:pb-10" role="status" aria-busy="true">
+      <span className="sr-only">Loading…</span>
       <Skeleton className="h-[260px] md:h-[360px] md:mx-6 md:mt-6 rounded-none md:rounded-3xl" />
       <div className="max-w-2xl mx-auto px-4 md:px-6 -mt-6 relative">
         <div className="card p-5 flex flex-col gap-3">
@@ -27,7 +28,8 @@ export function DetailPageSkeleton() {
 /** Placeholder for the create/edit form routes. */
 export function FormPageSkeleton({ fields = 5 }: { fields?: number }) {
   return (
-    <div className="max-w-xl mx-auto px-4 md:px-6 pt-4 md:pt-8 pb-8" aria-busy="true" aria-label="Loading">
+    <div className="max-w-xl mx-auto px-4 md:px-6 pt-4 md:pt-8 pb-8" role="status" aria-busy="true">
+      <span className="sr-only">Loading…</span>
       <Skeleton className="h-3 w-20 mb-2" />
       <Skeleton className="h-8 w-56 mb-2" />
       <Skeleton className="h-4 w-72 mb-8" />
@@ -47,7 +49,8 @@ export function FormPageSkeleton({ fields = 5 }: { fields?: number }) {
 /** Placeholder for a profile page: identity card then activity. */
 export function ProfilePageSkeleton() {
   return (
-    <div className="max-w-2xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-nav" aria-busy="true" aria-label="Loading">
+    <div className="max-w-2xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-nav" role="status" aria-busy="true">
+      <span className="sr-only">Loading…</span>
       <div className="card p-5">
         <div className="flex items-start gap-4">
           <Skeleton className="h-[72px] w-[72px] rounded-full" />
