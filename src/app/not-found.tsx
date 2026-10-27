@@ -6,6 +6,7 @@ export default function NotFound() {
   return (
     <div className="max-w-md mx-auto px-4 pt-16 pb-nav">
       <EmptyState
+        heading="h1"
         icon={Compass}
         title="Off the map"
         body="That page doesn't exist, or the listing was removed."

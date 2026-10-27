@@ -42,7 +42,7 @@ export default async function PeoplePage({ searchParams }: PageProps<"/people">)
             autoComplete="off"
           />
           {q ? (
-            <Link href="/people" aria-label="Clear search" className="text-muted hover:text-ink">
+            <Link href="/people" aria-label="Clear search" className="h-8 w-8 shrink-0 inline-flex items-center justify-center rounded-full text-muted hover:text-ink hover:bg-surface-2">
               <X size={16} />
             </Link>
           ) : null}
@@ -78,6 +78,7 @@ export default async function PeoplePage({ searchParams }: PageProps<"/people">)
             </div>
           ) : (
             <EmptyState
+              heading="h3"
               icon={Search}
               title={`Nobody matches “${q}”`}
               body="Try a shorter name, a username, or a city."

@@ -86,6 +86,13 @@ html {
   height: 100%;
   -webkit-text-size-adjust: 100%;
 }
+/* Phone: the bottom nav is fixed, so keep anything scrolled into view (a
+   focused link, a form error) above it rather than under it (WCAG 2.4.11). */
+@media (max-width: 767px) {
+  html {
+    scroll-padding-bottom: calc(var(--nav-height) + var(--safe-bottom) + 0.75rem);
+  }
+}
 
 body {
   min-height: 100%;
@@ -112,8 +119,10 @@ body {
   input::placeholder, textarea::placeholder {
     color: var(--color-muted);
   }
+  /* flare-ink, not flare: 3:1+ against paper, paper-2, the pale tints and ink
+     (WCAG 1.4.11); bright flare is 2.8:1 on paper-2. */
   *:focus-visible {
-    outline: 2px solid var(--color-flare);
+    outline: 2px solid var(--color-flare-ink);
     outline-offset: 2px;
   }
 }
@@ -192,8 +201,15 @@ body {
   font-size: 10px !important;
   background: rgba(255,255,255,0.7) !important;
 }
-.maplibregl-ctrl-bottom-right, .mapboxgl-ctrl-bottom-right {
-  bottom: calc(var(--nav-height) + var(--safe-bottom) + 12rem) !important;
+/* Phone explore: lift the attribution above the nav and the results card, and
+   keep it (and its "i" toggle) left of the floating "Use my location" button so
+   neither covers the other (WCAG 2.5.8). Only the full-screen explore map: on a
+   small map, such as a place's, the lift pushed it out of the map entirely. */
+@media (max-width: 767px) {
+  .explore-map .maplibregl-ctrl-bottom-right, .explore-map .mapboxgl-ctrl-bottom-right {
+    bottom: calc(var(--nav-height) + var(--safe-bottom) + 12rem) !important;
+    right: 3.75rem !important;
+  }
 }
 @media (min-width: 768px) {
   .maplibregl-ctrl-bottom-right, .mapboxgl-ctrl-bottom-right {
@@ -206,6 +222,9 @@ body {
   border: 1px solid var(--color-line) !important;
 }
 .maplibregl-marker, .mapboxgl-marker { cursor: pointer; }
+/* A focused pin comes to the front of a dense cluster, so it is not hidden by
+   its neighbours (WCAG 2.4.11). Beats the inline z-index of the active pin. */
+.maplibregl-marker:focus-within, .mapboxgl-marker:focus-within { z-index: 40 !important; }
 
 /* Honor reduced motion: no pulsing pins, no slide-ins, near-instant transitions. */
 @media (prefers-reduced-motion: reduce) {

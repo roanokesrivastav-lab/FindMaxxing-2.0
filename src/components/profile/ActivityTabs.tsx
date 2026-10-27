@@ -42,25 +42,25 @@ export function ActivityTabs({ activity, isSelf }: { activity: UserActivity; isS
           (activity.createdPlaces.length ? (
             activity.createdPlaces.map((p) => <PlaceCard key={p.id} place={p} compact />)
           ) : (
-            <EmptyState icon={MapPin} title={isSelf ? "You haven't added a place yet" : "No places yet"} body={isSelf ? "Know a spot? Put it on the map." : undefined} action={isSelf ? <Link href="/places/new" className="chip" data-active="true">+ Add a place</Link> : undefined} />
+            <EmptyState heading="h3" icon={MapPin} title={isSelf ? "You haven't added a place yet" : "No places yet"} body={isSelf ? "Know a spot? Put it on the map." : undefined} action={isSelf ? <Link href="/places/new" className="chip" data-active="true">+ Add a place</Link> : undefined} />
           ))}
         {tab === "events" &&
           (activity.createdEvents.length ? (
             activity.createdEvents.map((e) => <EventCard key={e.id} event={e} compact />)
           ) : (
-            <EmptyState icon={CalendarDays} title={isSelf ? "You're not hosting anything" : "Not hosting anything"} action={isSelf ? <Link href="/events/new" className="chip" data-active="true">+ Create an event</Link> : undefined} />
+            <EmptyState heading="h3" icon={CalendarDays} title={isSelf ? "You're not hosting anything" : "Not hosting anything"} action={isSelf ? <Link href="/events/new" className="chip" data-active="true">+ Create an event</Link> : undefined} />
           ))}
         {tab === "joined" &&
           (activity.joinedEvents.length ? (
             activity.joinedEvents.map((e) => <EventCard key={e.id} event={e} compact />)
           ) : (
-            <EmptyState icon={Ticket} title={isSelf ? "No events joined yet" : "Not going to anything yet"} action={isSelf ? <Link href="/events" className="chip" data-active="true">Browse events</Link> : undefined} />
+            <EmptyState heading="h3" icon={Ticket} title={isSelf ? "No events joined yet" : "Not going to anything yet"} action={isSelf ? <Link href="/events" className="chip" data-active="true">Browse events</Link> : undefined} />
           ))}
         {tab === "saved" &&
           (activity.savedPlaces.length ? (
             activity.savedPlaces.map((p) => <PlaceCard key={p.id} place={p} compact />)
           ) : (
-            <EmptyState icon={Bookmark} title="Nothing saved" action={<Link href="/" className="chip" data-active="true">Explore</Link>} />
+            <EmptyState heading="h3" icon={Bookmark} title="Nothing saved" action={<Link href="/" className="chip" data-active="true">Explore</Link>} />
           ))}
       </div>
     </div>

@@ -51,7 +51,9 @@ export function useFormSubmit(
       form.querySelector<HTMLElement>(`[data-field="${CSS.escape(firstField)}"]`);
     if (!target) return;
 
-    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    // A script-requested smooth scroll ignores the CSS reduced-motion rule.
+    const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    target.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "center" });
     if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) {
       target.focus({ preventScroll: true });
     }

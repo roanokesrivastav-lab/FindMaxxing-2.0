@@ -55,6 +55,7 @@ export default async function SavedPage() {
         <SavedClient places={places} />
       ) : (
         <EmptyState
+          heading="h3"
           icon={MapIcon}
           title="Nothing saved yet"
           body="Tap the bookmark on any place to add it here."

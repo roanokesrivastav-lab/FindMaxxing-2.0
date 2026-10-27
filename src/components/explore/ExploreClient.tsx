@@ -191,6 +191,7 @@ export function ExploreClient({
 
   return (
     <div className="relative h-dvh flex flex-col">
+      <h1 className="sr-only">Explore places and events</h1>
       {/* Top bar */}
       <div className="absolute inset-x-0 top-0 z-30 pointer-events-none">
         <div className="pointer-events-auto px-4 pt-3 md:pt-4 max-w-3xl mx-auto flex flex-col gap-2.5">
@@ -198,7 +199,7 @@ export function ExploreClient({
             <Logo size={26} />
             <div className="flex-1" />
             {viewer ? (
-              <Link href="/profile">
+              <Link href="/profile" aria-label="Your profile" className="rounded-full">
                 <Avatar name={viewer.displayName} src={viewer.avatarUrl} size={34} />
               </Link>
             ) : (
@@ -208,7 +209,7 @@ export function ExploreClient({
             )}
           </div>
           <div className="flex items-center gap-2">
-            <label className="flex-1 flex items-center gap-2 h-12 rounded-full bg-surface border border-line shadow-card px-4">
+            <label className="flex-1 flex items-center gap-2 h-12 rounded-full bg-surface border border-line shadow-card px-4 focus-within:border-ink focus-within:ring-[3px] focus-within:ring-ink/10">
               <Search size={18} className="text-muted shrink-0" />
               <input
                 type="search"
@@ -229,7 +230,7 @@ export function ExploreClient({
                     setSearchArea(null);
                   }}
                   aria-label="Clear search"
-                  className="text-muted"
+                  className="h-8 w-8 -mr-2 shrink-0 inline-flex items-center justify-center rounded-full text-muted hover:text-ink hover:bg-surface-2"
                 >
                   <X size={16} />
                 </button>
@@ -272,7 +273,7 @@ export function ExploreClient({
       </div>
 
       {/* Map */}
-      <div className={cn("flex-1 relative", mode === "list" && "hidden md:block")}>
+      <div className={cn("explore-map flex-1 relative", mode === "list" && "hidden md:block")}>
         <MapView
           ref={mapRef}
           viewState={view}
@@ -570,18 +571,22 @@ function FoldHeader({
   open: boolean;
   onToggle: () => void;
 }) {
+  // A heading around the toggle (the accordion pattern): the list keeps its
+  // outline (h1 › h2 section › h3 card) and the button is reachable by heading.
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-expanded={open}
-      className="flex items-center gap-1.5 -mx-1 px-1 py-1 rounded-lg text-xs font-bold uppercase tracking-wider text-muted hover:text-ink transition-colors"
-    >
-      <ChevronDown size={14} className={cn("transition-transform duration-200", open ? "" : "-rotate-90")} />
-      {label}
-      <span className="text-line-2">·</span>
-      <span className="tabular-nums">{count}</span>
-    </button>
+    <h2 className="flex font-sans">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="flex items-center gap-1.5 -mx-1 px-1 py-1 rounded-lg text-xs font-bold uppercase tracking-wider text-muted hover:text-ink transition-colors"
+      >
+        <ChevronDown size={14} className={cn("transition-transform duration-200", open ? "" : "-rotate-90")} />
+        {label}
+        <span className="text-line-2" aria-hidden>·</span>
+        <span className="tabular-nums">{count}</span>
+      </button>
+    </h2>
   );
 }
 
