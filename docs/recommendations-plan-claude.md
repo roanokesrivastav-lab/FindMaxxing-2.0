@@ -142,6 +142,13 @@ Pick **Bradley-Terry with a Gaussian prior centred on the star rating** (`μ = (
 rescaled strength becomes `user_place_scores(user_id, place_id, score_0_10)`, which (a) shows on the
 profile like Beli's list, (b) replaces raw stars as the taste weight in 1a. Effort M.
 
+**Status (2026-10-27):** the data and math layer is built and tested, without any UI: `0037_place_comparisons.sql`
+(`place_comparisons`, owner-only, one answer per pair, only between places the writer rated in one category;
+`fit_user_category_scores(category)`, Bradley-Terry fitted in plpgsql, 100 gradient steps, newest 500 comparisons)
+and its TypeScript twin `src/lib/ranking/bradleyTerry.ts`, agreeing to 9 decimals in `tests/place-comparisons.test.ts`.
+Not built: the comparison UI (waits on open question 1), a stored `user_place_scores`, the demo repository twin,
+and using the scores as the taste weight in 1a.
+
 ### Stage 2a: pgvector embeddings
 *Why:* tags are coarse (15 categories, ~30 interests). Text embeddings of `name + description + local_tip +
 tags + neighborhood` separate "quiet study café" from "loud brunch café" and give new items a vector on day one.
