@@ -28,6 +28,8 @@ import { demoTaste, recommendDemoEvents, recommendDemoPlaces } from "./recommend
 import { createDemoMessaging, dropEventChats, joinEventChat, leaveEventChat } from "./messaging";
 import { createDemoNotifications, notifyOn } from "./notifications";
 import { createDemoAds } from "./ads";
+import { fitScores } from "@/lib/ranking/bradleyTerry";
+import { nextOpponent } from "@/lib/ranking/nextComparison";
 import { createDemoInteractions, forgetItemInteractions, recordOwnInteraction } from "./interactions";
 import { createDemoPayments, isPlusIn, needsTicket, refundOnCancel } from "./payments";
 import { PLUS_LIST_CAP, paymentsError } from "../payments";
@@ -148,6 +150,20 @@ function toEvent(state: DemoState, row: EventRow): Event {
  * that is public, locals-only with the viewer a local, trusted-only with the
  * viewer a trusted local, or followers-only with a mutual follow.
  */
+/** The viewer's rated places in the category of `placeId`, or null when they have not rated it or cannot see it. */
+function ratedInCategory(state: DemoState, userId: string, placeId: string) {
+  const place = state.places.find((p) => p.id === placeId);
+  if (!place || !canViewPlace(state, place, userId)) return null;
+  if (!state.placeRatings.some((r) => r.userId === userId && r.placeId === placeId)) return null;
+  const items = state.placeRatings
+    .filter((r) => r.userId === userId)
+    .flatMap((r) => {
+      const p = state.places.find((x) => x.id === r.placeId);
+      return p && p.categorySlug === place.categorySlug && canViewPlace(state, p, userId) ? [{ id: p.id, name: p.name, stars: r.score }] : [];
+    });
+  return { items };
+}
+
 export function canViewPlace(state: DemoState, p: PlaceRow, viewerId: string | null): boolean {
   if (viewerId && p.creatorId === viewerId && p.status !== "removed") return true;
   if (p.status !== "published") return false;
@@ -563,6 +579,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         state.placeTags = state.placeTags.filter((t) => t.placeId !== id);
         state.placePhotos = state.placePhotos.filter((p) => p.placeId !== id);
         state.placeRatings = state.placeRatings.filter((r) => r.placeId !== id);
+        state.placeComparisons = state.placeComparisons.filter((c) => c.winnerId !== id && c.loserId !== id);
         state.savedPlaces = state.savedPlaces.filter((s) => s.placeId !== id);
         removeListItems((i) => i.placeId === id);
         forgetItemInteractions(state, "place", new Set([id]));
@@ -713,6 +730,30 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         counted();
         persist();
         return { ratingAvg: place.ratingAvg, ratingCount: place.ratingCount };
+      },
+      async nextComparison(userId, placeId) {
+        const rated = ratedInCategory(state, userId, placeId);
+        if (!rated) return null;
+        const mine = state.placeComparisons.filter((c) => c.userId === userId);
+        const answers = mine.map((c) => ({ winnerId: c.winnerId, loserId: c.loserId }));
+        const scores = fitScores(rated.items.map((i) => ({ id: i.id, stars: i.stars })), answers);
+        const opponent = nextOpponent(placeId, rated.items.map((i) => ({ id: i.id, stars: i.stars, score: scores.get(i.id)! })), answers);
+        if (!opponent) return null;
+        const name = (id: string) => rated.items.find((i) => i.id === id)!.name;
+        return { subject: { id: placeId, name: name(placeId) }, opponent: { id: opponent, name: name(opponent) } };
+      },
+      async compare(userId, winnerId, loserId) {
+        assertActive(userId);
+        requireProfile(userId);
+        const rated = ratedInCategory(state, userId, winnerId);
+        if (winnerId === loserId || !rated || !rated.items.some((i) => i.id === loserId)) {
+          throw new DataError("Rate both places in the same category first");
+        }
+        const pair = (c: { winnerId: string; loserId: string }) =>
+          (c.winnerId === winnerId && c.loserId === loserId) || (c.winnerId === loserId && c.loserId === winnerId);
+        state.placeComparisons = state.placeComparisons.filter((c) => !(c.userId === userId && pair(c)));
+        state.placeComparisons.push({ userId, winnerId, loserId, createdAt: new Date().toISOString() });
+        persist();
       },
       async removeRating(userId, placeId) {
         assertActive(userId);

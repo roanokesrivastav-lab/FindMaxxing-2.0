@@ -63,6 +63,7 @@ import {
   type NormalizedFilters,
 } from "../discovery";
 import { PLACE_PHOTO_BUCKET, placePhotoReference, placePhotoUrl, sniffImageType } from "../photos";
+import { nextOpponent } from "@/lib/ranking/nextComparison";
 import { photoObjectPaths, photoVariantPath } from "@/lib/images/sizes";
 
 /**
@@ -855,6 +856,28 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
           rating_count: number;
         };
         return { ratingAvg: Number(place.rating_avg), ratingCount: place.rating_count };
+      },
+      async nextComparison(userId, placeId) {
+        const ratings = unwrap(await supabase.from("place_ratings").select("place_id, score").eq("user_id", userId)) as { place_id: string; score: number }[];
+        if (!ratings.some((r) => r.place_id === placeId)) return null;
+        // RLS hides places the viewer cannot see, so they drop out of the join.
+        const places = unwrap(await supabase.from("places").select("id, name, category_slug").in("id", ratings.map((r) => r.place_id))) as { id: string; name: string; category_slug: string }[];
+        const subject = places.find((p) => p.id === placeId);
+        if (!subject) return null;
+        const inCategory = places.filter((p) => p.category_slug === subject.category_slug);
+        const stars = new Map(ratings.map((r) => [r.place_id, r.score]));
+        const scores = new Map((unwrap(await supabase.rpc("fit_user_category_scores", { p_category: subject.category_slug })) as { place_id: string; score: number }[]).map((r) => [r.place_id, r.score]));
+        const answers = (unwrap(await supabase.from("place_comparisons").select("winner_id, loser_id").eq("user_id", userId).order("created_at", { ascending: false }).limit(500)) as { winner_id: string; loser_id: string }[])
+          .map((c) => ({ winnerId: c.winner_id, loserId: c.loser_id }));
+        const opponent = nextOpponent(placeId, inCategory.map((p) => ({ id: p.id, stars: stars.get(p.id)!, score: scores.get(p.id) ?? 0 })), answers);
+        const opp = inCategory.find((p) => p.id === opponent);
+        return opp ? { subject: { id: subject.id, name: subject.name }, opponent: { id: opp.id, name: opp.name } } : null;
+      },
+      async compare(userId, winnerId, loserId) {
+        // Answering a pair again replaces the earlier answer, whichever way round it was.
+        unwrap(await supabase.from("place_comparisons").delete().eq("user_id", userId)
+          .or(`and(winner_id.eq.${winnerId},loser_id.eq.${loserId}),and(winner_id.eq.${loserId},loser_id.eq.${winnerId})`));
+        unwrap(await supabase.from("place_comparisons").insert({ user_id: userId, winner_id: winnerId, loser_id: loserId }));
       },
       async removeRating(userId, placeId) {
         unwrap(await supabase.from("place_ratings").delete().eq("user_id", userId).eq("place_id", placeId));

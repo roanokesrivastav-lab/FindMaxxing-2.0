@@ -1,4 +1,5 @@
 import type {
+  ComparisonPrompt,
   ConnectionEntry,
   AdCampaign,
   GeoBounds,
@@ -132,6 +133,14 @@ export interface DataRepository {
       note: string | null,
     ): Promise<{ ratingAvg: number; ratingCount: number }>;
     removeRating(userId: string, placeId: string): Promise<{ ratingAvg: number; ratingCount: number }>;
+    /**
+     * The next "which did you prefer" question after the viewer rated placeId:
+     * a place they gave the same stars in the same category, chosen by binary
+     * search over the answers so far. Null when there is nothing left to ask.
+     */
+    nextComparison(userId: string, placeId: string): Promise<ComparisonPrompt | null>;
+    /** Records that the viewer preferred winnerId to loserId (both rated by them, one category). Answering a pair again replaces the earlier answer. */
+    compare(userId: string, winnerId: string, loserId: string): Promise<void>;
   };
   events: {
     /** Discovery list: visible published events, soonest first (starts_at, id), in cursor pages. */

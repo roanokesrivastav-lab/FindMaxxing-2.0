@@ -90,6 +90,7 @@ export function deleteDemoAccount(handle: StoreHandle, userId: string): DeletedO
   state.rateLimits = state.rateLimits.filter((r) => r.userId !== userId);
   // Their interaction history goes, and everyone's history of their places and events.
   state.userInteractions = state.userInteractions.filter((i) => i.userId !== userId);
+  state.placeComparisons = state.placeComparisons.filter((c) => c.userId !== userId && !ownPlaces.has(c.winnerId) && !ownPlaces.has(c.loserId));
   forgetItemInteractions(state, "place", ownPlaces);
   forgetItemInteractions(state, "event", ownEvents);
 

@@ -206,6 +206,8 @@ export interface DemoState {
   adImpressions: { campaignId: string; day: string; slot: "places" | "events"; count: number }[];
   /** Mirrors 0031_user_interactions.sql (see ./interactions): private, per user. */
   userInteractions: (UserInteraction & { userId: string })[];
+  /** Private "I preferred A to B" answers (0037_place_comparisons.sql). */
+  placeComparisons: { userId: string; winnerId: string; loserId: string; createdAt: string }[];
 }
 
 export interface AdCampaignRow {
@@ -308,7 +310,7 @@ export interface SavedListRow {
   updatedAt: string;
 }
 
-export const STATE_VERSION = 14;
+export const STATE_VERSION = 15;
 const DATA_DIR = path.join(process.cwd(), ".data");
 const STATE_FILE = path.join(DATA_DIR, "demo-store.json");
 
@@ -328,7 +330,7 @@ const COLLECTIONS = [
   "conversations", "conversationMembers", "messages", "blocks",
   "notifications", "notificationSettings", "pushSubscriptions", "pushLog",
   "tickets", "hostAccounts", "entitlements", "stripeCustomers", "stripeEvents",
-  "adCampaigns", "adImpressions", "userInteractions",
+  "adCampaigns", "adImpressions", "userInteractions", "placeComparisons",
 ] as const;
 
 const LEGACY_PLACE_UPLOAD = /^\/api\/uploads\/(places-[^/]+)$/;
@@ -446,6 +448,10 @@ const MIGRATIONS: Record<number, (state: LooseState) => void> = {
       i.propensity ??= null;
     }
   },
+  // v14 → v15: head-to-head place comparisons. None answered yet.
+  14(state) {
+    state.placeComparisons ??= [];
+  },
 };
 
 export type MigrationResult =
@@ -531,6 +537,7 @@ export function buildSeedState(now = new Date()): DemoState {
     adCampaigns: [],
     adImpressions: [],
     userInteractions: [],
+    placeComparisons: [],
   };
 
   SEED_USERS.forEach((u, i) => {

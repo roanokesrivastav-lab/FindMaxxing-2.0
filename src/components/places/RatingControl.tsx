@@ -7,6 +7,8 @@ import { useToast } from "@/components/ui/Toast";
 import { formatRating, pluralize } from "@/lib/utils/format";
 import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Field";
+import { ComparePrompt } from "@/components/places/ComparePrompt";
+import type { ComparisonPrompt } from "@/lib/data/types";
 
 const NOTE_MAX = 280;
 
@@ -30,6 +32,7 @@ export function RatingControl({
   const [savedNote, setSavedNote] = useState<string | null>(viewerRatingNote);
   const [note, setNote] = useState(viewerRatingNote ?? "");
   const [noteOpen, setNoteOpen] = useState(false);
+  const [comparison, setComparison] = useState<ComparisonPrompt | null>(null);
   const [pending, start] = useTransition();
   const router = useRouter();
   const { toast } = useToast();
@@ -56,6 +59,8 @@ export function RatingControl({
       setSavedNote(noteValue);
       setNoteOpen(false);
       toast(message, "success");
+      // Only a new or changed score is worth asking about; a note edit is not.
+      if (score !== prevScore) setComparison(res.data.comparison);
       router.refresh();
     });
   };
@@ -196,6 +201,7 @@ export function RatingControl({
           )}
         </div>
       ) : null}
+      {comparison ? <ComparePrompt initial={comparison} onClose={() => setComparison(null)} /> : null}
     </div>
   );
 }
