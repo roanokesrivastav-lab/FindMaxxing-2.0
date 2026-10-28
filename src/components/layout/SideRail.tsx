@@ -1,19 +1,25 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Plus, Sparkles } from "lucide-react";
+import { Bell, MessageCircle, Plus, Route, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { BROWSE_ITEMS, NAV_ITEMS } from "./nav-items";
 import { Logo } from "./Logo";
 import { Avatar } from "@/components/ui/Avatar";
 import { CreateMenu } from "./CreateMenu";
 import { useState } from "react";
-import type { ShellViewer } from "./AppShell";
+import type { ShellExtras, ShellViewer } from "./AppShell";
 import type { DataMode } from "@/lib/config";
 
-export function SideRail({ viewer, dataMode }: { viewer: ShellViewer | null; dataMode: DataMode }) {
+export function SideRail({ viewer, dataMode, extras }: { viewer: ShellViewer | null; dataMode: DataMode; extras: ShellExtras }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const browse = [
+    ...(extras.notifications !== null && extras.notifications !== undefined ? [{ href: "/notifications", label: "Notifications", icon: Bell, match: (p: string) => p.startsWith("/notifications"), badge: extras.notifications }] : []),
+    ...(extras.unread !== null ? [{ href: "/messages", label: "Messages", icon: MessageCircle, match: (p: string) => p.startsWith("/messages"), badge: extras.unread }] : []),
+    ...(extras.plan ? [{ href: "/plan", label: "Plan my day", icon: Route, match: (p: string) => p === "/plan", badge: 0 }] : []),
+    ...BROWSE_ITEMS.map((item) => ({ ...item, badge: 0 })),
+  ];
   return (
     <aside className="hidden md:flex md:w-64 lg:w-72 shrink-0 sticky top-0 h-dvh flex-col border-r border-line bg-surface px-4 py-5">
       <Link href="/" className="px-2">
@@ -41,7 +47,7 @@ export function SideRail({ viewer, dataMode }: { viewer: ShellViewer | null; dat
       </nav>
       <nav className="mt-5 flex flex-col gap-0.5" aria-label="Browse">
         <p className="px-3 mb-1 text-[11px] font-bold uppercase tracking-[0.12em] text-muted">Browse</p>
-        {BROWSE_ITEMS.map((item) => {
+        {browse.map((item) => {
           const active = item.match(pathname);
           const Icon = item.icon;
           return (
@@ -56,6 +62,11 @@ export function SideRail({ viewer, dataMode }: { viewer: ShellViewer | null; dat
             >
               <Icon size={17} />
               {item.label}
+              {item.badge ? (
+                <span className="ml-auto min-w-5 h-5 px-1.5 rounded-full bg-flare-ink text-white text-[11px] font-bold inline-flex items-center justify-center">
+                  {item.badge}<span className="sr-only"> unread</span>
+                </span>
+              ) : null}
             </Link>
           );
         })}
@@ -63,7 +74,7 @@ export function SideRail({ viewer, dataMode }: { viewer: ShellViewer | null; dat
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mt-6 h-12 rounded-2xl bg-flare text-white font-semibold inline-flex items-center justify-center gap-2 hover:bg-flare-600 transition-colors"
+        className="mt-6 h-12 rounded-2xl bg-flare-ink text-white font-semibold inline-flex items-center justify-center gap-2 hover:bg-[#9c2e19] transition-colors"
       >
         <Plus size={20} strokeWidth={2.5} />
         Add something

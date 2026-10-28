@@ -6,7 +6,7 @@ type Variant = "primary" | "secondary" | "ghost" | "danger" | "pulse" | "ink";
 type Size = "sm" | "md" | "lg" | "icon";
 
 const variants: Record<Variant, string> = {
-  primary: "bg-flare text-white hover:bg-flare-600 shadow-[0_6px_16px_-6px_rgba(255,77,46,0.6)]",
+  primary: "bg-flare-ink text-white hover:bg-[#9c2e19] shadow-[0_6px_16px_-6px_rgba(255,77,46,0.6)]",
   pulse: "bg-pulse text-white hover:bg-pulse-600 shadow-[0_6px_16px_-6px_rgba(107,76,255,0.6)]",
   ink: "bg-ink text-white hover:bg-ink-2",
   secondary: "bg-surface text-ink border border-line hover:bg-surface-2",

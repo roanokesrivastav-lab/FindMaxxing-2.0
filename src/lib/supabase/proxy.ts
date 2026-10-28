@@ -6,9 +6,9 @@ import { getSupabaseEnv } from "@/lib/config";
  * Refreshes the Supabase session cookie on every request so Server Components
  * always see a valid session. Invoked from src/proxy.ts.
  */
-export async function refreshSupabaseSession(request: NextRequest): Promise<NextResponse> {
+export async function refreshSupabaseSession(request: NextRequest, requestHeaders: Headers = request.headers): Promise<NextResponse> {
   const env = getSupabaseEnv();
-  let response = NextResponse.next({ request });
+  let response = NextResponse.next({ request: { headers: requestHeaders } });
   if (!env) return response;
 
   const supabase = createServerClient(env.url, env.anonKey, {
@@ -18,7 +18,9 @@ export async function refreshSupabaseSession(request: NextRequest): Promise<Next
       },
       setAll(cookiesToSet) {
         for (const { name, value } of cookiesToSet) request.cookies.set(name, value);
-        response = NextResponse.next({ request });
+        // Carry the refreshed cookies (and the proxy's extra headers) forward.
+        requestHeaders.set("cookie", request.cookies.toString());
+        response = NextResponse.next({ request: { headers: requestHeaders } });
         for (const { name, value, options } of cookiesToSet) response.cookies.set(name, value, options);
       },
     },

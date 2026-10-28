@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Globe, ShieldCheck } from "lucide-react";
+import { Globe, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { FieldError, FieldLabel } from "@/components/ui/Field";
 import { cn } from "@/lib/utils/cn";
 
@@ -17,7 +17,21 @@ const OPTIONS = [
     hint: "Only people who call this city home, or who have added a place here, can see it.",
     icon: ShieldCheck,
   },
+  {
+    value: "trusted",
+    label: "Trusted locals",
+    hint: "Only locals who have earned the Trusted local level by contributing places others save, rate and keep.",
+    icon: Sparkles,
+  },
+  {
+    value: "followers",
+    label: "People I follow back",
+    hint: "Only people who follow you and whom you follow. Nobody else, locals included.",
+    icon: Users,
+  },
 ] as const;
+
+type Tier = (typeof OPTIONS)[number]["value"];
 
 /**
  * Trust-tier choice on the add-place form. Locals-only is the
@@ -28,19 +42,23 @@ export function VisibilityPicker({
   name = "visibility",
   initial = "public",
   error,
+  extendedTiers = false,
 }: {
   name?: string;
-  initial?: "public" | "locals";
+  initial?: Tier;
   error?: string;
+  /** The reputation-based tiers (trusted locals, mutual follows), behind the reputation flag. */
+  extendedTiers?: boolean;
 }) {
-  const [value, setValue] = useState<"public" | "locals">(initial);
-  const active = OPTIONS.find((o) => o.value === value);
+  const [value, setValue] = useState<Tier>(initial);
+  const options = extendedTiers ? OPTIONS : OPTIONS.filter((o) => o.value === "public" || o.value === "locals");
+  const active = options.find((o) => o.value === value);
 
   return (
     <div data-field={name}>
       <FieldLabel>Who can see it</FieldLabel>
       <div className="grid grid-cols-2 gap-2">
-        {OPTIONS.map((o) => {
+        {options.map((o) => {
           const Icon = o.icon;
           const isActive = value === o.value;
           return (

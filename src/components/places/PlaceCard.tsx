@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { readableInk } from "@/lib/utils/contrast";
 import { Star, MapPin } from "lucide-react";
 import type { Place } from "@/lib/data/types";
 import { getCategory, getInterest } from "@/lib/data/taxonomy";
@@ -6,6 +7,7 @@ import { formatRating } from "@/lib/utils/format";
 import { formatDistance } from "@/lib/utils/geo";
 import { cn } from "@/lib/utils/cn";
 import { PlaceCover } from "./PlaceCover";
+import { CategoryIcon } from "@/components/ui/TaxonomyIcon";
 
 export function PlaceCard({
   place,
@@ -21,18 +23,24 @@ export function PlaceCard({
   onHover?: () => void;
 }) {
   const c = getCategory(place.categorySlug);
+  const photo = place.photos[0]?.url;
   return (
     <Link
       href={`/places/${place.id}`}
       onMouseEnter={onHover}
       className={cn("card overflow-hidden flex hover:shadow-float transition-shadow group", compact ? "h-[104px]" : "flex-col", className)}
     >
-      <div className={cn("relative shrink-0 overflow-hidden", compact ? "w-[104px]" : "aspect-[16/10]")}>
-        <PlaceCover photoUrl={place.photos[0]?.url} categorySlug={place.categorySlug} name={place.name} emojiSize={compact ? 30 : 44} layout={compact ? "thumb" : "card"} />
-      </div>
+      {compact || photo ? (
+        <div className={cn("relative shrink-0 overflow-hidden", compact ? "w-[104px]" : "aspect-[2/1]")}>
+          <PlaceCover photoUrl={photo} categorySlug={place.categorySlug} name={place.name} layout={compact ? "thumb" : "card"} />
+        </div>
+      ) : (
+        // No photo: a slim category band, so the card leads with its title instead of a big flat block.
+        <div className="h-3 shrink-0" style={{ background: c.color }} aria-hidden />
+      )}
       <div className={cn("min-w-0 flex-1 flex flex-col", compact ? "p-3 justify-center gap-1" : "p-4 gap-1.5")}>
-        <div className="flex items-center gap-2 text-xs font-semibold" style={{ color: c.color }}>
-          <span>{c.emoji}</span>
+        <div className="flex items-center gap-2 text-xs font-semibold" style={{ color: readableInk(c.color) }}>
+          <CategoryIcon slug={c.slug} size={13} className="shrink-0" />
           <span className="truncate">{c.label}</span>
           {place.neighborhood ? (
             <>
@@ -41,7 +49,7 @@ export function PlaceCard({
             </>
           ) : null}
         </div>
-        <h3 className={cn("font-bold leading-snug group-hover:text-flare-600 transition-colors", compact ? "text-[15px] line-clamp-1" : "text-lg line-clamp-2")}>
+        <h3 className={cn("font-bold leading-snug group-hover:text-flare-ink transition-colors", compact ? "text-[15px] line-clamp-1" : "text-lg line-clamp-2")}>
           {place.name}
         </h3>
         {!compact ? <p className="text-sm text-ink-2 line-clamp-2">{place.localTip ?? place.description}</p> : null}

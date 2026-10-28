@@ -13,8 +13,24 @@ import {
   type TagCounts,
   type UserActivity,
   type SavedList,
+  type ModerationQueueItem,
+  type ReportReason,
+  type RemovedContent,
+  FUNNEL_STEPS,
 } from "../types";
-import { getDemoStore, isLocalOfCity, recomputeRating, type DemoState, type EventRow, type PlaceRow, type ProfileRow, type ReportRow, type SavedListRow, type StoreHandle } from "./store";
+import { getDemoStore, isLocalOfCity, isModeratorIn, recomputeRating, type DemoState, type EventRow, type ModerationActionRow, type PlaceRow, type ProfileRow, type ReportRow, type SavedListRow, type StoreHandle } from "./store";
+import { RATE_LIMITS, rateLimitError, windowStart, type RateLimitAction } from "@/lib/rateLimits";
+import { MAX_MODERATION_REASON, MODERATION_ACTIONS, REPORT_TARGET_TYPES, SUSPENDED_MESSAGE, compareModerationReports, moderationError, normalizeReason } from "../moderation";
+import { homeCityCooldownMessage, nextHomeCityChange, sameCity } from "../localTier";
+import { createHash } from "node:crypto";
+import { LEVEL_RANK, refreshDemoReputation } from "./reputation";
+import { demoTaste, recommendDemoEvents, recommendDemoPlaces } from "./recommend";
+import { createDemoMessaging, dropEventChats, joinEventChat, leaveEventChat } from "./messaging";
+import { createDemoNotifications, notifyOn } from "./notifications";
+import { createDemoAds } from "./ads";
+import { createDemoInteractions, forgetItemInteractions, recordOwnInteraction } from "./interactions";
+import { createDemoPayments, isPlusIn, needsTicket, refundOnCancel } from "./payments";
+import { PLUS_LIST_CAP, paymentsError } from "../payments";
 import { LIST_LIMIT_ERROR, MAX_SAVED_LISTS, duplicateListName, listNameKey, normalizeListName } from "../savedLists";
 import { newId } from "@/lib/utils/ids";
 import { neighborhoodKey } from "@/lib/utils/neighborhoods";
@@ -27,7 +43,11 @@ import {
   clampLimit,
   compareTimestamps,
   decodeCursor,
+  decodeDistanceCursor,
+  discoveryDistance,
+  encodeDistanceCursor,
   inBounds,
+  validateNear,
   normalizeFilters,
   normalizeTimestamp,
   textMatches,
@@ -39,7 +59,7 @@ import { placePhotoReference, placePhotoUrl, sniffImageType } from "../photos";
 import { photoObjectPaths, photoVariantPath } from "@/lib/images/sizes";
 import path from "node:path";
 
-const UPLOAD_DIR = path.join(process.cwd(), ".data", "uploads");
+import { UPLOAD_DIR } from "./uploads";
 /** Generated upload names (and their .sm/.md size siblings) only; anything else is refused before touching disk. */
 export const DEMO_UPLOAD_NAME = /^(places|avatars)-[0-9a-f]{8}-[0-9a-f-]{36}(\.(sm|md))?\.(jpg|png|webp)$/;
 
@@ -58,9 +78,13 @@ function toProfile(state: DemoState, p: ProfileRow): Profile {
     ...summary(p),
     bio: p.bio,
     homeCity: p.homeCity,
+    homeCityChangedAt: p.homeCityChangedAt,
+    onboardedAt: p.onboardedAt,
+    reputationLevel: p.reputationLevel,
     interests: state.profileInterests.filter((x) => x.profileId === p.id).map((x) => x.interestSlug),
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
+    supporter: !!p.supporter,
   };
 }
 
@@ -114,31 +138,45 @@ function toEvent(state: DemoState, row: EventRow): Event {
     tags: state.eventTags.filter((t) => t.eventId === row.id).map((t) => t.interestSlug),
     status: row.status,
     createdAt: row.createdAt,
+    priceCents: row.priceCents ?? null,
   };
 }
 
 /**
- * Whether a viewer may see a place. Mirrors the "visible places" RLS policy:
- * creators always see their own; everyone else needs a published row that is
- * either public, or locals-only with the viewer qualifying as a local.
+ * Whether a viewer may see a place. Mirrors can_view_place(): creators see
+ * their own unless moderators removed it; everyone else needs a published row
+ * that is public, locals-only with the viewer a local, trusted-only with the
+ * viewer a trusted local, or followers-only with a mutual follow.
  */
-function canViewPlace(state: DemoState, p: PlaceRow, viewerId: string | null): boolean {
-  if (viewerId && p.creatorId === viewerId) return true;
+export function canViewPlace(state: DemoState, p: PlaceRow, viewerId: string | null): boolean {
+  if (viewerId && p.creatorId === viewerId && p.status !== "removed") return true;
   if (p.status !== "published") return false;
   if (p.visibility === "public") return true;
   if (p.visibility === "locals") return isLocalOfCity(state, viewerId, p.city);
+  if (p.visibility === "trusted") {
+    return isLocalOfCity(state, viewerId, p.city) && state.profiles.find((x) => x.id === viewerId)?.reputationLevel === "trusted";
+  }
+  if (p.visibility === "followers") {
+    return !!viewerId && !!p.creatorId &&
+      state.follows.some((f) => f.followerId === viewerId && f.followingId === p.creatorId) &&
+      state.follows.some((f) => f.followerId === p.creatorId && f.followingId === viewerId);
+  }
   return false;
 }
 
-/** Public-only gate, for paths with no viewer context (counts, link targets). */
-/** Resolves a report row for display, without exposing who filed it. */
-function toReportEntry(state: DemoState, r: ReportRow): ReportEntry {
+/**
+ * Resolves a report row for display, without exposing who filed it. The
+ * owner-side view (reports_about_my_stuff) carries no resolution time.
+ */
+function toReportEntry(state: DemoState, r: ReportRow, withResolution = true): ReportEntry {
   const label =
     r.targetType === "place"
       ? (state.places.find((p) => p.id === r.targetId)?.name ?? null)
       : r.targetType === "event"
         ? (state.events.find((e) => e.id === r.targetId)?.title ?? null)
-        : (state.profiles.find((p) => p.id === r.targetId)?.displayName ?? null);
+        : r.targetType === "message"
+          ? null // private: the filer's own list shows no message text
+          : (state.profiles.find((p) => p.id === r.targetId)?.displayName ?? null);
   return {
     id: r.id,
     targetType: r.targetType,
@@ -147,15 +185,19 @@ function toReportEntry(state: DemoState, r: ReportRow): ReportEntry {
     details: r.details,
     status: r.status,
     createdAt: r.createdAt,
+    resolvedAt: withResolution ? r.resolvedAt : null,
     targetLabel: label,
   };
 }
 
+/** Owners may edit only what they could set themselves: not removed or pending places. */
+const ownerEditable = (p: PlaceRow) => p.status === "published" || p.status === "hidden";
+
 const visiblePlace = (p: PlaceRow) => p.status === "published" && p.visibility === "public";
 const visibleEvent = (e: EventRow) => e.status === "published";
 
-function canViewEvent(state: DemoState, event: EventRow, viewerId: string | null): boolean {
-  if (viewerId && event.creatorId === viewerId) return true;
+export function canViewEvent(state: DemoState, event: EventRow, viewerId: string | null): boolean {
+  if (viewerId && event.creatorId === viewerId && event.status !== "removed") return true;
   if (event.status === "cancelled") {
     return !!viewerId && state.eventAttendees.some((a) => a.eventId === event.id && a.userId === viewerId);
   }
@@ -238,6 +280,26 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
     return p;
   };
 
+  /**
+   * Mirrors check_rate_limit(): refuses when the user has used up the current
+   * window, and returns the increment to apply once the write succeeds (the
+   * database's increment rolls back with a failed insert).
+   */
+  const rateLimit = (userId: string, action: RateLimitAction, amount = 1) => {
+    const now = Date.now();
+    const start = windowStart(action, now);
+    const rule = RATE_LIMITS[action];
+    state.rateLimits = state.rateLimits.filter((r) => !(r.userId === userId && r.action === action && r.windowStart < start));
+    const row = state.rateLimits.find((r) => r.userId === userId && r.action === action && r.windowStart === start);
+    if ((row?.count ?? 0) + amount > rule.max) {
+      throw rateLimitError(action, Math.max(1, Math.ceil((start + rule.windowSeconds * 1000 - now) / 1000)));
+    }
+    return () => {
+      if (row) row.count += amount;
+      else state.rateLimits.push({ userId, action, windowStart: start, count: amount });
+    };
+  };
+
   /** Deletes list items, touching each affected list like the database trigger. */
   const removeListItems = (match: (item: DemoState["savedListItems"][number]) => boolean) => {
     const now = new Date().toISOString();
@@ -257,6 +319,59 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || compareIds(a.placeId, b.placeId))
       .map((i) => state.places.find((p) => p.id === i.placeId))
       .filter((p): p is PlaceRow => !!p && p.status === "published" && canViewPlace(state, p, list.ownerId));
+  const isAdmin = (userId: string | null) => !!userId && state.admins.some((a) => a.userId === userId);
+  /** Mirrors block_suspended_writes(): a suspended account cannot write anything. */
+  const assertActive = (userId: string) => {
+    if (state.suspensions.some((x) => x.userId === userId)) throw new DataError(SUSPENDED_MESSAGE, "forbidden");
+  };
+  const requireAdmin = (adminId: string, reason: string) => {
+    if (!isAdmin(adminId)) throw new DataError("Admins only", "forbidden");
+    const why = normalizeReason(reason);
+    if (!why) throw moderationError("reason_required");
+    if (why.length > MAX_MODERATION_REASON) throw moderationError("reason_too_long");
+    return why;
+  };
+  const audit = (adminId: string, action: ModerationActionRow["action"], targetType: ModerationActionRow["targetType"], target: { id?: string; key?: string }, reason: string, before: string | null, after: string | null) => {
+    state.moderationActions.push({
+      id: newId(), moderatorId: adminId, action, targetType, targetId: target.id ?? null, targetKey: target.key ?? null,
+      reason, statusBefore: before, statusAfter: after, resolvedReports: 0, createdAt: new Date().toISOString(),
+    });
+  };
+
+  const targetLabel = (type: ReportRow["targetType"], id: string): string | null =>
+    type === "place" ? (state.places.find((p) => p.id === id)?.name ?? null)
+      : type === "event" ? (state.events.find((e) => e.id === id)?.title ?? null)
+        : type === "message" ? (state.messages.find((m) => m.id === id)?.body.slice(0, 60) ?? null)
+          : (state.profiles.find((p) => p.id === id)?.displayName ?? null);
+  const targetStatus = (type: ReportRow["targetType"], id: string): string | null =>
+    type === "place" ? (state.places.find((p) => p.id === id)?.status ?? null)
+      : type === "event" ? (state.events.find((e) => e.id === id)?.status ?? null)
+        : type === "message" ? messageStatus(id)
+        : state.profiles.some((p) => p.id === id) ? (state.localRevocations.some((r) => r.userId === id) ? "revoked" : "active") : null;
+  /** Mirrors message_status(). */
+  function messageStatus(id: string): string | null {
+    const m = state.messages.find((x) => x.id === id);
+    return m ? (m.removedAt ? "removed" : "published") : null;
+  }
+  /** Mirrors moderation_target(). */
+  const snapshotOf = (type: ReportRow["targetType"], id: string) => {
+    const ownerName = (ownerId: string | null) => (ownerId ? (state.profiles.find((p) => p.id === ownerId)?.username ?? null) : null);
+    if (type === "message") {
+      const m = state.messages.find((x) => x.id === id);
+      return m ? { label: m.body.slice(0, 60), status: messageStatus(id)!, visibility: null, city: null, neighborhood: null, body: m.body, extra: null, ownerId: m.senderId, ownerUsername: ownerName(m.senderId), createdAt: m.createdAt } : null;
+    }
+    if (type === "place") {
+      const p = state.places.find((x) => x.id === id);
+      return p ? { label: p.name, status: p.status, visibility: p.visibility, city: p.city, neighborhood: p.neighborhood, body: p.description, extra: p.localTip, ownerId: p.creatorId, ownerUsername: ownerName(p.creatorId), createdAt: p.createdAt } : null;
+    }
+    if (type === "event") {
+      const e = state.events.find((x) => x.id === id);
+      return e ? { label: e.title, status: e.status, visibility: null, city: null, neighborhood: null, body: e.description, extra: e.locationName, ownerId: e.creatorId, ownerUsername: ownerName(e.creatorId), createdAt: e.createdAt } : null;
+    }
+    const pr = state.profiles.find((x) => x.id === id);
+    return pr ? { label: pr.displayName, status: targetStatus("profile", id)!, visibility: null, city: pr.homeCity, neighborhood: null, body: pr.bio, extra: null, ownerId: pr.id, ownerUsername: pr.username, createdAt: pr.createdAt } : null;
+  };
+
   const toSavedList = (list: SavedListRow): SavedList => ({
     id: list.id,
     name: list.name,
@@ -270,8 +385,24 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
       async search(opts = {}) {
         const f = normalizeFilters(opts);
         const limit = clampLimit(opts.limit, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
-        const after = decodeCursor(opts.cursor);
         const viewerId = opts.viewerId ?? null;
+        const near = validateNear(opts.near);
+        if (near) {
+          // Mirrors discover_places_nearest: (distance, id) ascending, keyset on both.
+          const afterNear = decodeDistanceCursor(opts.cursor);
+          const ranked = state.places
+            .filter((p) => placeMatches(state, p, f, viewerId))
+            .map((p) => ({ p, d: discoveryDistance(p, near) }))
+            .filter(({ p, d }) => !afterNear || d > afterNear.distance || (d === afterNear.distance && p.id > afterNear.id))
+            .sort((a, b) => a.d - b.d || compareIds(a.p.id, b.p.id));
+          const items = ranked.slice(0, limit);
+          const last = items.at(-1);
+          return {
+            items: items.map(({ p }) => toPlace(state, p)),
+            nextCursor: ranked.length > limit && last ? encodeDistanceCursor(last.d, last.p.id) : null,
+          };
+        }
+        const after = decodeCursor(opts.cursor);
         const rows = state.places
           .filter((p) => placeMatches(state, p, f, viewerId))
           .filter((p) => !after || compareTimestamps(p.createdAt, after.key) < 0 || (compareTimestamps(p.createdAt, after.key) === 0 && p.id < after.id))
@@ -321,7 +452,8 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         const rows = state.places
           .filter((p) => placeMatches(state, p, f, viewerId))
           .map((p) => ({ p, saves: saves(p.id) }))
-          .sort((a, b) => b.p.ratingCount - a.p.ratingCount || b.saves - a.saves || compareIds(a.p.id, b.p.id));
+          // Ratings, then saves, then the creator's reputation, then id: reputation is one input, never the only one.
+          .sort((a, b) => b.p.ratingCount - a.p.ratingCount || b.saves - a.saves || b.p.creatorReputation - a.p.creatorReputation || compareIds(a.p.id, b.p.id));
         return {
           items: rows.slice(0, limit).map(({ p }) => ({
             id: p.id, name: p.name, categorySlug: p.categorySlug, lat: p.lat, lng: p.lng, ratingAvg: p.ratingAvg, ratingCount: p.ratingCount,
@@ -349,10 +481,12 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         return detail;
       },
       async create(input, creatorId) {
+        assertActive(creatorId);
         requireProfile(creatorId);
         if ((input.photos?.length ?? 0) > MAX_PLACE_PHOTOS) {
           throw new DataError(`A place can have at most ${MAX_PLACE_PHOTOS} photos`, "invalid");
         }
+        const counted = rateLimit(creatorId, "places");
         const now = new Date().toISOString();
         const row: PlaceRow = {
           id: newId(),
@@ -370,6 +504,8 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           ratingCount: 0,
           status: "published",
           visibility: input.visibility ?? "public",
+          source: "community",
+          creatorReputation: LEVEL_RANK[requireProfile(creatorId).reputationLevel],
           createdAt: now,
           updatedAt: now,
         };
@@ -386,13 +522,16 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
             createdAt: now,
           });
         });
+        counted();
         persist();
         return toPlace(state, row);
       },
       async update(id, input, creatorId) {
+        assertActive(creatorId);
         const place = state.places.find((p) => p.id === id);
         if (!place) throw new DataError("Place not found", "not_found");
         if (place.creatorId !== creatorId) throw new DataError("You don't have permission to edit this place", "forbidden");
+        if (!ownerEditable(place)) throw new DataError("You don't own this place", "forbidden");
         Object.assign(place, {
           name: input.name,
           description: input.description,
@@ -412,6 +551,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         return toPlace(state, place);
       },
       async delete(id, creatorId) {
+        assertActive(creatorId);
         const place = state.places.find((p) => p.id === id);
         if (!place) throw new DataError("Place not found", "not_found");
         if (place.creatorId !== creatorId) throw new DataError("You don't have permission to delete this place", "forbidden");
@@ -425,11 +565,13 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         state.placeRatings = state.placeRatings.filter((r) => r.placeId !== id);
         state.savedPlaces = state.savedPlaces.filter((s) => s.placeId !== id);
         removeListItems((i) => i.placeId === id);
+        forgetItemInteractions(state, "place", new Set([id]));
         // Match ON DELETE SET NULL for linked events while preserving their snapshot location fields.
         for (const event of state.events) if (event.placeId === id) event.placeId = null;
         persist();
       },
       async addPhotos(placeId, images, uploaderId) {
+        assertActive(uploaderId);
         if (!images.length) return;
         requireProfile(uploaderId);
         const place = state.places.find((p) => p.id === placeId);
@@ -457,18 +599,20 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         persist();
       },
       async setStatus(placeId, status, ownerId) {
+        assertActive(ownerId);
         const place = state.places.find((p) => p.id === placeId);
         if (!place) throw new DataError("Place not found", "not_found");
-        if (place.creatorId !== ownerId) throw new DataError("You don't own this place", "forbidden");
+        if (place.creatorId !== ownerId || !ownerEditable(place)) throw new DataError("You don't own this place", "forbidden");
         if (status !== "published" && status !== "hidden") throw new DataError("Invalid status", "invalid");
         place.status = status;
         place.updatedAt = new Date().toISOString();
         persist();
       },
       async setVisibility(placeId, visibility, ownerId) {
+        assertActive(ownerId);
         const place = state.places.find((p) => p.id === placeId);
         if (!place) throw new DataError("Place not found", "not_found");
-        if (place.creatorId !== ownerId) throw new DataError("You don't own this place", "forbidden");
+        if (place.creatorId !== ownerId || !ownerEditable(place)) throw new DataError("You don't own this place", "forbidden");
         place.visibility = visibility;
         place.updatedAt = new Date().toISOString();
         persist();
@@ -489,6 +633,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           }));
       },
       async removePhoto(placeId, photoId, uploaderId) {
+        assertActive(uploaderId);
         const photo = state.placePhotos.find((p) => p.id === photoId && p.placeId === placeId);
         if (!photo) throw new DataError("Photo not found", "not_found");
         const place = state.places.find((p) => p.id === placeId);
@@ -523,28 +668,36 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           .map((p) => toPlace(state, p));
       },
       async save(userId, placeId) {
+        assertActive(userId);
         requireProfile(userId);
         const place = state.places.find((p) => p.id === placeId);
         if (!place || !canViewPlace(state, place, userId)) throw new DataError("Place not found", "not_found");
         // Unique (user_id, place_id): idempotent.
         if (state.savedPlaces.some((s) => s.userId === userId && s.placeId === placeId)) return;
         state.savedPlaces.push({ userId, placeId, createdAt: new Date().toISOString() });
+        notifyOn.save(state, placeId, userId);
+        recordOwnInteraction(state, userId, { itemType: "place", itemId: placeId, action: "save" });
         persist();
       },
       async unsave(userId, placeId) {
+        assertActive(userId);
         const idx = state.savedPlaces.findIndex((s) => s.userId === userId && s.placeId === placeId);
         if (idx >= 0) {
           state.savedPlaces.splice(idx, 1);
           // saved_list_items cascade from the bookmark: unsaving leaves every list.
           removeListItems((i) => i.ownerId === userId && i.placeId === placeId);
+          recordOwnInteraction(state, userId, { itemType: "place", itemId: placeId, action: "unsave" });
           persist();
         }
       },
       async rate(userId, placeId, score, note) {
+        assertActive(userId);
         requireProfile(userId);
         const place = state.places.find((p) => p.id === placeId);
         if (!place || !canViewPlace(state, place, userId)) throw new DataError("Place not found", "not_found");
         if (!Number.isInteger(score) || score < 1 || score > 5) throw new DataError("Rating must be 1–5");
+        // The upsert's insert fires the trigger even when it ends up updating.
+        const counted = rateLimit(userId, "ratings");
         const now = new Date().toISOString();
         const existing = state.placeRatings.find((r) => r.placeId === placeId && r.userId === userId);
         if (existing) {
@@ -553,12 +706,16 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           existing.updatedAt = now;
         } else {
           state.placeRatings.push({ id: newId(), placeId, userId, score, note, createdAt: now, updatedAt: now });
+          notifyOn.rate(state, placeId, userId);
         }
         recomputeRating(state, placeId);
+        recordOwnInteraction(state, userId, { itemType: "place", itemId: placeId, action: "rate", value: score });
+        counted();
         persist();
         return { ratingAvg: place.ratingAvg, ratingCount: place.ratingCount };
       },
       async removeRating(userId, placeId) {
+        assertActive(userId);
         const place = state.places.find((p) => p.id === placeId);
         if (!place || !canViewPlace(state, place, userId)) throw new DataError("Place not found", "not_found");
         state.placeRatings = state.placeRatings.filter((r) => !(r.placeId === placeId && r.userId === userId));
@@ -616,10 +773,12 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         return detail;
       },
       async create(input, creatorId) {
+        assertActive(creatorId);
         requireProfile(creatorId);
         if (input.placeId && !state.places.some((p) => p.id === input.placeId && canViewPlace(state, p, creatorId))) {
           throw new DataError("Linked place not found", "not_found");
         }
+        const counted = rateLimit(creatorId, "events");
         const now = new Date().toISOString();
         const row: EventRow = {
           id: newId(),
@@ -643,10 +802,13 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         for (const t of input.tags) state.eventTags.push({ eventId: row.id, interestSlug: t });
         // Creators attend their own events by default.
         state.eventAttendees.push({ eventId: row.id, userId: creatorId, createdAt: now });
+        joinEventChat(state, row.id, creatorId, now);
+        counted();
         persist();
         return toEvent(state, row);
       },
       async update(id, input, creatorId) {
+        assertActive(creatorId);
         const ev = state.events.find((e) => e.id === id);
         if (!ev) throw new DataError("Event not found", "not_found");
         if (ev.creatorId !== creatorId) throw new DataError("You don't have permission to edit this event", "forbidden");
@@ -656,6 +818,9 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         if (input.capacity !== null && input.capacity !== undefined && input.capacity < attendeeCount) {
           throw new DataError("capacity cannot be below the existing attendee count", "invalid");
         }
+        // Mirrors the trigger's "when or where changed" test (instants, not their spelling).
+        const where = (e: EventRow) => JSON.stringify([Date.parse(e.startsAt), e.endsAt ? Date.parse(e.endsAt) : null, e.locationName, e.address, e.lat, e.lng, e.placeId]);
+        const before = where(ev);
         Object.assign(ev, {
           title: input.title,
           description: input.description,
@@ -672,19 +837,24 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         });
         state.eventTags = state.eventTags.filter((t) => t.eventId !== id);
         for (const tag of input.tags) state.eventTags.push({ eventId: id, interestSlug: tag });
+        if (where(ev) !== before) notifyOn.eventChanged(state, id, creatorId);
         persist();
         return toEvent(state, ev);
       },
       async cancel(id, creatorId) {
+        assertActive(creatorId);
         const ev = state.events.find((e) => e.id === id);
         if (!ev) throw new DataError("Event not found", "not_found");
         if (ev.creatorId !== creatorId) throw new DataError("You don't have permission to cancel this event", "forbidden");
         if (ev.status !== "published" || eventEndOrStart(ev) <= Date.now()) throw new DataError("Only future published events can be cancelled", "invalid");
         ev.status = "cancelled";
         ev.updatedAt = new Date().toISOString();
+        refundOnCancel(state, id);
+        notifyOn.eventCancelled(state, id, creatorId);
         persist();
       },
       async delete(id, creatorId) {
+        assertActive(creatorId);
         const ev = state.events.find((e) => e.id === id);
         if (!ev) throw new DataError("Event not found", "not_found");
         if (ev.creatorId !== creatorId) throw new DataError("You don't have permission to delete this event", "forbidden");
@@ -693,23 +863,34 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         state.events = state.events.filter((e) => e.id !== id);
         state.eventTags = state.eventTags.filter((t) => t.eventId !== id);
         state.eventAttendees = state.eventAttendees.filter((a) => a.eventId !== id);
+        dropEventChats(state, new Set([id]));
+        forgetItemInteractions(state, "event", new Set([id]));
+        for (const t of state.tickets) if (t.eventId === id) t.eventId = null;
         persist();
       },
       async join(userId, eventId) {
+        assertActive(userId);
         requireProfile(userId);
         const ev = state.events.find((e) => e.id === eventId);
         if (!ev || !canViewEvent(state, ev, userId) || ev.status !== "published") throw new DataError("Event not found", "not_found");
         if (eventEndOrStart(ev) < Date.now()) throw new DataError("This event has already ended", "invalid");
+        if (needsTicket(state, ev, userId) && !state.eventAttendees.some((a) => a.eventId === eventId && a.userId === userId)) throw paymentsError("ticket_required");
         if (state.eventAttendees.some((a) => a.eventId === eventId && a.userId === userId)) return;
         const count = state.eventAttendees.filter((a) => a.eventId === eventId).length;
         if (ev.capacity !== null && count >= ev.capacity) throw new DataError("This event is full", "full");
         state.eventAttendees.push({ eventId, userId, createdAt: new Date().toISOString() });
+        joinEventChat(state, eventId, userId);
+        notifyOn.join(state, eventId, userId);
+        recordOwnInteraction(state, userId, { itemType: "event", itemId: eventId, action: "join" });
         persist();
       },
       async leave(userId, eventId) {
+        assertActive(userId);
         const idx = state.eventAttendees.findIndex((a) => a.eventId === eventId && a.userId === userId);
         if (idx >= 0) {
           state.eventAttendees.splice(idx, 1);
+          leaveEventChat(state, eventId, userId);
+          recordOwnInteraction(state, userId, { itemType: "event", itemId: eventId, action: "leave" });
           persist();
         }
       },
@@ -765,19 +946,25 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           .map(toSavedList);
       },
       async create(ownerId, rawName) {
+        assertActive(ownerId);
         requireProfile(ownerId);
         const name = normalizeListName(rawName);
         const mine = state.savedLists.filter((l) => l.ownerId === ownerId);
         // Same order as the database: the cap trigger runs before the unique index.
-        if (mine.length >= MAX_SAVED_LISTS) throw new DataError(LIST_LIMIT_ERROR, "full");
+        const cap = isPlusIn(state, ownerId) ? PLUS_LIST_CAP : MAX_SAVED_LISTS;
+        if (mine.length >= cap) throw new DataError(cap === MAX_SAVED_LISTS ? LIST_LIMIT_ERROR : `You can have at most ${cap} lists`, "full");
+        // Then the rate limit (triggers fire in name order), then the unique index.
+        const counted = rateLimit(ownerId, "lists");
         if (mine.some((l) => listNameKey(l.name) === listNameKey(name))) throw duplicateListName(name);
         const now = new Date().toISOString();
         const row: SavedListRow = { id: newId(), ownerId, name, createdAt: now, updatedAt: now };
         state.savedLists.push(row);
+        counted();
         persist();
         return toSavedList(row);
       },
       async rename(ownerId, listId, rawName) {
+        assertActive(ownerId);
         const list = ownList(ownerId, listId);
         const name = normalizeListName(rawName);
         const clash = state.savedLists.some((l) => l.ownerId === ownerId && l.id !== listId && listNameKey(l.name) === listNameKey(name));
@@ -787,12 +974,14 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         persist();
       },
       async delete(ownerId, listId) {
+        assertActive(ownerId);
         ownList(ownerId, listId);
         state.savedLists = state.savedLists.filter((l) => l.id !== listId);
         state.savedListItems = state.savedListItems.filter((i) => i.listId !== listId);
         persist();
       },
       async addPlace(ownerId, listId, placeId) {
+        assertActive(ownerId);
         const list = ownList(ownerId, listId);
         const place = state.places.find((p) => p.id === placeId);
         if (!place || !canViewPlace(state, place, ownerId)) throw new DataError("Place not found", "not_found");
@@ -800,6 +989,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         // The bookmark first: an item is always one of the owner's saved places.
         if (!state.savedPlaces.some((s) => s.userId === ownerId && s.placeId === placeId)) {
           state.savedPlaces.push({ userId: ownerId, placeId, createdAt: now });
+          notifyOn.save(state, placeId, ownerId);
         }
         if (!state.savedListItems.some((i) => i.listId === listId && i.placeId === placeId)) {
           state.savedListItems.push({ listId, ownerId, placeId, createdAt: now });
@@ -808,6 +998,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         persist();
       },
       async removePlace(ownerId, listId, placeId) {
+        assertActive(ownerId);
         ownList(ownerId, listId);
         removeListItems((i) => i.listId === listId && i.placeId === placeId);
         persist();
@@ -832,9 +1023,16 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         return p ? toProfile(state, p) : null;
       },
       async update(userId, input) {
+        assertActive(userId);
         const p = requireProfile(userId);
         const taken = state.profiles.some((x) => x.username === input.username && x.id !== userId);
         if (taken) throw new DataError("That username is taken", "conflict");
+        // Mirrors guard_profile_trust_columns(): one real change per 30 days.
+        if (!sameCity(input.homeCity, p.homeCity)) {
+          const next = nextHomeCityChange(p.homeCity, p.homeCityChangedAt);
+          if (next) throw new DataError(homeCityCooldownMessage(next), "rate_limited");
+          p.homeCityChangedAt = new Date().toISOString();
+        }
         p.username = input.username;
         p.displayName = input.displayName;
         p.bio = input.bio;
@@ -845,6 +1043,13 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         for (const i of input.interests) state.profileInterests.push({ profileId: userId, interestSlug: i });
         persist();
         return toProfile(state, p);
+      },
+      async completeOnboarding(userId) {
+        assertActive(userId);
+        const p = requireProfile(userId);
+        if (p.onboardedAt) return;
+        p.onboardedAt = new Date().toISOString();
+        persist();
       },
       async stats(userId) {
         return {
@@ -858,14 +1063,17 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         return state.follows.some((f) => f.followerId === followerId && f.followingId === followingId);
       },
       async follow(followerId, followingId) {
+        assertActive(followerId);
         if (followerId === followingId) throw new DataError("You can't follow yourself");
         requireProfile(followerId);
         requireProfile(followingId);
         if (await repo.profiles.isFollowing(followerId, followingId)) return;
         state.follows.push({ followerId, followingId, createdAt: new Date().toISOString() });
+        notifyOn.follow(state, followerId, followingId);
         persist();
       },
       async unfollow(followerId, followingId) {
+        assertActive(followerId);
         const idx = state.follows.findIndex((f) => f.followerId === followerId && f.followingId === followingId);
         if (idx >= 0) {
           state.follows.splice(idx, 1);
@@ -955,19 +1163,24 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
 
     reports: {
       async create(input, reporterId) {
+        assertActive(reporterId);
         requireProfile(reporterId);
         const exists =
           input.targetType === "place"
             ? state.places.some((p) => p.id === input.targetId)
             : input.targetType === "event"
               ? state.events.some((e) => e.id === input.targetId)
-              : state.profiles.some((p) => p.id === input.targetId);
+              : input.targetType === "message"
+                // Only a member saw it, so only a member can report it (check_report_target).
+                ? state.messages.some((m) => m.id === input.targetId && state.conversationMembers.some((c) => c.conversationId === m.conversationId && c.userId === reporterId))
+                : state.profiles.some((p) => p.id === input.targetId);
         if (!exists) throw new DataError("Target not found", "not_found");
         // One open report per (reporter, target).
         const dup = state.reports.some(
           (r) => r.reporterId === reporterId && r.targetType === input.targetType && r.targetId === input.targetId && r.status === "open",
         );
         if (dup) return;
+        const counted = rateLimit(reporterId, "reports");
         state.reports.push({
           id: newId(),
           reporterId,
@@ -977,7 +1190,9 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           details: input.details ?? null,
           status: "open",
           createdAt: new Date().toISOString(),
+          resolvedAt: null,
         });
+        counted();
         persist();
       },
       async listFiledBy(userId) {
@@ -998,12 +1213,411 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
             return false;
           })
           .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-          .map((r) => toReportEntry(state, r));
+          .map((r) => toReportEntry(state, r, false));
+      },
+    },
+
+    moderation: {
+      async isModerator(userId) {
+        return isModeratorIn(state, userId);
+      },
+      async queue(viewerId, opts = {}) {
+        if (!isModeratorIn(state, viewerId)) return { items: [], nextCursor: null };
+        const limit = clampLimit(opts.limit, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
+        const after = decodeCursor(opts.cursor);
+        const groups = new Map<string, ReportRow[]>();
+        for (const r of state.reports) {
+          if (r.status !== "open") continue;
+          const key = `${r.targetType}:${r.targetId}`;
+          groups.set(key, [...(groups.get(key) ?? []), r]);
+        }
+        const items = [...groups.values()]
+          .map((rows): ModerationQueueItem => {
+            const times = rows.map((r) => r.createdAt).sort(compareTimestamps);
+            const { targetType, targetId } = rows[0];
+            return {
+              targetType,
+              targetId,
+              reportCount: rows.length,
+              firstReportedAt: times[0],
+              lastReportedAt: times.at(-1)!,
+              reasons: [...new Set(rows.map((r) => r.reason))].sort() as ReportReason[],
+              targetLabel: targetLabel(targetType, targetId),
+              targetStatus: targetStatus(targetType, targetId),
+            };
+          })
+          .filter((i) => !after || compareTimestamps(i.firstReportedAt, after.key) > 0 || (compareTimestamps(i.firstReportedAt, after.key) === 0 && i.targetId > after.id))
+          .sort((a, b) => compareTimestamps(a.firstReportedAt, b.firstReportedAt) || compareIds(a.targetId, b.targetId));
+        return toPage(items, limit, (i) => i, (i) => ({ key: i.firstReportedAt, id: i.targetId }));
+      },
+      async target(viewerId, targetType, targetId) {
+        if (!isModeratorIn(state, viewerId)) return null;
+        const reports = state.reports
+          .filter((r) => r.targetType === targetType && r.targetId === targetId)
+          .map((r) => ({
+            id: r.id,
+            reason: r.reason,
+            details: r.details,
+            status: r.status,
+            createdAt: r.createdAt,
+            resolvedAt: r.resolvedAt,
+            reporter: profileOf(state, r.reporterId),
+          }))
+          .sort(compareModerationReports);
+        const history = state.moderationActions
+          .filter((a) => a.targetType === targetType && a.targetId === targetId)
+          .sort((a, b) => compareTimestamps(b.createdAt, a.createdAt) || compareIds(b.id, a.id))
+          .map((a) => ({
+            id: a.id,
+            action: a.action,
+            reason: a.reason,
+            statusBefore: a.statusBefore,
+            statusAfter: a.statusAfter,
+            resolvedReports: a.resolvedReports,
+            createdAt: a.createdAt,
+            moderator: profileOf(state, a.moderatorId),
+          }));
+        return { targetType, targetId, snapshot: snapshotOf(targetType, targetId), reports, history };
+      },
+      async resolve(moderatorId, { targetType, targetId, action, reason }) {
+        if (!isModeratorIn(state, moderatorId)) throw new DataError("Moderators only", "forbidden");
+        if (!REPORT_TARGET_TYPES.includes(targetType)) throw moderationError("invalid_target");
+        if (!MODERATION_ACTIONS.includes(action)) throw moderationError("invalid_action");
+        const why = normalizeReason(reason);
+        if (why && why.length > MAX_MODERATION_REASON) throw moderationError("reason_too_long");
+        const content = targetType === "place"
+          ? state.places.find((p) => p.id === targetId)
+          : targetType === "event" ? state.events.find((e) => e.id === targetId) : null;
+        const message = targetType === "message" ? state.messages.find((m) => m.id === targetId) : null;
+        const found = targetType === "profile" ? state.profiles.some((p) => p.id === targetId) : targetType === "message" ? !!message : !!content;
+        if (!found) throw moderationError("not_found");
+        const before: string | null = message ? messageStatus(message.id) : (content?.status ?? null);
+        let after = before;
+        let reportStatus: ReportRow["status"];
+        if (action === "remove") {
+          if (targetType === "profile") throw moderationError("cannot_remove_profile");
+          if (before === "removed") throw moderationError("already_removed");
+          if (!why) throw moderationError("reason_required");
+          after = "removed";
+          reportStatus = "reviewed";
+        } else if (action === "restore") {
+          if (before !== "removed") throw moderationError("not_removed");
+          after = "published";
+          reportStatus = "dismissed";
+        } else {
+          reportStatus = action === "dismiss" ? "dismissed" : "reviewed";
+        }
+        const open = state.reports.filter((r) => r.targetType === targetType && r.targetId === targetId && r.status === "open");
+        if ((action === "dismiss" || action === "review") && !open.length) throw moderationError("nothing_open");
+        const now = new Date().toISOString();
+        for (const r of open) {
+          r.status = reportStatus;
+          r.resolvedAt = now;
+          notifyOn.reportResolved(state, r.id, r.reporterId, reportStatus);
+        }
+        if (content && after !== before) {
+          content.status = after as typeof content.status;
+          content.updatedAt = now;
+          if (targetType === "event" && before === "published" && after === "removed") refundOnCancel(state, targetId);
+        }
+        if (message && after !== before) message.removedAt = after === "removed" ? now : null;
+        state.moderationActions.push({
+          id: newId(), moderatorId, action, targetType, targetId, reason: why,
+          statusBefore: before, statusAfter: after, resolvedReports: open.length, createdAt: now,
+        });
+        notifyOn.moderated(state, targetType, targetId, action);
+        persist();
+        return { statusAfter: after, resolvedReports: open.length };
+      },
+      async setLocalStatus(moderatorId, userId, revoked, reason) {
+        if (!isModeratorIn(state, moderatorId)) throw new DataError("Moderators only", "forbidden");
+        const why = normalizeReason(reason);
+        if (!why) throw moderationError("reason_required");
+        if (why.length > MAX_MODERATION_REASON) throw moderationError("reason_too_long");
+        if (!state.profiles.some((p) => p.id === userId)) throw moderationError("not_found");
+        const wasRevoked = state.localRevocations.some((r) => r.userId === userId);
+        if (wasRevoked === revoked) throw moderationError("no_change");
+        const now = new Date().toISOString();
+        if (revoked) state.localRevocations.push({ userId, revokedBy: moderatorId, reason: why, revokedAt: now });
+        else state.localRevocations = state.localRevocations.filter((r) => r.userId !== userId);
+        state.moderationActions.push({
+          id: newId(), moderatorId, action: revoked ? "revoke_local" : "restore_local", targetType: "profile", targetId: userId,
+          reason: why, statusBefore: wasRevoked ? "revoked" : "eligible", statusAfter: revoked ? "revoked" : "eligible",
+          resolvedReports: 0, createdAt: now,
+        });
+        persist();
+      },
+      async localRevoked(userId) {
+        return state.localRevocations.some((r) => r.userId === userId);
+      },
+      async myRemovedContent(userId) {
+        const mine: Omit<RemovedContent, "reason" | "removedAt">[] = [
+          ...state.places.filter((p) => p.creatorId === userId && p.status === "removed").map((p) => ({ targetType: "place" as const, targetId: p.id, label: p.name })),
+          ...state.events.filter((e) => e.creatorId === userId && e.status === "removed").map((e) => ({ targetType: "event" as const, targetId: e.id, label: e.title })),
+        ];
+        return mine
+          .map((m) => {
+            const latest = state.moderationActions
+              .filter((a) => a.targetType === m.targetType && a.targetId === m.targetId && a.action === "remove")
+              .sort((a, b) => compareTimestamps(b.createdAt, a.createdAt) || compareIds(b.id, a.id))[0];
+            return { ...m, reason: latest?.reason ?? null, removedAt: latest?.createdAt ?? null };
+          })
+          .sort((a, b) =>
+            (a.removedAt === null ? 1 : 0) - (b.removedAt === null ? 1 : 0) ||
+            (a.removedAt && b.removedAt ? compareTimestamps(b.removedAt, a.removedAt) : 0) ||
+            compareIds(a.targetId, b.targetId));
+      },
+    },
+
+    analytics: {
+      async track(userId, name, props = {}) {
+        const profile = state.profiles.find((p) => p.id === userId);
+        // Mirrors track_event(): silent without a profile or when opted out.
+        if (!profile || profile.analyticsOptOut) return;
+        const counted = rateLimit(userId, "analytics");
+        const actor = createHash("sha256").update(`${state.analyticsSalt}:${userId}`).digest("hex");
+        const id = (state.analyticsEvents.at(-1)?.id ?? 0) + 1;
+        state.analyticsEvents.push({ id, actor, name, props, createdAt: new Date().toISOString() });
+        counted();
+        persist();
+      },
+      async optedOut(userId) {
+        return !!state.profiles.find((p) => p.id === userId)?.analyticsOptOut;
+      },
+      async setOptOut(userId, optOut) {
+        assertActive(userId);
+        requireProfile(userId).analyticsOptOut = optOut;
+        persist();
+      },
+      async funnel(viewerId, from, to) {
+        if (!isAdmin(viewerId)) return [];
+        const inWindow = state.analyticsEvents.filter((e) => compareTimestamps(e.createdAt, from) >= 0 && compareTimestamps(e.createdAt, to) < 0);
+        return FUNNEL_STEPS.map((step) => {
+          const events = inWindow.filter((e) => e.name === step);
+          return { step, actors: new Set(events.map((e) => e.actor)).size, events: events.length };
+        });
+      },
+      async weeklyContributors(viewerId, weeks) {
+        if (!isAdmin(viewerId)) return [];
+        // ISO weeks (Monday) in UTC, like date_trunc('week', now()) in Postgres.
+        const now = new Date();
+        const monday = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - ((now.getUTCDay() + 6) % 7));
+        const contributing = state.analyticsEvents.filter((e) => e.name === "contribute_place" || e.name === "create_event" || e.name === "rate_place");
+        return Array.from({ length: weeks }, (_, i) => {
+          const start = monday - (weeks - 1 - i) * 7 * 86_400_000;
+          const actors = new Set(contributing.filter((e) => {
+            const t = new Date(e.createdAt).getTime();
+            return t >= start && t < start + 7 * 86_400_000;
+          }).map((e) => e.actor));
+          return { weekStart: new Date(start).toISOString().slice(0, 10), contributors: actors.size };
+        });
+      },
+      async saveSources(viewerId, from, to) {
+        if (!isAdmin(viewerId)) return { community: 0, seed: 0 };
+        const out = { community: 0, seed: 0 };
+        for (const s of state.savedPlaces) {
+          if (compareTimestamps(s.createdAt, from) < 0 || compareTimestamps(s.createdAt, to) >= 0) continue;
+          const place = state.places.find((p) => p.id === s.placeId);
+          if (place) out[place.source] += 1;
+        }
+        return out;
+      },
+    },
+
+    admin: {
+      async isAdmin(userId) {
+        return isAdmin(userId);
+      },
+      async isSuspended(userId) {
+        return state.suspensions.some((x) => x.userId === userId);
+      },
+      async users(viewerId, opts = {}) {
+        if (!isAdmin(viewerId)) return { items: [], nextCursor: null };
+        const limit = clampLimit(opts.limit, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
+        const after = decodeCursor(opts.cursor);
+        const q = (opts.query ?? "").trim().toLowerCase();
+        const rows = state.profiles
+          .filter((p) => !q || p.username.toLowerCase().includes(q) || p.displayName.toLowerCase().includes(q))
+          .filter((p) => !after || compareTimestamps(p.createdAt, after.key) < 0 || (compareTimestamps(p.createdAt, after.key) === 0 && p.id < after.id))
+          .sort((a, b) => compareTimestamps(b.createdAt, a.createdAt) || compareIds(b.id, a.id));
+        return toPage(rows, limit, (p) => {
+          const mine = new Set(state.places.filter((x) => x.creatorId === p.id).map((x) => x.id));
+          return {
+            id: p.id, username: p.username, displayName: p.displayName, homeCity: p.homeCity, createdAt: p.createdAt,
+            reputationLevel: p.reputationLevel, isModerator: state.moderators.some((m) => m.userId === p.id), isAdmin: isAdmin(p.id),
+            suspended: state.suspensions.some((x) => x.userId === p.id),
+            places: mine.size, events: state.events.filter((e) => e.creatorId === p.id).length,
+            reportsAgainst: state.reports.filter((r) => (r.targetType === "profile" && r.targetId === p.id) || (r.targetType === "place" && mine.has(r.targetId))).length,
+          };
+        }, (p) => ({ key: p.createdAt, id: p.id }));
+      },
+      async content(viewerId, opts = {}) {
+        if (!isAdmin(viewerId)) return { items: [], nextCursor: null };
+        const limit = clampLimit(opts.limit, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
+        const after = decodeCursor(opts.cursor);
+        const kind = opts.kind ?? "place";
+        const q = (opts.query ?? "").trim().toLowerCase();
+        const username = (id: string | null) => (id ? (state.profiles.find((p) => p.id === id)?.username ?? null) : null);
+        const rows = (kind === "place"
+          ? state.places.map((p) => ({ kind: "place" as const, id: p.id, label: p.name, status: p.status, visibility: p.visibility as string | null, city: p.city as string | null, creatorId: p.creatorId, createdAt: p.createdAt }))
+          : state.events.map((e) => ({ kind: "event" as const, id: e.id, label: e.title, status: e.status, visibility: null, city: null, creatorId: e.creatorId, createdAt: e.createdAt })))
+          .filter((c) => (!opts.status || c.status === opts.status) && (!opts.creatorId || c.creatorId === opts.creatorId) && (!q || c.label.toLowerCase().includes(q)))
+          .filter((c) => !after || compareTimestamps(c.createdAt, after.key) < 0 || (compareTimestamps(c.createdAt, after.key) === 0 && c.id < after.id))
+          .sort((a, b) => compareTimestamps(b.createdAt, a.createdAt) || compareIds(b.id, a.id));
+        return toPage(rows, limit, (c) => ({
+          ...c, creatorUsername: username(c.creatorId),
+          openReports: state.reports.filter((r) => r.targetType === c.kind && r.targetId === c.id && r.status === "open").length,
+          actions: state.moderationActions.filter((a) => a.targetType === c.kind && a.targetId === c.id).length,
+        }), (c) => ({ key: c.createdAt, id: c.id }));
+      },
+      async rateLimitHits(viewerId) {
+        if (!isAdmin(viewerId)) return [];
+        const now = Date.now();
+        return (Object.keys(RATE_LIMITS) as RateLimitAction[]).sort().map((action) => ({
+          action,
+          usersAtLimit: state.rateLimits.filter((r) => r.action === action && r.count >= RATE_LIMITS[action].max && r.windowStart === windowStart(action, now)).length,
+          maxCount: RATE_LIMITS[action].max,
+          windowSeconds: RATE_LIMITS[action].windowSeconds,
+        }));
+      },
+      async history(viewerId, target) {
+        if (!isAdmin(viewerId)) return [];
+        return state.moderationActions
+          .filter((a) => a.targetType === target.type && (!target.id || a.targetId === target.id) && (!target.key || a.targetKey === target.key))
+          .sort((a, b) => compareTimestamps(b.createdAt, a.createdAt) || compareIds(b.id, a.id))
+          .map((a) => ({ id: a.id, action: a.action, reason: a.reason, statusBefore: a.statusBefore, statusAfter: a.statusAfter, createdAt: a.createdAt, moderatorUsername: a.moderatorId ? (state.profiles.find((p) => p.id === a.moderatorId)?.username ?? null) : null }));
+      },
+      async setSuspended(adminId, userId, suspended, reason) {
+        const why = requireAdmin(adminId, reason);
+        if (!state.profiles.some((p) => p.id === userId)) throw moderationError("not_found");
+        if (userId === adminId) throw moderationError("self");
+        const was = state.suspensions.some((x) => x.userId === userId);
+        if (was === suspended) throw moderationError("no_change");
+        if (suspended) state.suspensions.push({ userId, reason: why, suspendedBy: adminId, suspendedAt: new Date().toISOString() });
+        else state.suspensions = state.suspensions.filter((x) => x.userId !== userId);
+        audit(adminId, suspended ? "suspend" : "unsuspend", "profile", { id: userId }, why, was ? "suspended" : "active", suspended ? "suspended" : "active");
+        persist();
+      },
+      async setModerator(adminId, userId, moderator, reason) {
+        const why = requireAdmin(adminId, reason);
+        if (!state.profiles.some((p) => p.id === userId)) throw moderationError("not_found");
+        const was = state.moderators.some((m) => m.userId === userId);
+        if (was === moderator) throw moderationError("no_change");
+        if (moderator) state.moderators.push({ userId, grantedAt: new Date().toISOString(), grantedBy: adminId });
+        else state.moderators = state.moderators.filter((m) => m.userId !== userId);
+        audit(adminId, moderator ? "grant_moderator" : "revoke_moderator", "profile", { id: userId }, why, was ? "moderator" : "member", moderator ? "moderator" : "member");
+        persist();
+      },
+      async taxonomy(viewerId) {
+        if (!isAdmin(viewerId)) return [];
+        return [...state.taxonomy].sort((a, b) => a.kind.localeCompare(b.kind) || a.sortOrder - b.sortOrder || compareIds(a.slug, b.slug)).map((t) => ({ ...t }));
+      },
+      async upsertTaxonomy(adminId, entry, reason) {
+        const why = requireAdmin(adminId, reason);
+        if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(entry.slug) || entry.slug.length > 40) throw moderationError("bad_slug");
+        const label = entry.label.trim();
+        const emoji = entry.emoji.trim();
+        if (label.length < 1 || label.length > 40 || emoji.length < 1 || emoji.length > 8) throw moderationError("bad_label");
+        if (entry.kind === "category" && (!/^#[0-9a-fA-F]{6}$/.test(entry.color ?? "") || !["place", "event", "both"].includes(entry.scope ?? ""))) throw moderationError("bad_label");
+        const existing = state.taxonomy.find((t) => t.kind === entry.kind && t.slug === entry.slug);
+        const before = existing?.label ?? null;
+        const row = { kind: entry.kind, slug: entry.slug, label, emoji, sortOrder: entry.sortOrder, retired: existing?.retired ?? false, ...(entry.kind === "category" ? { color: entry.color!.toLowerCase(), scope: entry.scope } : {}) };
+        if (existing) Object.assign(existing, row);
+        else state.taxonomy.push(row);
+        audit(adminId, "taxonomy_upsert", entry.kind, { key: entry.slug }, why, before, label);
+        persist();
+      },
+      async setTaxonomyRetired(adminId, kind, slug, retired, reason) {
+        const why = requireAdmin(adminId, reason);
+        const row = state.taxonomy.find((t) => t.kind === kind && t.slug === slug);
+        if (!row) throw moderationError("not_found");
+        if (row.retired === retired) throw moderationError("no_change");
+        const was = row.retired;
+        row.retired = retired;
+        audit(adminId, retired ? "taxonomy_retire" : "taxonomy_restore", kind, { key: slug }, why, was ? "retired" : "active", retired ? "retired" : "active");
+        persist();
+      },
+    },
+
+    notifications: createDemoNotifications(state, { persist, summary: (id) => profileOf(state, id) }),
+
+    ads: createDemoAds(state, { persist, assertActive, rateLimit, isAdmin }),
+    interactions: createDemoInteractions(state, {
+      persist, assertActive, rateLimit,
+      canViewPlace: (p, viewerId) => canViewPlace(state, p, viewerId),
+      canViewEvent: (e, viewerId) => canViewEvent(state, e, viewerId),
+    }),
+
+    payments: createDemoPayments(state, { persist, assertActive, rateLimit, canViewEvent: (event, viewerId) => canViewEvent(state, event, viewerId) }),
+
+    messaging: createDemoMessaging(state, {
+      persist,
+      assertActive,
+      rateLimit,
+      canViewEvent: (event, viewerId) => canViewEvent(state, event, viewerId),
+      summary: (id) => profileOf(state, id),
+    }),
+
+    limits: {
+      async consume(userId, action) {
+        assertActive(userId);
+        // Plus: a larger daily quota of AI plans (consume_trip_plan()).
+        rateLimit(userId, action === "trip_plans" && isPlusIn(state, userId) ? "trip_plans_plus" : action)();
+        persist();
+      },
+    },
+
+    recommendations: {
+      async places(viewerId, opts = {}) {
+        if (!state.profiles.some((p) => p.id === viewerId)) return [];
+        const limit = clampLimit(opts.limit, 12, 50);
+        const canView = (p: PlaceRow) => canViewPlace(state, p, viewerId);
+        const taste = demoTaste(state, viewerId, canView, (e) => canViewEvent(state, e, viewerId));
+        return recommendDemoPlaces(state, viewerId, canView, validateNear(opts.near), limit, Date.now(), taste)
+          .map((r) => ({ item: toPlace(state, r.place), score: r.score, reason: r.reason }));
+      },
+      async events(viewerId, opts = {}) {
+        if (!state.profiles.some((p) => p.id === viewerId)) return [];
+        const limit = clampLimit(opts.limit, 12, 50);
+        const now = opts.now ? new Date(opts.now).getTime() : Date.now();
+        return recommendDemoEvents(state, viewerId, (e) => canViewEvent(state, e, viewerId), validateNear(opts.near), limit, now)
+          .map((r) => ({ item: toEvent(state, r.event), score: r.score, reason: r.reason }));
+      },
+    },
+
+    reputation: {
+      async reset(moderatorId, userId, reason) {
+        if (!isModeratorIn(state, moderatorId)) throw new DataError("Moderators only", "forbidden");
+        const why = normalizeReason(reason);
+        if (!why) throw moderationError("reason_required");
+        if (why.length > MAX_MODERATION_REASON) throw moderationError("reason_too_long");
+        const profile = state.profiles.find((p) => p.id === userId);
+        if (!profile) throw moderationError("not_found");
+        const before = profile.reputationLevel;
+        const now = new Date().toISOString();
+        state.reputationResets = [...state.reputationResets.filter((r) => r.userId !== userId), { userId, resetAt: now, resetBy: moderatorId }];
+        refreshDemoReputation(state, userId);
+        state.moderationActions.push({
+          id: newId(), moderatorId, action: "reset_reputation", targetType: "profile", targetId: userId, reason: why,
+          statusBefore: before, statusAfter: profile.reputationLevel, resolvedReports: 0, createdAt: now,
+        });
+        persist();
+      },
+      async refreshAll() {
+        const n = refreshDemoReputation(state);
+        persist();
+        return n;
       },
     },
 
     storage: {
       async uploadImage(image, folder, ownerId) {
+        assertActive(ownerId);
+        // Logical photos and physical objects both have bounded quotas.
+        const counted = rateLimit(ownerId, folder === "avatars" ? "avatars" : "photos");
+        const countedObjects = folder === "places"
+          ? rateLimit(ownerId, "photo_objects", 1 + Number(!!image.variants?.md) + Number(!!image.variants?.sm))
+          : null;
         // Everything stored has been through the image pipeline, which emits WebP.
         const name = `${folder}-${ownerId.slice(0, 8)}-${newId()}.webp`;
         mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -1015,6 +1629,9 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         // Avatars are public profile data; place photos are served only through
         // the authorized /api/photos/[id] route.
         const url = folder === "avatars" ? `/api/uploads/${name}` : placePhotoReference(name);
+        counted();
+        countedObjects?.();
+        persist();
         return { url, storagePath: name };
       },
       async deliverPlacePhoto(objectPath) {

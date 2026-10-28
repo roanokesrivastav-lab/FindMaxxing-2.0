@@ -1,8 +1,11 @@
 import Link from "next/link";
+import { forYouEvents } from "@/server/recommendations";
+import { ForYouRail } from "@/components/recommendations/ForYouRail";
 import type { Metadata } from "next";
 import { CalendarPlus } from "lucide-react";
 import { getRepository } from "@/lib/data";
 import { getViewer } from "@/lib/auth/server";
+import { featureEnabled } from "@/lib/config";
 import { EventsClient } from "@/components/events/EventsClient";
 import { PageHeader } from "@/components/ui/PageHeader";
 
@@ -16,6 +19,10 @@ export default async function EventsPage() {
   // listJoined already includes events that have finished, so the "Been to"
   // filter costs nothing extra: no need to pull every past event in the city.
   const joined = viewer ? await repo.events.listJoined(viewer.id, viewer.id) : [];
+  // Don't recommend what the list already shows on the first screen.
+  const firstScreen = new Set(initial.items.slice(0, 4).map((e) => e.id));
+  const rail = await forYouEvents(repo, viewer);
+  const forYou = { ...rail, items: rail.items.filter((r) => !firstScreen.has(r.item.id)) };
   return (
     <div className="max-w-2xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-nav md:pb-10">
       <PageHeader
@@ -28,7 +35,8 @@ export default async function EventsPage() {
           </Link>
         }
       />
-      <EventsClient initial={initial} joined={joined} signedIn={!!viewer} />
+      <ForYouRail events={forYou} title="Events for you" />
+      <EventsClient initial={initial} joined={joined} signedIn={!!viewer} logImpressions={!!viewer && featureEnabled("recommendations")} />
     </div>
   );
 }

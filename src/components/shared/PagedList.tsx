@@ -166,7 +166,7 @@ export function PagedList({
               {creator ? (
                 <>
                   {endpoint === "events" ? " · hosted by " : " · by "}
-                  <Link href={`/u/${creator.username}`} className="font-semibold hover:text-flare-600">
+                  <Link href={`/u/${creator.username}`} className="font-semibold hover:text-flare-ink">
                     {creator.displayName}
                   </Link>
                 </>

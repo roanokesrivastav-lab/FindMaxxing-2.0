@@ -1,10 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { CalendarDays, Clock, MapPin, Navigation, Users } from "lucide-react";
+import { CalendarDays, Clock, MapPin, MessageCircle, Navigation, Users } from "lucide-react";
 import { getRepository } from "@/lib/data";
 import { getViewer } from "@/lib/auth/server";
-import { getCategory, getInterest } from "@/lib/data/taxonomy";
+import { featureEnabled, paymentsMode } from "@/lib/config";
+import { TicketButton } from "@/components/payments/TicketButton";
+import { EventPricing } from "@/components/payments/EventPricing";
+import { formatPrice } from "@/lib/data/payments";
+import { getInterest } from "@/lib/data/taxonomy";
 import { JoinButton } from "@/components/events/JoinButton";
 import { ReportButton } from "@/components/shared/ReportButton";
 import { Avatar } from "@/components/ui/Avatar";
@@ -13,9 +17,14 @@ import { CategoryBadge } from "@/components/ui/Badge";
 import { MiniMap } from "@/components/map/MiniMap";
 import { NewBanner } from "@/components/shared/NewBanner";
 import { ShareButton } from "@/components/shared/ShareButton";
-import { eventHasEnded, formatEventDateLong, formatTimeRange, relativeDayLabel } from "@/lib/utils/format";
+import { DirectionsLink, TrackView } from "@/components/interactions/TrackView";
+import { eventHasEnded, formatEventDateLong, formatTimeRange } from "@/lib/utils/format";
+import { LocalDate, LocalTimeRange } from "@/components/time/LocalDate";
 import { OwnerActions } from "@/components/shared/OwnerActions";
 import { shareMetadata } from "@/lib/utils/share-metadata";
+import { DEFAULT_TIME_ZONE } from "@/lib/utils/timezone";
+import { getViewerTime } from "@/lib/time/server";
+import { InterestIcon } from "@/components/ui/TaxonomyIcon";
 
 export const dynamic = "force-dynamic";
 
@@ -25,28 +34,38 @@ export async function generateMetadata({ params }: PageProps<"/events/[id]">): P
   // No viewer on purpose: crawlers are anonymous, so only public events unfurl.
   const event = await repo.events.get(id);
   if (!event) return { title: "Event" };
+  // Unfurls are read by people anywhere, so use the city's zone (labelled) rather than a cookie.
+  const tz = { timeZone: DEFAULT_TIME_ZONE };
   return shareMetadata({
     title: event.title,
-    description: `${formatEventDateLong(event.startsAt)} · ${formatTimeRange(event.startsAt, event.endsAt)} at ${event.locationName}. ${event.description}`,
+    description: `${formatEventDateLong(event.startsAt, tz)} · ${formatTimeRange(event.startsAt, event.endsAt, tz)} at ${event.locationName}. ${event.description}`,
     path: `/events/${event.id}`,
     type: "article",
   });
 }
 
 export default async function EventPage({ params, searchParams }: PageProps<"/events/[id]">) {
-  const [{ id }, sp, viewer, repo] = await Promise.all([params, searchParams, getViewer(), getRepository()]);
+  const [{ id }, sp, viewer, repo, time] = await Promise.all([params, searchParams, getViewer(), getRepository(), getViewerTime()]);
   const event = await repo.events.get(id, viewer?.id ?? null);
   if (!event) notFound();
-  const category = getCategory(event.categorySlug);
-  const ended = eventHasEnded(event.startsAt, event.endsAt);
+  const ended = eventHasEnded(event.startsAt, event.endsAt, time.now);
   const cancelled = event.status === "cancelled";
   const full = event.capacity !== null && event.attendeeCount >= event.capacity;
   const spotsLeft = event.capacity !== null ? Math.max(0, event.capacity - event.attendeeCount) : null;
   const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${event.lat},${event.lng}`;
-  const day = relativeDayLabel(event.startsAt);
+  // The group chat, for people going (behind the messaging flag).
+  const chatId = viewer && event.viewerJoined && featureEnabled("messaging") ? await repo.messaging.eventConversation(viewer.id, event.id) : null;
+  // Tickets (behind the payments flag): buyers see a price; the host gets the pricing panel.
+  const payments = paymentsMode();
+  const price = payments ? (event.priceCents ?? null) : null;
+  const isHost = !!viewer && viewer.id === event.creatorId;
+  const [ticketSummary, canSell] = payments && isHost && !cancelled && !ended
+    ? await Promise.all([repo.payments.ticketSummary(viewer!.id, event.id), repo.payments.canSell(viewer!.id)])
+    : [null, false];
 
   return (
     <article className="pb-nav md:pb-10">
+      {viewer && featureEnabled("recommendations") ? <TrackView kind="event" id={event.id} /> : null}
       <div className="relative bg-pulse text-white md:mx-6 md:mt-6 md:rounded-3xl overflow-hidden">
         <div className="absolute inset-0 opacity-30 bg-[radial-gradient(circle_at_80%_20%,white,transparent_45%)]" aria-hidden />
         <div className="relative max-w-2xl mx-auto px-4 md:px-6 pt-4 pb-8">
@@ -55,26 +74,25 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
             <div className="flex items-center gap-2">
               {viewer?.id === event.creatorId ? <OwnerActions kind="event" id={event.id} canEdit={!cancelled && !ended} canCancel={!cancelled && !ended} canDelete={!event.attendees.some((attendee) => attendee.id !== event.creatorId)} /> : null}
               <ShareButton
+                item={{ kind: "event", id: event.id }}
                 title={event.title}
-                text={`${formatEventDateLong(event.startsAt)} at ${event.locationName}`}
+                text={`${formatEventDateLong(event.startsAt, time)} at ${event.locationName}`}
                 className="border-white/25 bg-white/15 text-white hover:bg-white/25"
               />
-              <span className="text-sm font-semibold bg-white/15 rounded-full px-3 py-1">{cancelled ? "Cancelled" : ended ? "Ended" : day}</span>
             </div>
           </div>
           <div className="mt-8 flex items-center gap-2">
             <CategoryBadge slug={event.categorySlug} tone="solid" className="bg-white/20" />
-            <span className="text-3xl" aria-hidden>
-              {category.emoji}
-            </span>
+            {/* The full date is right below; only a status that changes what the date means gets a label. */}
+            {cancelled || ended ? <span className="ml-auto text-xs font-bold uppercase tracking-wider text-white/80">{cancelled ? "Cancelled" : "Ended"}</span> : null}
           </div>
           <h1 className="mt-2 text-3xl md:text-4xl font-bold leading-tight">{event.title}</h1>
           <div className="mt-4 flex flex-col gap-1.5 text-white/90 text-[15px]">
             <p className="inline-flex items-center gap-2">
-              <CalendarDays size={16} /> {formatEventDateLong(event.startsAt)}
+              <CalendarDays size={16} /> <LocalDate value={event.startsAt} format={{ weekday: "long", month: "long", day: "numeric" }} />
             </p>
             <p className="inline-flex items-center gap-2">
-              <Clock size={16} /> {formatTimeRange(event.startsAt, event.endsAt)}
+              <Clock size={16} /> <LocalTimeRange startsAt={event.startsAt} endsAt={event.endsAt} />
             </p>
             <p className="inline-flex items-center gap-2">
               <MapPin size={16} />
@@ -102,8 +120,24 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
               {cancelled ? (event.viewerJoined ? "You were on the attendee list." : "This event is no longer accepting attendees.") : event.viewerJoined ? "You're on the list." : full ? "Full for now." : "Free to join. Just show up."}
             </p>
           </div>
-          <JoinButton eventId={event.id} joined={event.viewerJoined} signedIn={!!viewer} full={full} ended={ended} cancelled={cancelled} size="md" />
+          {price && !event.viewerJoined && !isHost && !cancelled && !ended ? (
+            <TicketButton eventId={event.id} priceCents={price} signedIn={!!viewer} disabled={full} />
+          ) : (
+            <JoinButton eventId={event.id} joined={event.viewerJoined} signedIn={!!viewer} full={full} ended={ended} cancelled={cancelled} size="md" />
+          )}
         </div>
+        {chatId ? (
+          <Link href={`/messages/${chatId}`} className="mt-3 card p-3 flex items-center gap-2 font-semibold hover:bg-surface-2">
+            <MessageCircle size={18} className="text-pulse" /> Group chat
+            <span className="ml-auto text-xs font-normal text-muted">Everyone going</span>
+          </Link>
+        ) : null}
+        {price ? <p className="mt-2 text-sm text-ink-2"><b>{formatPrice(price)}</b> per ticket{cancelled ? " · tickets are being refunded" : ""}</p> : null}
+        {sp.ticket === "success" ? <p role="status" className="card p-3 mt-3 text-sm font-semibold">Payment received. Your ticket is confirmed{payments === "stripe" ? " as soon as Stripe tells us" : ""}.</p> : null}
+        {sp.ticket === "refunded" ? <p role="status" className="card p-3 mt-3 text-sm font-semibold">The event filled up while you checked out, so your payment was refunded.</p> : null}
+        {payments && isHost && !cancelled && !ended ? (
+          <EventPricing eventId={event.id} priceCents={price} summary={ticketSummary} canSell={canSell} locked={event.attendees.some((a) => a.id !== event.creatorId)} demo={payments === "demo"} />
+        ) : null}
         {sp.new ? (
           <div className="mt-3">
             <NewBanner kind="event" />
@@ -119,7 +153,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
                 const i = getInterest(t);
                 return (
                   <Link key={t} href={`/tags/${t}`} className="chip h-8 text-xs" title={`Browse ${i.label}`}>
-                    <span aria-hidden>{i.emoji}</span> {i.label}
+                    <InterestIcon slug={i.slug} /> {i.label}
                   </Link>
                 );
               })}
@@ -147,7 +181,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
           {event.attendees.length ? (
             <div className="card p-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
               {event.attendees.map((a) => (
-                <Link key={a.id} href={`/u/${a.username}`} className="flex items-center gap-2 min-w-0 hover:text-flare-600">
+                <Link key={a.id} href={`/u/${a.username}`} className="flex items-center gap-2 min-w-0 hover:text-flare-ink">
                   <Avatar name={a.displayName} src={a.avatarUrl} size={32} />
                   <span className="text-sm font-semibold truncate">{a.displayName}</span>
                 </Link>
@@ -162,7 +196,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
           <h2 className="text-lg font-bold mb-2">Meeting point</h2>
           <div className="card overflow-hidden">
             <div className="h-44">
-              <MiniMap lat={event.lat} lng={event.lng} color="#6b4cff" emoji={category.emoji} label={event.title} kind="event" />
+              <MiniMap lat={event.lat} lng={event.lng} color="#6b4cff" categorySlug={event.categorySlug} label={event.title} kind="event" />
             </div>
             <div className="p-4 flex items-start gap-3">
               <MapPin size={18} className="text-muted mt-0.5 shrink-0" />
@@ -170,15 +204,15 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
                 <p className="font-semibold">{event.locationName}</p>
                 <p className="text-muted">{event.address ?? `${event.lat.toFixed(4)}, ${event.lng.toFixed(4)}`}</p>
               </div>
-              <a href={mapsUrl} target="_blank" rel="noreferrer" className="chip" data-active="true">
+              <DirectionsLink kind="event" id={event.id} href={mapsUrl} className="chip">
                 <Navigation size={14} /> Directions
-              </a>
+              </DirectionsLink>
             </div>
           </div>
         </section>
 
         <div className="mt-8 flex items-center justify-between text-xs text-muted">
-          <span>Created {new Date(event.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+          <span>Created <LocalDate value={event.createdAt} format={{ month: "short", day: "numeric" }} /></span>
           <ReportButton targetType="event" targetId={event.id} signedIn={!!viewer} returnTo={`/events/${event.id}`} />
         </div>
       </div>

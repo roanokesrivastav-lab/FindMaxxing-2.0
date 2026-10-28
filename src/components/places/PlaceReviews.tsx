@@ -3,8 +3,9 @@ import type { PlaceRating } from "@/lib/data/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { StarRating } from "@/components/ui/Stars";
 import { pluralize } from "@/lib/utils/format";
+import { LocalDate } from "@/components/time/LocalDate";
 
-const DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
+const DATE: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric" };
 
 /**
  * Notes people attached to their ratings. This is the reviews surface: the
@@ -23,7 +24,7 @@ export function PlaceReviews({ ratings }: { ratings: PlaceRating[] }) {
           <li key={r.id} className="card p-4">
             <div className="flex items-center gap-2.5">
               {r.user ? (
-                <Link href={`/u/${r.user.username}`} className="flex items-center gap-2.5 min-w-0 hover:text-flare-600">
+                <Link href={`/u/${r.user.username}`} className="flex items-center gap-2.5 min-w-0 hover:text-flare-ink">
                   <Avatar name={r.user.displayName} src={r.user.avatarUrl} size={30} />
                   <span className="font-semibold text-sm truncate">{r.user.displayName}</span>
                 </Link>
@@ -33,7 +34,7 @@ export function PlaceReviews({ ratings }: { ratings: PlaceRating[] }) {
               <StarRating value={r.score} size={12} className="ml-auto shrink-0" />
             </div>
             <p className="mt-2 text-[15px] leading-relaxed text-ink-2">{r.note}</p>
-            <p className="mt-1.5 text-xs text-muted">{DATE.format(new Date(r.updatedAt))}</p>
+            <p className="mt-1.5 text-xs text-muted"><LocalDate value={r.updatedAt} format={DATE} /></p>
           </li>
         ))}
       </ul>

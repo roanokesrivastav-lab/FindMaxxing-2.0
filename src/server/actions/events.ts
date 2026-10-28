@@ -1,9 +1,11 @@
 "use server";
 
+import { track } from "@/server/analytics";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getRepository } from "@/lib/data";
 import { getViewer } from "@/lib/auth/server";
+import { paymentsMode } from "@/lib/config";
 import { combineDateTime, eventSchema, fieldErrors, uuidSchema } from "@/lib/validation/schemas";
 import { fail, str, strList, succeed, toFailure, type ActionResult } from "./result";
 
@@ -54,6 +56,7 @@ export async function createEventAction(_prev: ActionResult | null, formData: Fo
     revalidatePath("/");
     revalidatePath("/events");
     revalidatePath("/profile");
+    await track("create_event", { eventId: event.id });
     redirect(`/events/${event.id}?new=1`);
   } catch (err) {
     return toFailure(err);
@@ -90,6 +93,9 @@ export async function cancelEventAction(eventId: string): Promise<ActionResult> 
   try {
     const repo = await getRepository();
     await repo.events.cancel(id.data, viewer.id);
+    // Paid tickets now wait for their refund (the payments cron asks Stripe).
+    // In demo mode no money moved, so the refunds are settled straight away.
+    if (paymentsMode() === "demo") for (const t of await repo.payments.ticketsToRefund()) await repo.payments.markRefunded(t.paymentIntentId);
     revalidatePath(`/events/${id.data}`); revalidatePath("/"); revalidatePath("/events"); revalidatePath("/profile");
     return succeed(undefined);
   } catch (err) { return toFailure(err); }
@@ -117,6 +123,7 @@ export async function toggleAttendanceAction(eventId: string, join: boolean): Pr
     const repo = await getRepository();
     if (join) await repo.events.join(viewer.id, id.data);
     else await repo.events.leave(viewer.id, id.data);
+    if (join) await track("join_event", { eventId: id.data });
     revalidatePath(`/events/${id.data}`);
     revalidatePath("/events");
     revalidatePath("/profile");

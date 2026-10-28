@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { readableInk } from "@/lib/utils/contrast";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getRepository } from "@/lib/data";
@@ -11,6 +12,7 @@ import { MiniMap } from "@/components/map/MiniMap";
 import { pluralize } from "@/lib/utils/format";
 import { shareMetadata } from "@/lib/utils/share-metadata";
 import { findNeighborhood, neighborhoodHref } from "@/lib/utils/neighborhoods";
+import { CategoryIcon } from "@/components/ui/TaxonomyIcon";
 
 export const dynamic = "force-dynamic";
 
@@ -65,7 +67,7 @@ export default async function NeighborhoodPage({ params }: PageProps<"/neighborh
       </div>
       <PageHeader
         eyebrow={
-          <Link href="/neighborhoods" className="hover:text-flare-600">
+          <Link href="/neighborhoods" className="hover:text-flare-ink">
             Neighborhoods · {group.city}
           </Link>
         }
@@ -80,15 +82,15 @@ export default async function NeighborhoodPage({ params }: PageProps<"/neighborh
 
       <div className="card overflow-hidden mb-6">
         <div className="h-40">
-          <MiniMap lat={group.lat} lng={group.lng} color={lead?.color ?? "#7b7c85"} emoji={lead?.emoji ?? "📍"} label={group.name} kind="place" />
+          <MiniMap lat={group.lat} lng={group.lng} color={lead?.color ?? "#7b7c85"} categorySlug={lead?.slug ?? "other"} label={group.name} kind="place" />
         </div>
         {group.topCategories.length ? (
           <div className="p-3 flex gap-1.5 flex-wrap">
             {group.topCategories.slice(0, 5).map((slug) => {
               const c = getCategory(slug);
               return (
-                <span key={slug} className="rounded-full px-2.5 py-1 text-xs font-semibold text-white" style={{ background: c.color }}>
-                  {c.emoji} {c.label}
+                <span key={slug} className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold text-white" style={{ background: readableInk(c.color) }}>
+                  <CategoryIcon slug={c.slug} size={13} /> {c.label}
                 </span>
               );
             })}

@@ -13,16 +13,23 @@ import {
   DEMO_PASSWORD,
   SEED_EVENTS,
   SEED_FOLLOWS,
+  SEED_MODERATORS,
+  SEED_ADMINS,
   SEED_PLACES,
   SEED_RATINGS,
   SEED_REPORTS,
   SEED_SAVES,
   SEED_USERS,
+  seedAccountAgeDays,
   seedEventTimes,
   seedPlaceByName,
   seedUserByName,
 } from "@/lib/seed/seed-data";
-import type { EventStatus, PlaceStatus, ReportReason, ReportTargetType, Visibility } from "../types";
+import type { UserInteraction, AppNotification, EntitlementStatus, TicketStatus, EventStatus, ModerationLogAction, NotificationSettings, NotificationType, PlaceStatus, ReportReason, ReportStatus, ReportTargetType, ReputationLevel, Visibility } from "../types";
+import { refreshDemoReputation } from "./reputation";
+import { syncAllEventChats } from "./messaging";
+import { CATEGORIES, INTERESTS } from "../taxonomy";
+import { oldEnoughToBeLocal, sameCity } from "../localTier";
 import { newId } from "@/lib/utils/ids";
 import { placePhotoReference } from "../photos";
 
@@ -39,8 +46,14 @@ export interface ProfileRow {
   avatarUrl: string | null;
   bio: string | null;
   homeCity: string | null;
+  homeCityChangedAt: string | null;
+  onboardedAt: string | null;
+  analyticsOptOut: boolean;
+  reputationLevel: ReputationLevel;
   createdAt: string;
   updatedAt: string;
+  /** Mirrors profiles.supporter (Plus). Absent in stores from before v11. */
+  supporter?: boolean;
 }
 export interface PlaceRow {
   id: string;
@@ -58,6 +71,10 @@ export interface PlaceRow {
   ratingCount: number;
   status: PlaceStatus;
   visibility: Visibility;
+  /** Mirrors places.source: seed data, or added by a user. */
+  source: "community" | "seed";
+  /** Mirrors places.creator_reputation (0 new, 1 contributor, 2 trusted): one ranking input. */
+  creatorReputation: 0 | 1 | 2;
   createdAt: string;
   updatedAt: string;
 }
@@ -96,16 +113,42 @@ export interface EventRow {
   status: EventStatus;
   createdAt: string;
   updatedAt: string;
+  /** Ticket price in cents; absent or null for free. */
+  priceCents?: number | null;
 }
 export interface ReportRow {
   id: string;
-  reporterId: string;
+  /** Null once the reporter deletes their account: the report stays, anonymized. */
+  reporterId: string | null;
   targetType: ReportTargetType;
   targetId: string;
   reason: ReportReason;
   details: string | null;
-  status: "open" | "reviewed" | "dismissed";
+  status: ReportStatus;
   createdAt: string;
+  resolvedAt: string | null;
+}
+/** Mirrors moderation_actions: append-only. */
+export interface ModerationActionRow {
+  id: string;
+  moderatorId: string | null;
+  action: ModerationLogAction;
+  targetType: ReportTargetType | "category" | "interest" | "campaign";
+  /** Null for taxonomy entries, which use targetKey (their slug). */
+  targetId: string | null;
+  targetKey?: string | null;
+  reason: string | null;
+  statusBefore: string | null;
+  statusAfter: string | null;
+  resolvedReports: number;
+  createdAt: string;
+}
+/** Mirrors rate_limit_counters: one row per user, action and fixed window. */
+export interface RateLimitRow {
+  userId: string;
+  action: string;
+  windowStart: number;
+  count: number;
 }
 
 export interface DemoState {
@@ -126,6 +169,135 @@ export interface DemoState {
   eventAttendees: { eventId: string; userId: string; createdAt: string }[];
   follows: { followerId: string; followingId: string; createdAt: string }[];
   reports: ReportRow[];
+  moderators: { userId: string; grantedAt: string; grantedBy: string | null }[];
+  moderationActions: ModerationActionRow[];
+  localRevocations: { userId: string; revokedBy: string | null; reason: string; revokedAt: string }[];
+  rateLimits: RateLimitRow[];
+  admins: { userId: string; grantedAt: string; grantedBy: string | null }[];
+  /** Mirrors analytics_events: pseudonymous actor, no user id. */
+  analyticsEvents: { id: number; actor: string; name: string; props: Record<string, unknown>; createdAt: string }[];
+  /** Mirrors analytics_salt. Never leaves the store. */
+  analyticsSalt: string;
+  /** Mirrors reputation_cache (admins only). */
+  reputation: Record<string, { score: number; level: ReputationLevel; computedAt: string }>;
+  reputationResets: { userId: string; resetAt: string; resetBy: string | null }[];
+  suspensions: { userId: string; reason: string; suspendedBy: string | null; suspendedAt: string }[];
+  /** Mirrors the categories and interests tables (admin-editable). */
+  taxonomy: TaxonomyRow[];
+  /** Mirrors 0020_messaging.sql. Group chats follow eventAttendees (see ./messaging). */
+  conversations: ConversationRow[];
+  conversationMembers: { conversationId: string; userId: string; joinedAt: string; lastReadAt: string | null }[];
+  messages: MessageRow[];
+  blocks: { blockerId: string; blockedId: string; createdAt: string }[];
+  /** Mirrors 0021_notifications.sql (see ./notifications). */
+  notifications: NotificationRow[];
+  notificationSettings: ({ userId: string; updatedAt: string } & NotificationSettings)[];
+  pushSubscriptions: { id: string; userId: string; kind?: "web" | "expo"; endpoint: string; p256dh: string | null; auth: string | null; createdAt: string }[];
+  pushLog: { userId: string; notificationId: string; sentAt: string }[];
+  /** Mirrors 0022_payments.sql (see ./payments). No money moves in demo mode. */
+  tickets: TicketRow[];
+  hostAccounts: { userId: string; accountId: string; chargesEnabled: boolean }[];
+  entitlements: { userId: string; status: EntitlementStatus; currentPeriodEnd: string | null; subscriptionId: string | null; updatedAt: string }[];
+  stripeCustomers: { userId: string; customerId: string }[];
+  stripeEvents: { id: string; type: string; objectId: string | null; receivedAt: string;
+    state?: "pending" | "processing" | "complete"; token?: string; scope?: string; leasedUntil?: string; outcome?: string }[];
+  /** Mirrors 0023_ads.sql (see ./ads). Impressions are aggregated: no user. */
+  adCampaigns: AdCampaignRow[];
+  adImpressions: { campaignId: string; day: string; slot: "places" | "events"; count: number }[];
+  /** Mirrors 0031_user_interactions.sql (see ./interactions): private, per user. */
+  userInteractions: (UserInteraction & { userId: string })[];
+}
+
+export interface AdCampaignRow {
+  id: string;
+  advertiserId: string;
+  kind: "place" | "event";
+  placeId: string | null;
+  eventId: string | null;
+  headline: string;
+  body: string | null;
+  bounds: { north: number; south: number; east: number; west: number } | null;
+  categorySlug: string | null;
+  startsAt: string;
+  endsAt: string;
+  budgetCents: number;
+  status: "pending_review" | "rejected" | "awaiting_payment" | "active" | "paused" | "ended";
+  reviewNote: string | null;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  checkoutSessionId: string | null;
+  paidCents: number | null;
+  createdAt: string;
+}
+
+export interface TicketRow {
+  id: string;
+  eventId: string | null;
+  userId: string | null;
+  status: TicketStatus;
+  amountCents: number;
+  currency: string;
+  checkoutSessionId: string | null;
+  paymentIntentId: string | null;
+  expiresAt: string;
+  createdAt: string;
+  paidAt: string | null;
+  refundedAt: string | null;
+}
+
+export interface NotificationRow {
+  id: string;
+  userId: string;
+  type: NotificationType;
+  actorId: string | null;
+  subjectType: AppNotification["subjectType"];
+  subjectId: string | null;
+  label: string | null;
+  detail: string | null;
+  count: number;
+  batchKey: string | null;
+  dedupeKey: string | null;
+  pushState: "none" | "pending" | "sent" | "skipped" | "capped";
+  pushClaimedKinds?: ("web" | "expo")[];
+  createdAt: string;
+  updatedAt: string;
+  readAt: string | null;
+}
+
+export interface ConversationRow {
+  id: string;
+  kind: "direct" | "group";
+  eventId: string | null;
+  directKey: string | null;
+  createdAt: string;
+  lastMessageAt: string | null;
+}
+export interface MessageRow {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  body: string;
+  createdAt: string;
+  removedAt: string | null;
+}
+
+export interface TaxonomyRow {
+  kind: "category" | "interest";
+  slug: string;
+  label: string;
+  emoji: string;
+  sortOrder: number;
+  retired: boolean;
+  color?: string;
+  scope?: "place" | "event" | "both";
+}
+
+/** The seed taxonomy, as the SQL seed writes it. */
+export function seedTaxonomy(): TaxonomyRow[] {
+  return [
+    ...CATEGORIES.map((c, i): TaxonomyRow => ({ kind: "category", slug: c.slug, label: c.label, emoji: c.emoji, sortOrder: i, retired: false, color: c.color, scope: c.scope })),
+    ...INTERESTS.map((t, i): TaxonomyRow => ({ kind: "interest", slug: t.slug, label: t.label, emoji: t.emoji, sortOrder: i, retired: false })),
+  ];
 }
 
 export interface SavedListRow {
@@ -136,7 +308,7 @@ export interface SavedListRow {
   updatedAt: string;
 }
 
-export const STATE_VERSION = 3;
+export const STATE_VERSION = 14;
 const DATA_DIR = path.join(process.cwd(), ".data");
 const STATE_FILE = path.join(DATA_DIR, "demo-store.json");
 
@@ -152,6 +324,11 @@ type LooseState = Record<string, unknown> & { version?: unknown };
 const COLLECTIONS = [
   "authUsers", "profiles", "profileInterests", "places", "placeTags", "placePhotos",
   "placeRatings", "savedPlaces", "savedLists", "savedListItems", "events", "eventTags", "eventAttendees", "follows", "reports",
+  "moderators", "moderationActions", "localRevocations", "rateLimits", "admins", "analyticsEvents", "reputationResets", "suspensions", "taxonomy",
+  "conversations", "conversationMembers", "messages", "blocks",
+  "notifications", "notificationSettings", "pushSubscriptions", "pushLog",
+  "tickets", "hostAccounts", "entitlements", "stripeCustomers", "stripeEvents",
+  "adCampaigns", "adImpressions", "userInteractions",
 ] as const;
 
 const LEGACY_PLACE_UPLOAD = /^\/api\/uploads\/(places-[^/]+)$/;
@@ -182,6 +359,92 @@ const MIGRATIONS: Record<number, (state: LooseState) => void> = {
   2(state) {
     state.savedLists ??= [];
     state.savedListItems ??= [];
+  },
+  // v3 → v4: moderation and the firmer local tier. Existing reports are
+  // unresolved as far as anyone recorded; existing home cities have no change
+  // date, so their first change is allowed straight away (as in the SQL
+  // migration). Moderators are seeded only in fresh stores: an existing store
+  // keeps whoever the owner has made a moderator by hand (none, until then).
+  3(state) {
+    state.moderators ??= [];
+    state.moderationActions ??= [];
+    state.localRevocations ??= [];
+    state.rateLimits ??= [];
+    for (const report of state.reports as Partial<ReportRow>[]) report.resolvedAt ??= null;
+    for (const profile of state.profiles as Partial<ProfileRow>[]) profile.homeCityChangedAt ??= null;
+  },
+  // v4 → v5: first-run onboarding. Everyone who already has an account counts
+  // as onboarded, as in the SQL migration, so nobody is sent back through it.
+  4(state) {
+    for (const profile of state.profiles as Partial<ProfileRow>[]) profile.onboardedAt ??= profile.createdAt ?? new Date().toISOString();
+  },
+  // v5 → v6: analytics. Seed places (recognised by their stable ids) are
+  // marked as seed data so the save-source metric is right; everything users
+  // added is community. Nobody is opted out; there are no events yet.
+  5(state) {
+    const seedIds = new Set(SEED_PLACES.map((p) => p.id));
+    for (const place of state.places as Partial<PlaceRow>[]) place.source ??= place.id && seedIds.has(place.id) ? "seed" : "community";
+    for (const profile of state.profiles as Partial<ProfileRow>[]) profile.analyticsOptOut ??= false;
+    state.admins ??= [];
+    state.analyticsEvents ??= [];
+    state.analyticsSalt ??= randomBytes(32).toString("hex");
+  },
+  // v6 → v7: reputation. Levels are computed once from the existing activity,
+  // as the SQL migration's first cron run would.
+  6(state) {
+    state.reputation ??= {};
+    state.reputationResets ??= [];
+    for (const profile of state.profiles as Partial<ProfileRow>[]) profile.reputationLevel ??= "new";
+    for (const place of state.places as Partial<PlaceRow>[]) place.creatorReputation ??= 0;
+    refreshDemoReputation(state as unknown as DemoState);
+  },
+  // v7 → v8: the admin dashboard. Nobody is suspended; the taxonomy table
+  // starts as the built-in one.
+  7(state) {
+    state.suspensions ??= [];
+    state.taxonomy ??= seedTaxonomy();
+  },
+  // v8 → v9: messaging. Everyone already going to an event is in its group
+  // chat, as the SQL migration does; nobody has messages or blocks yet.
+  8(state) {
+    state.conversations ??= [];
+    state.conversationMembers ??= [];
+    state.messages ??= [];
+    state.blocks ??= [];
+    syncAllEventChats(state as unknown as DemoState);
+  },
+  // v9 → v10: notifications. Nothing to tell anyone about yet.
+  9(state) {
+    state.notifications ??= [];
+    state.notificationSettings ??= [];
+    state.pushSubscriptions ??= [];
+    state.pushLog ??= [];
+  },
+  // v10 → v11: payments. Every event stays free; nobody has a plan or a ticket.
+  10(state) {
+    state.tickets ??= [];
+    state.hostAccounts ??= [];
+    state.entitlements ??= [];
+    state.stripeCustomers ??= [];
+    state.stripeEvents ??= [];
+  },
+  // v11 → v12: sponsored cards. No campaigns yet.
+  11(state) {
+    state.adCampaigns ??= [];
+    state.adImpressions ??= [];
+  },
+  // v12 → v13: the per-user interaction log. Nothing recorded yet.
+  12(state) {
+    state.userInteractions ??= [];
+  },
+  // v13 → v14: attribution columns on the interaction log, null for old rows.
+  13(state) {
+    for (const i of (state.userInteractions ?? []) as Partial<DemoState["userInteractions"][number]>[]) {
+      i.requestId ??= null;
+      i.policy ??= null;
+      i.score ??= null;
+      i.propensity ??= null;
+    }
   },
 };
 
@@ -241,10 +504,38 @@ export function buildSeedState(now = new Date()): DemoState {
     eventAttendees: [],
     follows: [],
     reports: [],
+    moderators: [],
+    moderationActions: [],
+    localRevocations: [],
+    rateLimits: [],
+    admins: [],
+    analyticsEvents: [],
+    analyticsSalt: randomBytes(32).toString("hex"),
+    reputation: {},
+    reputationResets: [],
+    suspensions: [],
+    taxonomy: seedTaxonomy(),
+    conversations: [],
+    conversationMembers: [],
+    messages: [],
+    blocks: [],
+    notifications: [],
+    notificationSettings: [],
+    pushSubscriptions: [],
+    pushLog: [],
+    tickets: [],
+    hostAccounts: [],
+    entitlements: [],
+    stripeCustomers: [],
+    stripeEvents: [],
+    adCampaigns: [],
+    adImpressions: [],
+    userInteractions: [],
   };
 
   SEED_USERS.forEach((u, i) => {
-    state.authUsers.push({ id: u.id, email: u.email, passwordHash: sharedHash, createdAt: daysAgo(90 - i) });
+    const created = daysAgo(seedAccountAgeDays(i));
+    state.authUsers.push({ id: u.id, email: u.email, passwordHash: sharedHash, createdAt: created });
     state.profiles.push({
       id: u.id,
       username: u.username,
@@ -252,8 +543,12 @@ export function buildSeedState(now = new Date()): DemoState {
       avatarUrl: null,
       bio: u.bio,
       homeCity: u.homeCity,
-      createdAt: daysAgo(90 - i),
-      updatedAt: daysAgo(90 - i),
+      homeCityChangedAt: null,
+      onboardedAt: created,
+      analyticsOptOut: false,
+      reputationLevel: "new",
+      createdAt: created,
+      updatedAt: created,
     });
     for (const interest of u.interests) state.profileInterests.push({ profileId: u.id, interestSlug: interest });
   });
@@ -276,6 +571,8 @@ export function buildSeedState(now = new Date()): DemoState {
       ratingCount: 0,
       status: "published",
       visibility: p.visibility ?? "public",
+      source: "seed",
+      creatorReputation: 0,
       createdAt: created,
       updatedAt: created,
     });
@@ -330,6 +627,9 @@ export function buildSeedState(now = new Date()): DemoState {
     }
   });
 
+  // Like the event_attendees trigger as the SQL seed inserts attendance.
+  syncAllEventChats(state, now.toISOString());
+
   SEED_REPORTS.forEach((r, i) => {
     const target = r.targetKind === "place" ? seedPlaceByName(r.target).id : r.target;
     state.reports.push({
@@ -341,8 +641,18 @@ export function buildSeedState(now = new Date()): DemoState {
       details: r.details,
       status: r.status,
       createdAt: daysAgo(10 - (i % 8)),
+      resolvedAt: null,
     });
   });
+
+  for (const username of SEED_MODERATORS) {
+    state.moderators.push({ userId: seedUserByName(username).id, grantedAt: daysAgo(30), grantedBy: null });
+  }
+  for (const username of SEED_ADMINS) {
+    state.admins.push({ userId: seedUserByName(username).id, grantedAt: daysAgo(30), grantedBy: null });
+  }
+  // Like the SQL seed's final refresh_all_reputation().
+  refreshDemoReputation(state, undefined, now.getTime());
 
   SEED_FOLLOWS.forEach((f, i) => {
     state.follows.push({
@@ -356,21 +666,25 @@ export function buildSeedState(now = new Date()): DemoState {
 }
 
 /**
- * Mirrors public.is_local(text) from 0003_tier2_community_layer.sql.
+ * Mirrors public.is_local(text) as redefined in 0010_moderation.sql.
  *
- * A viewer is a local of a city when their home city matches, or when they have
- * contributed at least one published place there. Kept beside the store so the
- * demo and Supabase paths cannot drift apart silently.
+ * A viewer is a local of a city when their account is at least 7 days old, no
+ * moderator has revoked their local status, and either their home city matches
+ * or they have contributed at least one published place there. Kept beside the
+ * store so the demo and Supabase paths cannot drift apart silently.
  */
-export function isLocalOfCity(state: DemoState, userId: string | null, city: string): boolean {
+export function isLocalOfCity(state: DemoState, userId: string | null, city: string, now = Date.now()): boolean {
   if (!userId || !city) return false;
-  const norm = (v: string) => v.trim().toLowerCase();
-  const target = norm(city);
   const profile = state.profiles.find((p) => p.id === userId);
-  if (profile?.homeCity && norm(profile.homeCity) === target) return true;
-  return state.places.some(
-    (p) => p.creatorId === userId && p.status === "published" && norm(p.city) === target,
-  );
+  if (!profile || !oldEnoughToBeLocal(profile.createdAt, now)) return false;
+  if (state.localRevocations.some((r) => r.userId === userId)) return false;
+  if (profile.homeCity && sameCity(profile.homeCity, city)) return true;
+  return state.places.some((p) => p.creatorId === userId && p.status === "published" && sameCity(p.city, city));
+}
+
+/** Mirrors is_moderator(): moderators, and admins (who rank above them). */
+export function isModeratorIn(state: DemoState, userId: string | null): boolean {
+  return !!userId && (state.moderators.some((m) => m.userId === userId) || (state.admins ?? []).some((a) => a.userId === userId));
 }
 
 /** Mirrors the Postgres trigger that maintains places.rating_avg / rating_count. */
@@ -456,7 +770,8 @@ export function loadStateFile(file: string): { state: DemoState; migratedFrom: n
 function createHandle(initial?: DemoState): StoreHandle {
   // A missing file seeds; an unusable one throws and takes startup down —
   // it is user data, never silently replaced (see loadStateFile).
-  const loaded = initial ? null : loadStateFile(STATE_FILE);
+  // FINDMAXXING_DEMO_FRESH=1 starts from the seed whatever is on disk (scripted runs).
+  const loaded = initial || process.env.FINDMAXXING_DEMO_FRESH === "1" ? null : loadStateFile(STATE_FILE);
   const state = initial ?? loaded?.state ?? buildSeedState();
   let timer: NodeJS.Timeout | null = null;
   const handle: StoreHandle = {

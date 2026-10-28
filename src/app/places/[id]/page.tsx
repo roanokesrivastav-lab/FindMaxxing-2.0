@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { featureEnabled } from "@/lib/config";
+import { DirectionsLink, TrackView } from "@/components/interactions/TrackView";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { CalendarPlus, MapPin, Navigation, Lightbulb, Bookmark } from "lucide-react";
@@ -24,6 +26,8 @@ import { PlaceOwnerControls } from "@/components/places/PlaceOwnerControls";
 import { VisibilityNotice } from "@/components/places/VisibilityNotice";
 import { shareMetadata } from "@/lib/utils/share-metadata";
 import { neighborhoodHref } from "@/lib/utils/neighborhoods";
+import { LocalDate } from "@/components/time/LocalDate";
+import { InterestIcon } from "@/components/ui/TaxonomyIcon";
 
 export const dynamic = "force-dynamic";
 
@@ -60,18 +64,19 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
 
   return (
     <article className="pb-nav md:pb-10">
+      {viewer && (featureEnabled("analytics") || featureEnabled("recommendations")) ? <TrackView kind="place" id={place.id} /> : null}
       {/* Hero */}
       <div className="relative h-[260px] md:h-[360px] md:mx-6 md:mt-6 md:rounded-3xl overflow-hidden">
-        <PlaceCover photoUrl={place.photos[0]?.url} categorySlug={place.categorySlug} name={place.name} emojiSize={72} layout="hero" priority />
+        <PlaceCover photoUrl={place.photos[0]?.url} categorySlug={place.categorySlug} name={place.name} layout="hero" priority />
         <div className="absolute inset-x-0 top-0 p-4 flex items-center justify-between">
           <BackButton fallback="/" />
           <div className="flex items-center gap-2">
             {isOwner ? <OwnerActions kind="place" id={place.id} canEdit canDelete /> : null}
-            <ShareButton title={place.name} text={place.localTip ?? place.description} />
+            <ShareButton title={place.name} text={place.localTip ?? place.description} item={{ kind: "place", id: place.id }} />
             <SaveButton placeId={place.id} saved={place.viewerSaved} signedIn={!!viewer} lists={lists} memberIds={memberIds} variant="icon" />
           </div>
         </div>
-        <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-ink/50 to-transparent" aria-hidden />
+        {place.photos[0] ? <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-ink/50 to-transparent" aria-hidden /> : null}
       </div>
 
       <div className="max-w-2xl mx-auto px-4 md:px-6 -mt-6 relative">
@@ -84,7 +89,7 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
           <div className="flex flex-wrap items-center gap-2">
             <CategoryBadge slug={place.categorySlug} />
             {place.neighborhood ? (
-              <Link href={neighborhoodHref(place.neighborhood)} className="text-sm text-muted hover:text-flare-600 underline-offset-4 hover:underline" title={`Browse ${place.neighborhood}`}>
+              <Link href={neighborhoodHref(place.neighborhood)} className="text-sm text-muted hover:text-flare-ink underline-offset-4 hover:underline" title={`Browse ${place.neighborhood}`}>
                 {place.neighborhood}
               </Link>
             ) : null}
@@ -99,9 +104,11 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
             ) : (
               <span className="text-muted">Community contribution</span>
             )}
-            <span className="inline-flex items-center gap-1 text-muted">
-              <Bookmark size={14} /> {pluralize(place.saveCount, "save")}
-            </span>
+            {place.saveCount > 0 ? (
+              <span className="inline-flex items-center gap-1 text-muted">
+                <Bookmark size={14} /> {pluralize(place.saveCount, "save")}
+              </span>
+            ) : null}
           </div>
         </div>
 
@@ -134,7 +141,7 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
                 const i = getInterest(t);
                 return (
                   <Link key={t} href={`/tags/${t}`} className="chip h-8 text-xs" title={`Browse ${i.label}`}>
-                    <span aria-hidden>{i.emoji}</span> {i.label}
+                    <InterestIcon slug={i.slug} /> {i.label}
                   </Link>
                 );
               })}
@@ -150,19 +157,17 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
           <h2 className="text-lg font-bold mb-2">Where</h2>
           <div className="card overflow-hidden">
             <div className="h-44">
-              <MiniMap lat={place.lat} lng={place.lng} color={category.color} emoji={category.emoji} label={place.name} kind="place" />
+              <MiniMap lat={place.lat} lng={place.lng} color={category.color} categorySlug={place.categorySlug} label={place.name} kind="place" />
             </div>
             <div className="p-4 flex items-start gap-3">
               <MapPin size={18} className="text-muted mt-0.5 shrink-0" />
               <div className="flex-1 min-w-0 text-sm">
                 <p className="font-semibold">{place.address ?? "No street address"}</p>
-                <p className="text-muted">
-                  {[place.neighborhood, place.city].filter(Boolean).join(", ")} · {place.lat.toFixed(4)}, {place.lng.toFixed(4)}
-                </p>
+                <p className="text-muted">{[place.neighborhood, place.city].filter(Boolean).join(", ")}</p>
               </div>
-              <a href={mapsUrl} target="_blank" rel="noreferrer" className="chip" data-active="true">
+              <DirectionsLink kind="place" id={place.id} href={mapsUrl} className="chip">
                 <Navigation size={14} /> Directions
-              </a>
+              </DirectionsLink>
             </div>
           </div>
         </section>
@@ -180,6 +185,9 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
                 <EventCard key={e.id} event={e} compact />
               ))}
             </div>
+          ) : !place.photos.length && viewer ? (
+            // The photos section above is already an empty state; don't stack a second card.
+            <p className="text-sm text-muted">No upcoming events yet.</p>
           ) : (
             <div className="card p-4 text-sm text-muted flex items-center justify-between gap-3">
               <span>No upcoming events. Be the one who starts the pickup game.</span>
@@ -190,10 +198,10 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
           )}
         </section>
 
-        {isOwner ? <PlaceOwnerControls placeId={place.id} status={place.status} visibility={place.visibility} /> : null}
+        {isOwner ? <PlaceOwnerControls placeId={place.id} status={place.status} visibility={place.visibility} extendedTiers={featureEnabled("reputation")} /> : null}
 
         <div className="mt-8 flex items-center justify-between text-xs text-muted">
-          <span>Added {new Date(place.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+          <span>Added <LocalDate value={place.createdAt} format={{ month: "short", day: "numeric", year: "numeric" }} /></span>
           <ReportButton targetType="place" targetId={place.id} signedIn={!!viewer} returnTo={`/places/${place.id}`} />
         </div>
       </div>

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { featureEnabled, paymentsMode } from "@/lib/config";
 import { getRepository } from "@/lib/data";
 import { getViewer } from "@/lib/auth/server";
 import { ProfileView } from "@/components/profile/ProfileView";
@@ -6,6 +7,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ButtonLink } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Logo } from "@/components/layout/Logo";
+import { Hand } from "lucide-react";
 
 export const metadata: Metadata = { title: "Profile" };
 export const dynamic = "force-dynamic";
@@ -20,7 +22,7 @@ export default async function MyProfilePage() {
         </div>
         <PageHeader eyebrow="You" title="Your profile" />
         <EmptyState
-          emoji="👋"
+          icon={Hand}
           title="Join FindMaxxing"
           body="Save places, add local knowledge, host events and follow people who are into the same things."
           action={
@@ -38,6 +40,31 @@ export default async function MyProfilePage() {
     );
   }
   const repo = await getRepository();
-  const [stats, activity] = await Promise.all([repo.profiles.stats(viewer.id), repo.profiles.activity(viewer.id, viewer.id)]);
-  return <ProfileView profile={viewer.profile} stats={stats} activity={activity} isSelf viewerSignedIn viewerFollows={false} />;
+  const [stats, activity, removed, isModerator] = await Promise.all([
+    repo.profiles.stats(viewer.id),
+    repo.profiles.activity(viewer.id, viewer.id),
+    repo.moderation.myRemovedContent(viewer.id),
+    repo.moderation.isModerator(viewer.id),
+  ]);
+  const suspended = await repo.admin.isSuspended(viewer.id);
+  const unread = featureEnabled("messaging") ? await repo.messaging.unreadTotal(viewer.id) : null;
+  const notificationsUnread = featureEnabled("notifications") ? await repo.notifications.unreadCount(viewer.id) : null;
+  return (
+    <ProfileView
+      profile={viewer.profile}
+      stats={stats}
+      activity={activity}
+      isSelf
+      viewerSignedIn
+      viewerFollows={false}
+      removed={removed}
+      isModerator={isModerator}
+      showLevel={featureEnabled("reputation")}
+      suspended={suspended}
+      messaging={unread === null ? null : { unread }}
+      notificationsUnread={notificationsUnread}
+      payments={!!paymentsMode()}
+      ads={!!paymentsMode() && featureEnabled("ads")}
+    />
+  );
 }

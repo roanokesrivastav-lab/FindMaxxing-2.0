@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"/Users/ronaksrivastav/FindMaxxing-2.0/.codex/vexp-hint.sh\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

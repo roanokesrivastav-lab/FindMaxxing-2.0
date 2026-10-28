@@ -1,5 +1,6 @@
 import { DataError } from "@/lib/data/types";
 import type { FieldErrors } from "@/lib/validation/schemas";
+import { reportError } from "@/lib/observability";
 
 export type ActionResult<T = undefined> =
   | { ok: true; data: T }
@@ -18,7 +19,7 @@ export function toFailure(err: unknown): ActionResult<never> {
   if (err instanceof DataError) return fail(err.message, undefined, err.code);
   // Next.js redirect()/notFound() throw; let those propagate.
   if (err && typeof err === "object" && "digest" in err && typeof (err as { digest?: unknown }).digest === "string") throw err;
-  console.error("[action]", err);
+  reportError(err, { where: "server-action" });
   return fail("Something went wrong. Please try again.", undefined, "unknown");
 }
 

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { Flag, Inbox } from "lucide-react";
+import { Flag, Inbox, CircleCheck, Bird } from "lucide-react";
 import { requireViewer } from "@/lib/auth/server";
 import { getRepository } from "@/lib/data";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -34,7 +34,7 @@ export default async function ReportsPage() {
 
       <section className="mb-8">
         <div className="flex items-center gap-2 mb-2">
-          <Inbox size={16} className="text-flare" />
+          <Inbox size={16} className="text-flare-ink" />
           <h2 className="text-lg font-bold">About your listings</h2>
           {openAgainst > 0 ? (
             <span className="rounded-full bg-danger-100 text-danger text-xs font-bold px-2 py-0.5">{openAgainst} open</span>
@@ -49,7 +49,8 @@ export default async function ReportsPage() {
           </>
         ) : (
           <EmptyState
-            emoji="✅"
+            heading="h3"
+            icon={CircleCheck}
             title="Nothing reported"
             body="No one has flagged a place or event you added."
           />
@@ -65,7 +66,8 @@ export default async function ReportsPage() {
           <ReportList entries={filed} perspective="reporter" />
         ) : (
           <EmptyState
-            emoji="🕊️"
+            heading="h3"
+            icon={Bird}
             title="You haven't reported anything"
             body="Use the report link on a place or event if something is wrong, closed, or unsafe."
             action={

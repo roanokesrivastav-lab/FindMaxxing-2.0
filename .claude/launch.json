@@ -1,0 +1,41 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web-demo-utc",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "TZ=UTC",
+        "NEXT_PUBLIC_SUPABASE_URL=",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY=",
+        "SUPABASE_SERVICE_ROLE_KEY=",
+        "FINDMAXXING_DEMO_NO_PERSIST=1",
+        "FINDMAXXING_DEMO_FRESH=1",
+        "npx",
+        "next",
+        "dev",
+        "-p",
+        "3123"
+      ],
+      "port": 3123
+    },
+    {
+      "name": "web-demo-call",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "TZ=America/New_York",
+        "NEXT_PUBLIC_SUPABASE_URL=",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY=",
+        "SUPABASE_SERVICE_ROLE_KEY=",
+        "FINDMAXXING_DEMO_NO_PERSIST=1",
+        "FINDMAXXING_DEMO_FRESH=1",
+        "npx",
+        "next",
+        "dev",
+        "-p",
+        "3124"
+      ],
+      "port": 3124
+    }
+  ]
+}

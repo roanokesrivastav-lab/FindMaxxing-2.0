@@ -6,11 +6,11 @@ import { getDataMode, getSiteUrl } from "@/lib/config";
 import { fieldErrors, signInSchema, signUpSchema } from "@/lib/validation/schemas";
 import { DataError } from "@/lib/data/types";
 import { fail, str, toFailure, type ActionResult } from "./result";
-
-function safeNext(next: string): string {
-  // Only allow same-origin relative paths to prevent open redirects.
-  return next.startsWith("/") && !next.startsWith("//") ? next : "/";
-}
+import { waitPhrase } from "@/lib/rateLimits";
+import { clientIp } from "@/server/http/clientIp";
+import { limiters } from "@/server/limiters";
+import { safeAuthNext } from "@/lib/auth/redirect";
+import { EMAIL_LINK_INVALID, parseEmailLink } from "@/lib/auth/emailLink";
 
 const DEMO_COOKIE_OPTS = {
   httpOnly: true,
@@ -23,7 +23,7 @@ const DEMO_COOKIE_OPTS = {
 export async function signInAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   const parsed = signInSchema.safeParse({ email: str(formData, "email"), password: str(formData, "password") });
   if (!parsed.success) return fail("Check the highlighted fields", fieldErrors(parsed.error));
-  const next = safeNext(str(formData, "next") || "/");
+  const next = safeAuthNext(str(formData, "next"));
 
   try {
     if (getDataMode() === "supabase") {
@@ -50,7 +50,11 @@ export async function signUpAction(_prev: ActionResult | null, formData: FormDat
     displayName: str(formData, "displayName"),
   });
   if (!parsed.success) return fail("Check the highlighted fields", fieldErrors(parsed.error));
-  const next = safeNext(str(formData, "next") || "/profile/edit?welcome=1");
+  const next = safeAuthNext(str(formData, "next"), "/welcome");
+
+  // Supabase Auth has its own limits (see README); this one holds in both modes.
+  const wait = limiters().signUp.consume(await clientIp());
+  if (wait !== null) return fail(`Too many sign-ups from this network. Try again in ${waitPhrase(wait)}.`, undefined, "rate_limited");
 
   try {
     if (getDataMode() === "supabase") {
@@ -102,7 +106,7 @@ export async function demoQuickSignInAction(formData: FormData): Promise<void> {
   const { demoSignIn, DEMO_SESSION_COOKIE } = await import("@/lib/data/demo/auth");
   const { DEMO_PASSWORD } = await import("@/lib/seed/seed-data");
   const email = str(formData, "email");
-  const next = safeNext(str(formData, "next") || "/");
+  const next = safeAuthNext(str(formData, "next"));
   try {
     const session = demoSignIn(email, DEMO_PASSWORD);
     (await cookies()).set(DEMO_SESSION_COOKIE, session.userId, DEMO_COOKIE_OPTS);
@@ -110,4 +114,23 @@ export async function demoQuickSignInAction(formData: FormData): Promise<void> {
     redirect("/auth/sign-in?error=demo");
   }
   redirect(next);
+}
+
+/**
+ * Verifies a token-hash email link. Runs only on a button press, never on
+ * GET, so mail scanners that pre-open links cannot use up the token.
+ */
+export async function confirmEmailLinkAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  const link = parseEmailLink({ tokenHash: str(formData, "token_hash"), type: str(formData, "type"), next: str(formData, "next") });
+  if (!link) return fail(EMAIL_LINK_INVALID);
+  if (getDataMode() !== "supabase") return fail("Email links are not used in demo mode.");
+  try {
+    const { createSupabaseServerClient } = await import("@/lib/supabase/server");
+    const supabase = await createSupabaseServerClient();
+    const { error } = await supabase.auth.verifyOtp({ type: link.type, token_hash: link.tokenHash });
+    if (error) return fail(EMAIL_LINK_INVALID);
+  } catch (err) {
+    return toFailure(err);
+  }
+  redirect(link.next);
 }

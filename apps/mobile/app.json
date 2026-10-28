@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "FindMaxxing",
+    "slug": "findmaxxing",
+    "scheme": "findmaxxing",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "../../public/icons/icon-512.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "bundleIdentifier": "com.findmaxxing.app",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Take a photo of a place you're adding.",
+        "NSPhotoLibraryUsageDescription": "Choose a photo of a place you're adding.",
+        "NSLocationWhenInUseUsageDescription": "Show places near you and pin new ones where you are."
+      }
+    },
+    "android": {
+      "package": "com.findmaxxing.app",
+      "adaptiveIcon": { "foregroundImage": "../../public/icons/maskable-512.png", "backgroundColor": "#17181d" },
+      "permissions": ["CAMERA", "ACCESS_FINE_LOCATION"]
+    },
+    "web": { "bundler": "metro", "output": "single", "favicon": "../../public/icons/icon-192.png" },
+    "plugins": [
+      "expo-router",
+      ["expo-image-picker", { "cameraPermission": "Take a photo of a place you're adding." }],
+      ["expo-notifications", { "icon": "../../public/icons/icon-192.png", "color": "#ff4d2e" }]
+    ],
+    "experiments": { "typedRoutes": false }
+  }
+}

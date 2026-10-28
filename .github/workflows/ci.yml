@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Typecheck, lint, test, build, e2e, accessibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # No secrets: the database tests run on embedded Postgres (PGlite) and the
+    # browser suites run the built app in demo mode on a fresh in-memory store.
+    env:
+      E2E_CHANNEL: chromium
+      E2E_OUT: artifacts/e2e
+      A11Y_OUT: artifacts/a11y
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # typecheck, lint, unit + database tests, production build
+      - run: npm run check
+      - name: Type-check the mobile app
+        run: npm run typecheck --workspace @findmaxxing/mobile
+
+      - name: Export the mobile web bundle (not native sign-off)
+        run: npm run export:web --workspace @findmaxxing/mobile
+
+      - name: Install the Playwright browser
+        run: npx playwright-core install --with-deps chromium
+
+      - name: End-to-end suite
+        run: npm run e2e
+
+      - name: Accessibility (axe-core)
+        run: npm run a11y
+
+      - name: Build feature-enabled demo for release smoke tests
+        env:
+          NEXT_PUBLIC_FEATURES: messaging,notifications,payments,ads,admin,reputation,recommendations,pwa
+        run: npm run build
+
+      - name: Feature-enabled demo flows (no real services)
+        env:
+          FEATURE_E2E_OUT: artifacts/e2e-features
+        run: npm run e2e:features
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-runs
+          path: artifacts/
+          if-no-files-found: ignore
+          retention-days: 7
