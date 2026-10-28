@@ -13,6 +13,7 @@ import type { DemoState, EventRow, PlaceRow } from "./store";
 import type { RecommendationReason } from "../types";
 import { discoveryDistance } from "../discovery";
 import { hiddenItems } from "./interactions";
+import { BT_MAX_COMPARISONS, fitStrengths } from "@/lib/ranking/bradleyTerry";
 
 type Signal = { w: number; kind: string; text: string; ref: string | null };
 const C = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
@@ -54,7 +55,6 @@ function interestSignal(state: DemoState, viewerId: string, tags: string[]): Sig
 /** Overall (key null) and per-category tag weights. */
 export type Taste = Map<string | null, Map<string, number>>;
 
-const RATING_WEIGHT: Record<number, number> = { 5: 2, 4: 1, 3: 0, 2: -1, 1: -2 };
 
 /**
  * Mirrors the user_taste view: the viewer's actions on items they can see,
@@ -77,10 +77,20 @@ export function demoTaste(
     const p = sv.userId === viewerId ? place(sv.placeId) : null;
     if (p) acts.push({ itemType: "place", itemId: p.id, category: p.categorySlug, weight: 1, at: sv.createdAt });
   }
-  for (const r of state.placeRatings) {
+  // A rating weighs its Bradley-Terry strength (stars - 3 until the viewer has compared places in its category).
+  const rated = state.placeRatings.flatMap((r) => {
     const p = r.userId === viewerId ? place(r.placeId) : null;
-    if (p) acts.push({ itemType: "place", itemId: p.id, category: p.categorySlug, weight: RATING_WEIGHT[r.score] ?? -2, at: r.updatedAt });
+    return p ? [{ r, p }] : [];
+  });
+  const answers = state.placeComparisons.filter((c) => c.userId === viewerId);
+  const strength = new Map<string, number>();
+  for (const category of new Set(rated.map(({ p }) => p.categorySlug))) {
+    const items = rated.filter(({ p }) => p.categorySlug === category).map(({ r }) => ({ id: r.placeId, stars: r.score }));
+    const ids = new Set(items.map((i) => i.id));
+    const inCategory = answers.filter((c) => ids.has(c.winnerId) && ids.has(c.loserId)).slice(-BT_MAX_COMPARISONS);
+    for (const [id, theta] of fitStrengths(items, inCategory)) strength.set(id, theta);
   }
+  for (const { r, p } of rated) acts.push({ itemType: "place", itemId: p.id, category: p.categorySlug, weight: strength.get(r.placeId)!, at: r.updatedAt });
   for (const a of state.eventAttendees) {
     const e = a.userId === viewerId ? event(a.eventId) : null;
     if (e && e.creatorId !== viewerId) acts.push({ itemType: "event", itemId: e.id, category: e.categorySlug, weight: 1, at: a.createdAt });

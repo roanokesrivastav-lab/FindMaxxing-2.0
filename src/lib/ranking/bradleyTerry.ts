@@ -18,8 +18,12 @@ export const BT_MAX_COMPARISONS = 500;
 export interface RatedItem { id: string; stars: number }
 export interface Comparison { winnerId: string; loserId: string }
 
-/** Score on a 0-10 scale per item id; comparisons naming an item outside `items` are ignored. */
-export function fitScores(items: RatedItem[], comparisons: Comparison[]): Map<string, number> {
+/**
+ * Strength (log-odds scale) per item id; comparisons naming an item outside
+ * `items` are ignored. With no comparisons it is exactly stars - 3, the flat
+ * rating weight rules-v2 taste used before comparisons existed.
+ */
+export function fitStrengths(items: RatedItem[], comparisons: Comparison[]): Map<string, number> {
   const index = new Map(items.map((item, i) => [item.id, i]));
   const mu = items.map((item) => item.stars - 3);
   const pairs: [number, number][] = [];
@@ -38,5 +42,10 @@ export function fitScores(items: RatedItem[], comparisons: Comparison[]): Map<st
     }
     theta = theta.map((t, i) => t + BT_STEP * grad[i]);
   }
-  return new Map(items.map((item, i) => [item.id, 10 / (1 + Math.exp(-theta[i]))]));
+  return new Map(items.map((item, i) => [item.id, theta[i]]));
+}
+
+/** Score on a 0-10 scale per item id: the strengths through a logistic curve. */
+export function fitScores(items: RatedItem[], comparisons: Comparison[]): Map<string, number> {
+  return new Map([...fitStrengths(items, comparisons)].map(([id, theta]) => [id, 10 / (1 + Math.exp(-theta))]));
 }

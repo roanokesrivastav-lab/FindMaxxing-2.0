@@ -146,8 +146,12 @@ profile like Beli's list, (b) replaces raw stars as the taste weight in 1a. Effo
 (`place_comparisons`, owner-only, one answer per pair, only between places the writer rated in one category;
 `fit_user_category_scores(category)`, Bradley-Terry fitted in plpgsql, 100 gradient steps, newest 500 comparisons)
 and its TypeScript twin `src/lib/ranking/bradleyTerry.ts`, agreeing to 9 decimals in `tests/place-comparisons.test.ts`.
-Not built: the comparison UI (waits on open question 1), a stored `user_place_scores`, the demo repository twin,
-and using the scores as the taste weight in 1a.
+The comparison flow is built too (a "Which do you prefer?" sheet after a new or changed star rating, binary search
+within the same-star bucket: `src/lib/ranking/nextComparison.ts`, `ComparePrompt.tsx`), with demo and Supabase
+repository methods, and `0038_comparison_taste.sql` makes a rating weigh its Bradley-Terry strength in `user_taste`
+(exactly stars - 3 until the person compares places, so nothing changes for them).
+Not built: the profile ranked list, a stored `user_place_scores`, a rate limit on answers, and a Supabase-mode test
+of the repository methods.
 
 ### Stage 2a: pgvector embeddings
 *Why:* tags are coarse (15 categories, ~30 interests). Text embeddings of `name + description + local_tip +
