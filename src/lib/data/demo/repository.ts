@@ -1469,8 +1469,8 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
       async isAdmin(userId) {
         return isAdmin(userId);
       },
-      async isSuspended(userId) {
-        return state.suspensions.some((x) => x.userId === userId);
+      async isSuspended(userId, viewerId) {
+        return viewerId === userId && state.suspensions.some((x) => x.userId === userId);
       },
       async users(viewerId, opts = {}) {
         if (!isAdmin(viewerId)) return { items: [], nextCursor: null };

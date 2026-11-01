@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { pushTransportReady, getDataMode } from "@/lib/config";
 import { reportError } from "@/lib/observability";
+import { requireCronSecret } from "@/server/http/cronAuth";
 import type { DataRepository } from "@/lib/data/repository";
 import { combinedSender, expoPushSender, runNotificationJobs, webPushSender } from "@/server/notifications/push";
 
@@ -12,8 +13,7 @@ export const dynamic = "force-dynamic";
  * retry: reminders are deduplicated and pushes are claimed before sending.
  */
 export async function GET(req: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) return new NextResponse(null, { status: 401 });
+  if (!requireCronSecret(req)) return new NextResponse(null, { status: 401 });
   try {
     let repo: DataRepository;
     if (getDataMode() === "supabase") {

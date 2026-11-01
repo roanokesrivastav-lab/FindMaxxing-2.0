@@ -265,7 +265,8 @@ export interface DataRepository {
    */
   admin: {
     isAdmin(userId: string | null): Promise<boolean>;
-    isSuspended(userId: string): Promise<boolean>;
+    /** Private self status; viewerId must come from the authenticated session. */
+    isSuspended(userId: string, viewerId: string | null): Promise<boolean>;
     users(viewerId: string, opts?: PageRequest & { query?: string | null }): Promise<Page<AdminUser>>;
     content(viewerId: string, opts?: PageRequest & { kind?: "place" | "event"; status?: string | null; query?: string | null; creatorId?: string | null }): Promise<Page<AdminContentItem>>;
     rateLimitHits(viewerId: string): Promise<RateLimitHit[]>;

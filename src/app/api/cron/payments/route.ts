@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDataMode, paymentsMode } from "@/lib/config";
 import { reportError } from "@/lib/observability";
+import { requireCronSecret } from "@/server/http/cronAuth";
 import { getStripe, processRefunds } from "@/server/payments/stripe";
 import { serviceRepository } from "@/server/serviceRepository";
 import { resumeAccountDeletions } from "@/server/accountDeletionJobs";
@@ -13,8 +14,7 @@ export const dynamic = "force-dynamic";
  * mode the "refund" is recorded at once: no money ever moved.
  */
 export async function GET(req: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) return new NextResponse(null, { status: 401 });
+  if (!requireCronSecret(req)) return new NextResponse(null, { status: 401 });
   const mode = paymentsMode();
   try {
     const deletions = await resumeAccountDeletions();

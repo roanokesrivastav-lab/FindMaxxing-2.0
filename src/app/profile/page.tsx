@@ -46,7 +46,7 @@ export default async function MyProfilePage() {
     repo.moderation.myRemovedContent(viewer.id),
     repo.moderation.isModerator(viewer.id),
   ]);
-  const suspended = await repo.admin.isSuspended(viewer.id);
+  const suspended = await repo.admin.isSuspended(viewer.id, viewer.id);
   const unread = featureEnabled("messaging") ? await repo.messaging.unreadTotal(viewer.id) : null;
   const notificationsUnread = featureEnabled("notifications") ? await repo.notifications.unreadCount(viewer.id) : null;
   return (

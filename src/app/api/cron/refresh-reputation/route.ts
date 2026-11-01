@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { getDataMode } from "@/lib/config";
 import { reportError } from "@/lib/observability";
+import { requireCronSecret } from "@/server/http/cronAuth";
 
 export const dynamic = "force-dynamic";
 
 /** Hourly (vercel.json crons): recomputes every reputation level. Bearer CRON_SECRET only. */
 export async function GET(req: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) return new NextResponse(null, { status: 401 });
+  if (!requireCronSecret(req)) return new NextResponse(null, { status: 401 });
   try {
     let refreshed = 0;
     if (getDataMode() === "supabase") {

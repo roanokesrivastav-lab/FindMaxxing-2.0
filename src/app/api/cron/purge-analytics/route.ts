@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDataMode } from "@/lib/config";
 import { reportError } from "@/lib/observability";
+import { requireCronSecret } from "@/server/http/cronAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -10,8 +11,7 @@ export const dynamic = "force-dynamic";
  * is refused. Idempotent: running it twice deletes nothing the second time.
  */
 export async function GET(req: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
+  if (!requireCronSecret(req)) {
     return new NextResponse(null, { status: 401 });
   }
   try {

@@ -202,6 +202,9 @@ export interface DemoState {
   stripeEvents: { id: string; type: string; objectId: string | null; receivedAt: string;
     state?: "pending" | "processing" | "complete"; token?: string; scope?: string; leasedUntil?: string; outcome?: string }[];
   /** Mirrors 0023_ads.sql (see ./ads). Impressions are aggregated: no user. */
+  abuseCounters: { action: string; key: string; start: number; expires: number; count: number }[];
+  adBeaconNonces: { nonce: string; expires: number }[];
+  adClientDaily: { campaignId: string; key: string; day: string; count: number }[];
   adCampaigns: AdCampaignRow[];
   adImpressions: { campaignId: string; day: string; slot: "places" | "events"; count: number }[];
   /** Mirrors 0031_user_interactions.sql (see ./interactions): private, per user. */
@@ -310,7 +313,7 @@ export interface SavedListRow {
   updatedAt: string;
 }
 
-export const STATE_VERSION = 15;
+export const STATE_VERSION = 16;
 const DATA_DIR = path.join(process.cwd(), ".data");
 const STATE_FILE = path.join(DATA_DIR, "demo-store.json");
 
@@ -330,7 +333,7 @@ const COLLECTIONS = [
   "conversations", "conversationMembers", "messages", "blocks",
   "notifications", "notificationSettings", "pushSubscriptions", "pushLog",
   "tickets", "hostAccounts", "entitlements", "stripeCustomers", "stripeEvents",
-  "adCampaigns", "adImpressions", "userInteractions", "placeComparisons",
+  "adCampaigns", "adImpressions", "userInteractions", "placeComparisons", "abuseCounters", "adBeaconNonces", "adClientDaily",
 ] as const;
 
 const LEGACY_PLACE_UPLOAD = /^\/api\/uploads\/(places-[^/]+)$/;
@@ -448,6 +451,11 @@ const MIGRATIONS: Record<number, (state: LooseState) => void> = {
       i.propensity ??= null;
     }
   },
+  15(state) {
+    state.abuseCounters ??= [];
+    state.adBeaconNonces ??= [];
+    state.adClientDaily ??= [];
+  },
   // v14 → v15: head-to-head place comparisons. None answered yet.
   14(state) {
     state.placeComparisons ??= [];
@@ -534,6 +542,7 @@ export function buildSeedState(now = new Date()): DemoState {
     entitlements: [],
     stripeCustomers: [],
     stripeEvents: [],
+    abuseCounters: [], adBeaconNonces: [], adClientDaily: [],
     adCampaigns: [],
     adImpressions: [],
     userInteractions: [],

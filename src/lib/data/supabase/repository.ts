@@ -1789,7 +1789,8 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
         if (error) throw translate(error);
         return data === true;
       },
-      async isSuspended(userId) {
+      async isSuspended(userId, viewerId) {
+        if (viewerId !== userId) return false;
         const rows = unwrap(await supabase.from("suspensions").select("user_id").eq("user_id", userId)) as { user_id: string }[];
         return rows.length > 0;
       },

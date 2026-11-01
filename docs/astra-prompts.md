@@ -132,6 +132,14 @@ Stop and report before moving to the next batch.
 
 ---
 
+# Feature roadmap — 2026-10-31
+
+Feature work toward the 80% beta (outings, events/sports, imports, itinerary, design system) lives in
+[roadmap-80.md](roadmap-80.md): its own preamble, ticket prompts, lanes, waves and migration ledger. Use the
+generic prompts above (4, 6, 7) for preflight and review of those tickets.
+
+---
+
 # Work queue — 2026-10-28
 
 Specific prompts for Astra and Sol, drawn from what is open in this repo today. Each lane touches its own files,
@@ -152,7 +160,15 @@ end with `npm run check`, and write docs/<topic>-repair.md. Stop and report afte
 
 ## Lane A — Repair the 2026-10-27 security audit (F1–F11)
 
-Source: `docs/audits/2026-10-security-and-coverage.md`. None of the findings has a repair migration yet.
+Source: `docs/audits/2026-10-security-and-coverage.md`. Batch 3 now has local repair migration `0039`.
+
+**Execution status — 2026-10-28:** A1 complete at `bf03994`; see
+[security-audit-repair.md](security-audit-repair.md) for current evidence and batch contracts.
+Batch 3 (F4/F11/F8) is implemented: typecheck, lint, 1,023 tests and a Webpack production build pass.
+Default Turbopack is blocked by a local port restriction (see the repair record).
+Other findings remain open. Order is **3 → 1 → 2 → 4 → 5**:
+privilege-test fidelity precedes new service-only RPCs. Next implementation: batch 1 (F2/F3/F7).
+Separate worktrees still require shared-file integration review and coordinated migration numbering.
 
 **A1. Preflight and batch plan**
 ```

@@ -18,6 +18,9 @@ export const SUPABASE_STUBS = `
   -- actually holds. Granting them again per query would hide those revokes.
   grant usage on schema public to anon, authenticated, service_role;
   alter default privileges in schema public grant select, insert, update, delete on tables to anon, authenticated, service_role;
+  -- Hosted Supabase also gives these roles explicit function grants. Revoking
+  -- only PUBLIC must not appear to secure a function here when it does not there.
+  alter default privileges in schema public grant execute on functions to anon, authenticated, service_role;
   create schema auth;
   create table auth.users (
     id uuid primary key,
