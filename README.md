@@ -28,11 +28,30 @@ Open http://localhost:3000. The app runs in **demo mode**: a file-backed local s
 npm run typecheck   # next typegen + tsc
 npm run lint        # eslint (next + react-hooks rules)
 npm run test        # vitest: validation, demo repository, and the SQL schema via PGlite
+                    # (+ real-PostgreSQL race tests when TEST_DATABASE_URL is set; see below)
 npm run build       # production build
 npm run check       # all of the above (what CI runs first)
 npm run e2e         # end-to-end beta suite in a real browser (needs a build)
 npm run a11y        # axe-core accessibility check (needs a build)
 ```
+
+**Two-connection PostgreSQL tests.** PGlite is one connection, so it cannot show what two
+transactions do at once. `tests/abuse-limits-pg.test.ts` (and later race suites, roadmap 4.pre) use
+`tests/helpers/postgres.ts`: it creates a fresh throwaway database per suite on a **local** server,
+applies every migration in order, opens two independent connections, and drops the database
+afterwards. It refuses any `TEST_DATABASE_URL` that is not `localhost` / `127.0.0.1` / `::1`.
+Without `TEST_DATABASE_URL` those suites are **skipped** with a loud warning (skipped is not
+passing); with `CI` set, a missing URL fails the run, so **CI must provide a PostgreSQL service and
+set `TEST_DATABASE_URL`**.
+
+```bash
+# Ubuntu/Debian: sudo apt install postgresql && sudo service postgresql start
+# macOS: brew install postgresql@17 && brew services start postgresql@17
+TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres npm test
+```
+
+The role in the URL must be able to create databases and roles (the Supabase stubs create
+`anon`, `authenticated` and `service_role` once per server).
 
 **`npm run e2e`** starts the built app in demo mode on a fresh in-memory store (nothing read from
 or written to `.data`; uploads go to a scratch folder) and walks the core loop and the beta flows at
@@ -92,7 +111,7 @@ The beta's go/no-go list, with the command and current status of each gate, is `
    - `supabase/migrations/0025_seed_taxonomy.sql` — required categories and interests, without demo accounts or content
    - `supabase/seed.sql` — optional fictional demo data (generated from `src/lib/seed/seed-data.ts` via `npm run seed:sql`; **do not use the demo users in production**)
 2. In Supabase Auth settings, add `http://localhost:3000/auth/callback` (and your production URL) to the redirect allow-list. Email confirmation is supported: the sign-up flow shows a "check your email" state and `/auth/callback` exchanges the code.
-   Under **Authentication → Rate Limits**, keep sign-ups and password-recovery emails low for the beta: 30 sign-ups and 30 token verifications per 5 minutes per IP, and 4 emails per hour (or connect your own SMTP provider and raise it deliberately). Turn on CAPTCHA protection if sign-up spam appears. These sit in front of the app's own per-IP limit (see [Rate limits](#rate-limits)).
+   Under **Authentication → Rate Limits**, keep sign-ups and password-recovery emails low for the beta: 30 sign-ups and 30 token verifications per 5 minutes per IP, and 4 emails per hour (or connect your own SMTP provider and raise it deliberately). Turn on CAPTCHA protection if sign-up spam appears. These sit in front of the app's own durable limits (see [Rate limits](#rate-limits)), and are what bounds direct calls to the Auth API, which the app never sees.
 3. Make at least one moderator. Moderators are granted only from SQL or the service role, never from the app:
    ```sql
    insert into public.moderators (user_id)
@@ -110,6 +129,8 @@ The beta's go/no-go list, with the command and current status of each gate, is `
 | `NEXT_PUBLIC_SITE_URL` | in production | Absolute origin for auth redirect links (sign-up confirmation, password recovery), and the User-Agent the geocoder identifies itself with |
 | `SENTRY_DSN` | no (secret) | Forward server and client errors to Sentry (see [Operations](#operations)) |
 | `ERROR_WEBHOOK_URL` | no (secret) | Forward errors as JSON to any endpoint |
+| `ABUSE_HMAC_SECRET` | in production (secret, ≥ 32 chars) | Keys the HMAC that turns client IPs and emails into the hashes stored by the durable abuse limiter (0040). Without it in Supabase mode, sign-in, sign-up, password reset and account deletion answer "Request protection is unavailable", geocoding returns 503 and no sponsored card is shown. Rotating it starts every limit window afresh |
+| `TRUSTED_PROXY_HEADER` | in production | `x-forwarded-for` or `x-real-ip`: the header your ingress **overwrites** with exactly one client address (on Vercel, `x-real-ip`; confirm on staging that clients cannot set it). A production server refuses to start without it, and a Vercel build fails. A request whose header is missing, a chain or malformed is an "unknown" client (see [Rate limits](#rate-limits)) |
 | `FINDMAXXING_ALLOW_DEMO_IN_PRODUCTION` | no | `1` lets a production server run in demo mode, for a deliberate public demo only |
 | `FINDMAXXING_DEMO_NO_PERSIST` / `FINDMAXXING_DEMO_FRESH` / `FINDMAXXING_DEMO_UPLOAD_DIR` | no | Demo mode for scripted runs: never write the store / ignore the store on disk / put uploads elsewhere |
 
@@ -159,7 +180,8 @@ src/
     auth/server.ts           getViewer() / requireViewer()
     observability/           Structured error logs and optional Sentry / webhook forwarding
     security/csp.ts          The per-request Content-Security-Policy
-    rateLimits.ts            Write limits (mirrors rate_limit_rules) and the in-memory per-IP limiter
+    rateLimits.ts            Write limits (mirrors rate_limit_rules)
+    abuseLimits.ts           Durable abuse caps without a user (mirrors 0040)
     supabase/                Server, browser and proxy clients
     validation/schemas.ts    Zod schemas for every form
     seed/seed-data.ts        Fictional demo data (drives both demo mode and seed.sql)
@@ -309,16 +331,38 @@ does not use up the allowance. Sessions without a user (seeds, SQL, the service 
 | Ticket checkouts | 20 an hour | `reserve_ticket()` |
 | AI trip plans with Plus | 30 a day | `consume_trip_plan()` |
 | Ad campaigns | 10 a day | `create_ad_campaign()` |
-| Sponsored cards served | 120 an hour per IP | `/api/ads` (in-memory, per instance), so reloading can't burn a budget |
-| Sign-ups | 5 an hour per IP | the sign-up server action |
+| Sponsored cards served | 120 an hour per IP | `/api/ads` via `consume_server_abuse` (durable, all instances), so reloading can't burn a budget |
+| Sign-in attempts | 5 per email and 20 per IP, per 15 minutes | the sign-in action, before Supabase sees the password; every attempt counts |
+| Account-deletion password checks | shares the sign-in budget | `deleteAccount`, before the password re-check |
+| Sign-ups | 5 an hour per IP and 5 per email | the sign-up server action |
+| Password-reset requests | 5 an hour per IP and 5 per email | the reset action; the answer stays the same for unknown emails |
+| Address lookups | 30 a minute per IP; Nominatim 1 call / 1.1 s app-wide | `/api/geocode`: 429 over the cap, 503 when the Nominatim slot is taken (no queue) |
 
 The numbers live in one table, `rate_limit_rules`, mirrored by `RATE_LIMITS` in
 `src/lib/rateLimits.ts`; a test keeps them equal, and the demo repository enforces the same limits
-with the same window arithmetic. Sign-ups (and, later, password-reset requests) cannot be attributed
-to a user, so they are limited per IP in the server action with an in-memory limiter. That limiter is
-**per instance**: a deploy running several instances needs a shared store (Redis, Upstash or a
-Postgres table) for it to be global. Supabase Auth's own limits sit in front of it (see
-[Going live](#going-live-with-supabase--mapbox)).
+with the same window arithmetic.
+
+**Abuse limits without a user** (security batch 1, `0040_durable_abuse_limits.sql`). Sign-in,
+sign-up, password reset, the account-deletion password check, address lookups and the sponsored-card
+cap are limited by `consume_server_abuse`: one atomic Postgres budget shared by every server
+instance, service-role only, with no in-memory fallback. Keys are HMACs (`ABUSE_HMAC_SECRET`) of the
+client IP or normalized email, never the raw values; `server_abuse_budgets` (SQL) / `ABUSE_LIMITS` in
+`src/lib/abuseLimits.ts` hold the numbers (a test keeps them equal), and the demo store enforces the
+same caps and windows. Expired counters are purged by the daily `purge-analytics` cron. If the
+limiter can't be reached, auth actions answer "Request protection is unavailable", geocoding returns
+503 and the ad slot stays empty.
+
+*Unknown clients.* The client IP comes only from `TRUSTED_PROXY_HEADER` and only when it holds exactly
+one valid address. Otherwise the request is "unknown": sign-in, reset and deletion are then limited by
+email only (one shared bucket must never lock everyone out of signing in), sign-ups share a
+deliberately generous `signup_unknown` bucket (50 an hour), lookups share `geocode_unknown` (300 a
+minute), and sponsored cards share the normal 120-an-hour key (over it, no card; no money moves).
+
+*Tradeoffs.* The per-email cap follows an email across networks, so someone can deliberately lock a
+known email out of signing in for up to 15 minutes. These limits protect the app's own actions only;
+direct calls to the hosted Supabase Auth API are governed by Supabase's own rate limits and CAPTCHA
+settings (see [Going live](#going-live-with-supabase--mapbox)), which remain an operational
+follow-up.
 
 ## Discovery queries
 
@@ -420,10 +464,9 @@ table above in the Vercel project, separately for Preview (point it at the stagi
 and Production. A Vercel build without the Supabase variables fails on purpose.
 
 **Per-instance behaviour.** Two things are per server instance, not global: the image pipeline's
-two-at-a-time processing limit (`withImageSlot`), and the in-memory limiters for sign-ups, password
-reset requests and client error reports. On Vercel each function instance has its own. The database
-rate limits are global. For a global sign-up limit across instances, move `createMemoryLimiter` onto
-a shared store (Upstash Redis, or a Postgres table keyed by IP hash).
+two-at-a-time processing limit (`withImageSlot`), and the in-memory limiter for client error reports
+(`src/server/http/memoryLimiter.ts`). On Vercel each function instance has its own. The database
+rate limits and the abuse limits for sign-in, sign-up, reset, deletion, geocoding and ads are global.
 
 **Monitoring** (`src/lib/observability`). Every server error is one JSON log line (level, message,
 time, stack, context), which Vercel's log view and any log drain index. Context keys that could carry

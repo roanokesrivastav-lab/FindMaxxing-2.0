@@ -78,6 +78,9 @@ describe.skipIf(!url)("two PostgreSQL connections racing the 0040 limiter", () =
     console.log(`[race] signin_email cap 5 at a 15-min boundary: window 1 admitted ${w1}, window 2 admitted ${w2}`);
     expect(w1).toBeLessThanOrEqual(5);
     expect(w2).toBeLessThanOrEqual(5);
+    expect(w1 + w2).toBeLessThanOrEqual(10);
+    // Before the out-of-order fix, alternating stamps reset the counter: 100 + 100 were admitted.
+    expect((await t.a.query<{ count: number }>("select count from public.server_abuse_counters")).rows[0].count).toBeLessThanOrEqual(5);
   });
 
   it("claim_geocode_provider admits at most one claim per 1.1 s across two connections", async () => {

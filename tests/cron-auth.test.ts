@@ -66,6 +66,9 @@ describe.each([
     if (name === "purge-analytics") {
       expect(mocks.rpc).toHaveBeenCalledWith("purge_analytics", { p_keep_days: 180 });
       expect(mocks.rpc).toHaveBeenCalledWith("purge_user_interactions", { p_keep_days: 365 });
+      // Expired abuse counters (0040): bounded batches; the mocked 2 rows < one batch, so one call.
+      expect(mocks.rpc).toHaveBeenCalledWith("purge_server_abuse", { p_limit: 10_000 });
+      expect(mocks.rpc.mock.calls.filter(([name]) => name === "purge_server_abuse")).toHaveLength(1);
     }
     if (name === "refresh-reputation") expect(mocks.rpc).toHaveBeenCalledWith("refresh_all_reputation");
   });

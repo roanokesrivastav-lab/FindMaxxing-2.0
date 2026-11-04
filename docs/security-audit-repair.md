@@ -4,8 +4,13 @@
 
 A1 preflight is complete. Batch 3 (F4/F11/F8) is implemented locally with new migration
 `0039_security_grants_and_suspension.sql`: typecheck, lint, 1,023 tests and the Webpack production
-build pass. Default Turbopack is blocked by this environment's port restriction. Batches 1, 2,
-4 and 5 remain open. No migration has been deployed. The next batch is 1 (F2/F3/F7).
+build pass. Default Turbopack is blocked by this environment's port restriction. No migration has been deployed.
+
+Batch 1 is split per [brief 0.1](briefs/0.1-security-batch-1.md). **0.1a** (durable limits for
+sign-in, sign-up, reset, deletion, geocode and the ad request cap; reshaped 0040) is implemented and
+locally verified, including two-connection races on real PostgreSQL. See
+[Batch 1 - 0.1a](#batch-1---01a). It awaits Codex verification. **0.1b** (render beacon and ad billing,
+migration 0041) is not started, and batches 2, 4 and 5 remain open.
 
 ## Decision and handoff
 
@@ -339,3 +344,193 @@ No broader release approval: F1/F2/F3/F5/F6/F7/F9/F10 and native/release gates r
 are fixed and verified locally; hosted application of 0039 remains a release condition. No additional
 source fix is required by this self-review. Changes are uncommitted; nothing was pushed or deployed.
 Stop after this batch for review, as requested by the work queue.
+
+## Batch 1 - 0.1a
+
+Durable abuse limits for sign-in, sign-up, password reset, the account-deletion password check,
+geocode and the ad request cap (F3, F7, and the ad request-cap part of F2). Implemented 2026-11-04
+on `claude/magical-edison-cbsqxg`, cut from `tier1-owner-controls` at `c5fc858` (which includes the
+staged work committed in `b1c0e20`). 0.1b (signed render beacon and ad billing, reserved migration
+**0041**) was not started.
+
+### Contract and owner decisions
+
+Contract: [brief 0.1](briefs/0.1-security-batch-1.md) §4 coding prompt and §5 acceptance criteria,
+with these owner decisions for the day:
+
+- **Codex preflight waived**; Codex verifies independently afterwards. Evidence is below.
+- **D1:** production refuses to start without `TRUSTED_PROXY_HEADER` (demo-mode guard pattern). If a
+  request's header is absent or invalid, sign-in and reset use the email key only; sign-up and
+  geocode use a deliberately generous shared "unknown" bucket. One shared IP bucket never gates all
+  sign-ins. This does not conflict with brief §4 step 3, which asks for "the D1 unknown-client policy"
+  without fixing its form.
+- **D2** approved as written: `pg` and `@types/pg` as exact-version devDependencies, nothing else.
+- **D3** as written: `ABUSE_HMAC_SECRET` required in production (≥ 32 characters); its absence gives a
+  controlled "unavailable".
+
+### Premise check
+
+Brief §1 matched `b1c0e20`: 0040 held the limiter, geocode gate, purge and the ad half; the six
+TypeScript errors and the unwired callers were as listed. Two differences, neither changing the design:
+
+1. The brief calls `purge-analytics` the "existing hourly cron"; `vercel.json` runs it **daily**
+   (`17 4 * * *`). Cron schedules are on the must-not-change list, so the route calls the bounded
+   `purge_server_abuse` in a loop (up to 20 batches of 10,000 rows per run) instead.
+2. The demo store also carried the ad-half tables (`adBeaconNonces`, `adClientDaily`); they were
+   removed with the rest of the ad half.
+
+### Changes
+
+- **`0040_durable_abuse_limits.sql`** (undeployed, reshaped as the brief allows): now holds only
+  `server_abuse_counters`, `consume_server_abuse`, `geocode_provider_gate`, `claim_geocode_provider`
+  and `purge_server_abuse`. Removed: `ad_beacon_nonces`, `ad_client_daily`, `record_ad_impression`, the
+  non-billing `serve_ad` replacement (so `serve_ad` keeps its 0023 bill-on-select behaviour), the
+  `beacon` action, and purge of the ad tables. The caps live in one private SQL function
+  (`server_abuse_budgets`, not executable by API roles) used by both loops of `consume_server_abuse`.
+  Added the D1 buckets `signup_unknown` (50/hour) and `geocode_unknown` (300/min). `purge_server_abuse`
+  now takes a bounded `p_limit` (≤ 10,000) and returns rows deleted.
+- **Defect fixed in the committed 0040 SQL (found by the real-Postgres race test).** `p_now` is taken
+  before the advisory lock, so a request stamped in an older window can be processed after one in a
+  newer window. The upsert then reset the key's window and count. With alternating stamps around a
+  15-minute boundary, two connections were admitted **100 + 100 against a cap of 5**. Now a request
+  never moves a key back to an older window: it is checked and counted against the newest stored
+  window. Demo twin changed to match. After the fix the same race admits ≤ 5 per window.
+- **`src/server/limiters.ts`:** `consumeAbuse`, `limitAuth(kind, email, ip?)` (D1 policy),
+  `limitGeocode`, `claimGeocodeProvider`, `abuseHash`, `createDurableLimiter`. Every failure (RPC
+  error, wrong type, thrown RPC, missing/short `ABUSE_HMAC_SECRET` in Supabase mode, service client not
+  constructible) becomes `DataError("unavailable")`. There is no memory fallback. The admin client is
+  imported statically.
+- **`src/server/http/clientIp.ts`:** `UNKNOWN_CLIENT`, with the D1 policy documented in the code
+  comment. **`src/lib/config.ts`:** `TRUSTED_PROXY_HEADERS` and `trustedProxyRefusal()`, checked in
+  `src/instrumentation.ts` (server start) and `next.config.ts` (Vercel build), like
+  `demoModeRefusal`. `scripts/lib/demo-server.mjs` sets `TRUSTED_PROXY_HEADER=x-real-ip` so the
+  scripted production demo server still starts.
+- **Callers.** No `limiters` compatibility export. `signInAction` calls `limitAuth("signin")` before
+  `signInWithPassword` / demo sign-in, counting every attempt. `signUpAction` calls
+  `limitAuth("signup")`, adding an email key on top of the old per-IP cap. `requestPasswordResetAction`
+  calls `limitAuth("reset")` and keeps the generic answer. `deleteAccount` calls `limitAuth("signin")`
+  before either the Supabase or the demo password check, with ordering otherwise unchanged. The ads
+  route uses `consumeAbuse([{action:"ads", key: abuseHash("ip", ip)}])`; over the cap or unavailable it
+  returns `{ card: null }`. The geocode route applies 30/IP/min before the cache or any provider (429 +
+  `Retry-After`), `claimGeocodeProvider` on the Nominatim path only (busy → 503 + `Retry-After: 2`, no
+  queue; the old process-local `scheduleProviderCall` is removed), and returns 503 when the limiter is
+  unavailable.
+- **Memory limiter:** `createMemoryLimiter` moved from `src/lib/rateLimits.ts` to
+  `src/server/http/memoryLimiter.ts`. Its only user is `client-errors`, which keeps its per-process
+  30/min limiter; with no trusted IP all clients share one bucket there, which can only drop error
+  reports. `SIGN_UP_LIMIT`, `PASSWORD_RESET_LIMIT` and `AD_SERVE_LIMIT` are removed.
+- **Purge:** `purge-analytics` cron calls `purge_server_abuse` (service client), or `purgeDemoAbuse` in
+  demo mode, and reports `abuse` in its JSON.
+- **Demo twin** (`src/lib/data/demo/abuse.ts`, store v16 migration): same caps, windows, wait seconds
+  and out-of-order rule; ad-half fields removed.
+- **Docs:** `.env.example` and README (env table, Rate limits, Operations, Checks/testing) document
+  `ABUSE_HMAC_SECRET`, `TRUSTED_PROXY_HEADER`, the unknown-client policy, the targeted email-lockout
+  tradeoff, and Supabase Auth limits/CAPTCHA as the operational control for direct Auth API calls.
+- **D2 harness:** `pg@8.23.1` and `@types/pg@8.23.1` added as exact devDependencies. The lockfile
+  gained only `pg` and its own transitive packages. `tests/helpers/postgres.ts` accepts only a
+  localhost `TEST_DATABASE_URL` and refuses anything else. Each suite gets a fresh throwaway database
+  with the Supabase stubs (roles made idempotent) and all migrations in order, plus two independent
+  connections; the database is dropped afterwards. Unset → loud skip; unset with `CI` → failure.
+  This satisfies roadmap 4.pre's harness.
+
+### Tests added or changed
+
+- `tests/auth-limits.test.ts` runs the real sign-in, sign-up, reset and deletion actions in Supabase
+  mode against the real 0040 SQL (PGlite as `service_role`), with provider spies.
+- `tests/abuse-routes.test.ts` runs the real `/api/geocode` and `/api/ads` handlers the same way.
+- `tests/abuse-limits.test.ts` covers SQL ↔ `ABUSE_LIMITS` parity, window boundaries with injected
+  `p_now` (60 s, 15 min, 1 h), out-of-order stamps, multi-key check-before-reserve, two separately
+  constructed limiters on one database, grants, HMAC keys, bounded purge, demo parity (scripted
+  side-by-side with SQL), `trustedClientIp` cases and the D1 startup refusal.
+- `tests/abuse-limits-pg.test.ts` runs the two-connection races on real PostgreSQL, plus the harness
+  self-test.
+- Updated: `account`, `moderation-actions`, `ads` (limiter reset only), `rate-limits` (import path),
+  `account-deletion-auth` (request context and an RPC mock that knows the limiter), `auth-redirects`
+  and `email-link` (mock the new `limitAuth`; they test redirects, not the limiter), `cron-auth`
+  (asserts the abuse purge call).
+
+### Acceptance review (brief §5)
+
+| # | Criterion | Evidence / result |
+| --- | --- | --- |
+| 1 | `npm run check` passes | See Commands. Typecheck, lint, full tests and the default (Turbopack) build all passed here; the batch-3 port limitation did not recur. **Pass locally**. |
+| 2 | No `limiters` / `createMemoryLimiter` reachable from auth, account, deletion, ads, geocode | `grep` finds `createMemoryLimiter` only in `memoryLimiter.ts` and `client-errors`; no `limiters` symbol exists. `client-errors` D1 behaviour documented in `clientIp.ts` and `memoryLimiter.ts`. **Pass**. |
+| 3 | Sign-in 5/email and 20/IP per 15 min; attempt 6 makes zero `signInWithPassword` calls; pair independence; email shared across IPs | `auth-limits.test.ts` "sign-in" block (spy asserts zero calls; normalized email; successes count; 20/IP; across IPs; D1 email-only). **Pass locally**. |
+| 4 | Sign-up/reset no looser (5/hour per IP and per email); generic reset answer | `auth-limits.test.ts` "sign-up and reset" block; known vs unknown reset answers are `toEqual`. Sign-up gains a per-email cap (tighter). **Pass locally**. |
+| 5 | Deletion check limited, zero provider calls when denied, ordering unchanged | `auth-limits.test.ts` "account deletion": shares the sign-in budget, 6th makes zero stateless sign-in calls and no RPC other than the limiter; `account-deletion-auth.test.ts` ordering tests still pass. **Pass locally**. |
+| 6 | Geocode: 31st/min/IP → 429, zero fetch; Nominatim ≤ 1 per 1.1 s across two clients; Mapbox not gated | `abuse-routes.test.ts` (route level: 429 + zero fetch; concurrent Nominatim → one fetch, rest 503; Mapbox makes no claim RPC). Cross-connection spacing: real-Postgres race (min gap 1,100 ms). **Pass locally**. |
+| 7 | Ads: 121st/hour/IP → `{card:null}`; billing, pricing, targeting, Plus, organic unchanged | `abuse-routes.test.ts` (120 shown, `serve` called exactly 120 times); existing `ads.test.ts` passes with only the limiter reset changed (`globalThis.__findmaxxingLimiters` → `TRUSTED_PROXY_HEADER` stub); `serve_ad` is untouched from 0023. **Pass locally**. |
+| 8 | Limiter unavailable → controlled answers, provider not reached, no memory fallback | `auth-limits.test.ts` (RPC error, wrong type, thrown RPC, missing/short secret, service client throws) for all four actions; `abuse-routes.test.ts` (geocode 503 with zero fetch, failed claim 503, ads no card and no selection). **Pass locally**. |
+| 9 | Only 64-hex HMAC keys stored | `auth-limits.test.ts` "storage" asserts each row's full text has no email, name or IP fragment; table check constraint; `abuse-limits.test.ts` HMAC test. **Pass locally**. |
+| 10 | Limiter functions denied to anon/authenticated | `abuse-limits.test.ts` exact `has_function_privilege` matrix plus direct-call denials; `function-grants.test.ts` inventory (they are not allowlisted, so it requires both API roles denied) passes. **Pass locally**. |
+| 11 | Demo parity | `abuse-limits.test.ts` replays the same script through SQL and `consumeDemoAbuse` for every action (caps, waits, windows, multi-key, out-of-order); geocode gate and purge twins. **Pass locally**. |
+| 12 | Two-connection races on real Postgres, results recorded | **Ran against PostgreSQL 16.15** (Ubuntu package, local service in this container, `TEST_DATABASE_URL=postgres://postgres:…@localhost:5432/postgres`). Results below. Not skipped. **Pass locally**. |
+
+Race results (`tests/abuse-limits-pg.test.ts`, verbose run after the fix):
+
+- 1,000 alternating `consume_server_abuse` calls (`ads`, cap 120) over two connections: admitted
+  59 + 61 = **120**; stored count 120.
+- Multi-key `signin_ip` (cap 20) + 16 `signin_email` keys (cap 5), 400 calls over two connections:
+  admitted **20**, IP count 20, no email count above 5.
+- Window-boundary race (`signin_email`, cap 5, stamps alternating 12:14:59.999 / 12:15:00.000):
+  window 1 admitted 4, window 2 admitted 3 (each ≤ 5). **Before the fix the same test admitted
+  100 and 100.**
+- `claim_geocode_provider`, two connections for about 3.6 s: 7,385 claims, **4 admitted**, minimum gap
+  between admitted claims **1,100 ms**; simultaneous first claims admitted exactly one.
+- The harness dropped its throwaway database (verified in `pg_database`); no `fm_test_%` databases
+  remained after the runs.
+
+### Commands and results
+
+Environment: this cloud container, Node 22.23.4, PostgreSQL 16.15 installed from the Ubuntu package
+and started locally (`service postgresql start`). No hosted Supabase, Mapbox, Nominatim or Stripe was
+called; providers were spies or mocks.
+
+```sh
+npx vitest run tests/abuse-limits-pg.test.ts --reporter=verbose   # with TEST_DATABASE_URL: 6/6 passed, race lines above
+TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres npm run check
+npm run e2e
+```
+
+- `npm run check` with `TEST_DATABASE_URL` set: **exit 0**. Typecheck passed, lint clean, **66 files /
+  1,079 tests passed, none skipped** (the real-Postgres race suite included), and the default
+  Turbopack `next build` compiled and generated all routes. The batch-3 Turbopack port error did not
+  occur in this environment, so no Webpack fallback was needed.
+- `npm run e2e` (production build, demo mode, `TRUSTED_PROXY_HEADER=x-real-ip` with no such header
+  sent, so every client is "unknown"): **19/19 passed**, including sign-up, password reset, account
+  deletion and "the deleted account cannot sign in".
+- Development failures, recorded faithfully: (1) the first real-Postgres run failed the boundary race
+  (100 + 100 admitted against a cap of 5), which is the 0040 defect fixed above; (2) a route test saw
+  Vitest load the real admin module during concurrent first-time dynamic imports, fixed by importing
+  the admin client statically in `limiters.ts`; (3) the PGlite RPC adapter hung when concurrent calls
+  interleaved `set role`, fixed by queueing calls per database (real concurrency is covered by the
+  Postgres suite).
+- A container worker restart interrupted one verbose Postgres run (exit 137); it was re-run cleanly
+  after restarting PostgreSQL. A WIP checkpoint commit was pushed to the branch at that point.
+
+### Not verified / residual risk
+
+- **Hosted behaviour is unverified.** Apply 0040 to isolated staging and repeat the grant probes and
+  one sign-in/geocode/ads cap through PostgREST before release. Confirm on staging that the chosen
+  `TRUSTED_PROXY_HEADER` (Vercel: `x-real-ip`) is overwritten by the ingress and cannot be set by a
+  client. That is a deployment property the code cannot check.
+- **Deploy prerequisites:** `ABUSE_HMAC_SECRET` (≥ 32 characters) and `TRUSTED_PROXY_HEADER` must be
+  set in every production and preview environment before this ships. Without the header, production
+  will not start and Vercel builds fail, by design (D1). The migration and app versions must roll out
+  together: the new code calls `consume_server_abuse`, which does not exist before 0040.
+- **D1 bucket sizes are my choice, for the owner to confirm:** `signup_unknown` 50/hour and
+  `geocode_unknown` 300/minute. Unknown clients' ad requests share the normal 120/hour key; over it the
+  slot is empty, which suppresses ads rather than spending budget.
+- **Accepted tradeoffs:** the per-email sign-in cap lets someone lock a known email out of sign-in
+  (and deletion) for up to 15 minutes. App throttling does not cover direct calls to the hosted Auth
+  API; Supabase Auth rate limits and CAPTCHA remain the operational control (README).
+- **Geocode UX change:** a Nominatim lookup that misses the 1.1 s slot now gets 503 instead of waiting
+  in a per-process queue. The client shows "no match", and the next keystroke retries. Cached queries
+  still count against the per-IP cap, because the cap is checked before the cache.
+- **Purge cadence:** the cron is daily, so expired counters can accumulate for up to a day. One run
+  deletes at most 200,000 rows; beyond that it catches up on later runs.
+- **Still open for 0.1b:** F2's beacon accounting (GET still bills on selection, unchanged from
+  0023), per-campaign client caps, the lock-then-recompute budget fix, and the concurrent final-budget
+  race. The 0.1b brief is still to be written; 0041 is reserved for it.
+- Self-review only: the diff was re-read against every criterion above. This is **not** an
+  independent review; Codex verification is still to come.
