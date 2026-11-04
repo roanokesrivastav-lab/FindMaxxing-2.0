@@ -1,6 +1,12 @@
 # Roadmap to the 80% beta — vibecoding plan
 
-> **Founder decisions from 2026-11-02 override this file where they disagree:** see [founder-decisions.md](founder-decisions.md). Tickets here have not been rewritten yet.
+> **Founder decisions override this file wherever the two disagree:** see [founder-decisions.md](founder-decisions.md).
+> The tickets below were rewritten on 2026-11-04 to match the decisions recorded on 2026-11-02 (mapping in
+> [Founder decisions applied](#founder-decisions-applied)).
+>
+> **Founder review is not finished.** Atlas Obscura onward in the reference list, and the full feature pass, are
+> still to come, so more tickets may change. Tickets that depend on an open question in founder-decisions.md are
+> marked **BLOCKED** with the question named. This file does not decide those questions.
 
 Source: the competitor research and 80-point implementation plan from 2026-10-30/31 (Corner, Mapstr, Yelp,
 Infatuation, Atlas Obscura, Beli, Airbnb, Apple/Google Maps, Partiful, Luma, Meetup, Strava, Playtomic, Pinterest,
@@ -11,8 +17,49 @@ BeReal, Retro, Arc, Things 3, Linear). This file turns that plan into **tickets 
 > They share it with friends, vote on one of three saved cafés for afterward, and get a walking plan that respects
 > the game's start time. Next week they find the same group again.
 
-Visual direction: **Local editorial** for featured content, **Quiet utility** rows for anything people compare.
+**BLOCKED: open question 2 (group outing scope).** The group outing vote has been pushed until after events, so the
+vote and the walking plan in this journey are on hold. The journey needs rewriting either way. It stays as written
+until the founder answers question 2.
+
+Visual direction: a mix of **Local editorial** and **Quiet utility**, each used in its own scenario. Local editorial
+covers event detail and featured content; Quiet utility covers the Events tab and rows people compare. Surfaces are
+role-based and the personality is photography-led. The current Social journal structure is scrapped.
 Pilot market: one compact Columbus neighborhood. Mobile web first, then native.
+
+---
+
+## Founder decisions applied
+
+Each row of the founder Decided table and where it now lives in this file:
+
+| Decision | Tickets changed |
+| --- | --- |
+| Overall look: Local editorial + Quiet utility in separate scenarios; Social journal scrapped | 1.1, visual direction above |
+| Events tab: Quiet utility, events you usually go to or signed up for | 1.5 |
+| Event detail: Local editorial | 4.1 |
+| Explore map: no list on the map tab; filter tabs such as "15 min away" and "Has room" stay | 2.3 dropped; 2.2, 2.4a, 2.4b |
+| Place page: photo first, scroll for more | 2.5 |
+| Event card: host-toggled Party poster, Readiness row otherwise, no calendar date block | 1.1 (DateBlock removed), 4.1, 4.3, new 4.8 |
+| Group outing vote pushed until after events | M5, 6.0 note, 6.3, 6.4, 8.1c–e, 8.2, 8.3, milestone journey, waves, scoreboard: **blocked on open question 2** |
+| Cards and elevation: role-based surfaces | 1.1 |
+| Social context line: on hold | 1.4 **on hold**; social line removed from 1.5 |
+| Personality: photography-led | 1.1, 2.5 |
+| Mapstr: save first / tags later, what vs why, who recommended, picker, bulk edit, undo, export | 3.1, 3.2, new 3.6 |
+| Yelp: rating with count, recent observation, separate personal fit / friends / community, claims open evidence, sponsored separate | 2.5, 2.6 |
+| Friends' reviews: no summaries; show the actual reviews | 2.5, 2.7 |
+
+New idea (public and private place photos): stub ticket 2.8, **blocked on open questions 3, 4 and 5**.
+
+Other blocked tickets: 1.2 and 1.3 (open question 1, onboarding interest picker) and 2.7 (open question 6).
+Open question 7 is applied as founder-decisions.md records it: no-summaries wins over the Yelp example. Open
+question 8 (Beli) must be checked before the 2.5 friends'-reviews block is briefed.
+
+**Questions raised while rewriting (not decided here, for the founder):**
+- Desktop Explore shows the list as a side drawer beside the map (`src/components/explore/ExploreClient.tsx:357`).
+  Does "no list on the same tab as the map" remove it on desktop too?
+- 2.1 opens a list for several records at the same coordinates. Is that small chooser allowed on the map tab?
+- 1.5: how is "events you usually go to" determined before series follow (4.5b) exists?
+- 4.8: what the Party poster looks like. 3.6: how the pick is made. 3.1: where tag suggestions come from.
 
 ---
 
@@ -137,17 +184,25 @@ explicit listing enables them, required-key checks still apply.
 This is the most important ticket for vibecoding: every later UI prompt points at it, so screens stop drifting.
 ```
 Define in globals.css and src/components/ui:
+- Two treatments, each for its own scenario: Local editorial (event detail, featured content) and Quiet utility
+  (the Events tab, rows people compare). Do not carry over the current Social journal structure; it is scrapped.
+- Photography-led personality: where a photo exists, it leads. PlaceGlyph is the no-photo fallback, and every
+  primitive is still a complete composition without a photo.
 - Three type roles for phone: page title 28–32px (Bricolage), item title 16–18px, body/support 14–16px (Figtree).
 - Spacing scale: 4/8 within an item, 16 between rows, 24–32 between sections. One left alignment edge.
-- Three surfaces with fixed meaning: Raised (floating over the map / selected), Flat row (comparable items),
-  Inset (tinted, for a local tip or note). Remove the default "background+border+radius+shadow on everything" card.
+- Role-based surfaces, each with one fixed meaning: Raised (floating over the map / selected), Flat row
+  (comparable items), Inset (tinted, for a local tip or note). Elevation comes from the role, never decoration.
+  Remove the default "background+border+radius+shadow on everything" card.
 - Primitives: Row (title, meta line, trailing slot), SectionHeader, Surface variants, StatusLabel (text + shape,
-  never color alone), DateBlock (calendar-style), PlaceGlyph (category icon fallback for no-photo cards).
+  never color alone), PlaceGlyph (category icon fallback for no-photo cards). No DateBlock: the calendar date
+  block was rejected. Event cards use the Readiness row (4.3) or a host-toggled Party poster (4.8).
 - A demo-only /dev/ui page showing every primitive with long text, no photo and 200% text.
 Keep the warm paper palette and current fonts. Do not restyle existing screens yet beyond what breaks.
 ```
 
-**1.2 Interest picker rewrite** · M · Lane Map · Needs: 1.1
+**1.2 Interest picker rewrite** · M · Lane Map · Needs: 1.1 · **BLOCKED: open question 1 (onboarding interest picker)**
+The founder didn't decide the picker in the 2026-11-02 pass. Below is the draft from before that session. Don't
+brief or build it until question 1 is answered.
 ```
 In src/components/onboarding/WelcomeFlow.tsx: ask "What would you go out for?" with six recognizable interests as
 text rows with a small thumbnail (PlaceGlyph fallback when no image), visible checkmark state, "More interests",
@@ -156,26 +211,31 @@ Fix the mismatch: the picker allows 12 but the first map uses 8 — whatever the
 honours, or the UI must say which are used. Tests: zero choices, max choices, skip, returning user, keyboard-only.
 ```
 
-**1.3 First-map arrival** · S · Lane Map · Needs: 1.2
+**1.3 First-map arrival** · S · Lane Map · Needs: 1.2 · **BLOCKED: needs 1.2, which waits on open question 1**
 ```
 On the first Explore visit after onboarding, show the selected interests as removable filters with "Show
 everything" beside them. If a selected interest has no nearby results, say so and offer one specific widening
 (bigger area or all interests). Never silently relax filters. Tests: no matches, denied location, all interests.
 ```
 
-**1.4 Truthful People step** · S · Lane Map · Needs: 1.1
+**1.4 Truthful People step** · S · Lane Map · Needs: 1.1 · **ON HOLD: Social context line**
+The founder put the social context line on hold. Neither option looked good, and both were visually boring. Don't
+brief this until a new direction is chosen. Below is the draft from before the decision.
 ```
 The People step already computes shared interests but shows only name/username and can include zero-overlap people.
 Show "Also into coffee and art" only when true; zero-overlap people get a neutral reason or a separate section.
 Suggested / followed / friends render as distinct relationships. Tests: zero matching people, partial overlap.
 ```
 
-**1.5 Quiet-utility event list** · M · Lane Events · Needs: 1.1
+**1.5 Quiet-utility Events tab** · M · Lane Events · Needs: 1.1
 ```
-Rework the Events list into Flat rows grouped under Today / Tomorrow / This weekend / Later. Row: time on a shared
-left edge, title, venue, availability ("4 spots"). Tap expands in place for equipment, meeting point and host note.
-Price, full, and cancelled stay visible without expanding. One attributed social line when the viewer may see it.
+Rework the Events tab in the Quiet utility treatment. It is the main tab for events you usually go to or have
+signed up for. Flat rows grouped under Today / Tomorrow / This weekend / Later. Row: time on a shared left edge,
+title, venue, availability ("4 spots"). Tap expands in place for equipment, meeting point and host note. Price,
+full, and cancelled stay visible without expanding. No social line: the social context line is on hold (see 1.4).
 ```
+Before briefing: the decision doesn't say how "events you usually go to" is determined. Series follow only arrives
+in 4.5b. The brief proposes a rule and the founder approves it.
 
 ### M2 — Explore density and place decisions
 
@@ -186,73 +246,124 @@ bounds. Several records at the exact same coordinates open a list instead of zoo
 from the full authorized matching set; if the query is capped, label the count as partial. Keep keyboard focus
 and reduced-motion behaviour that exists today. Tests: co-located pins, capped query, hidden places excluded.
 ```
+Check before briefing: the founder decided there is no list on the map tab. Confirm that the small chooser for
+co-located records is allowed (see "Questions raised while rewriting").
 
-**2.2 Selection sync and state preservation** · M · Lane Map · Needs: 2.1
+**2.2 Selection and state preservation** · M · Lane Map · Needs: 2.1
 ```
-Selecting a pin highlights its list row and vice versa; the selected pin stays visible and distinct. Opening a
-detail page and coming back restores camera, filters, selection and list scroll (URL state where sensible).
-Tests: reopen after panning, back navigation, deep link with filters.
+There is no list on the same tab as the map (founder decision). Keep the existing separate map and list modes; do
+not add a list panel to the map. Selecting a pin keeps it visible and distinct and shows its preview. Opening a
+detail page and coming back restores camera, filters and selection (URL state where sensible). Switching to the
+separate list and back keeps filters and selection, and the list keeps its scroll position.
+Tests: reopen after panning, back navigation, deep link with filters, switching map ↔ list and back.
 ```
+Open for the founder: desktop currently shows the list as a drawer beside the map. Don't change desktop until the
+founder confirms whether the decision covers it.
 
-**2.3 Mobile bottom panel** · M · Lane Map · Needs: 2.2
-```
-Replace the separate mobile map/list modes with one map plus a panel: compact (selected result or summary),
-half (comparable list with map visible), expanded (full list). Explicit expand/collapse buttons as well as drag.
-Opening the panel never recenters the map or changes the search. Screen-reader navigable list.
-```
+**~~2.3 Mobile bottom panel~~** · **DROPPED as written**
+Founder decision (Explore map): no list on the same tab as the map. This ticket would have replaced the separate
+mobile map/list modes with a map-plus-list panel, so it won't be built. The separate modes stay. The number is
+kept so older references still resolve.
 
-**2.4a Intent filter presentation** · S · Lane Map · Needs: 2.3
+**2.4a Intent filter tabs** · S · Lane Map · Needs: 2.2
 ```
-Top filters are only: When (now / tonight / this weekend), Area (travel limit), Activity — all backed by data that
-exists today. No wall of 20 chips. Empty states offer one specific expansion. Leave a slot for activity-specific
-filters but ship none yet.
+Present the top filters as filter tabs on the map tab. Use only When (now / tonight / this weekend), Area as a
+travel limit ("15 min away") and Activity, all backed by data that exists today. No wall of 20 chips. Filter tabs
+change what the map shows and never open a list on the map tab. Empty states offer one specific expansion. Leave a
+slot for activity-specific filter tabs ("Has room" arrives in 2.4b), but ship none yet.
 ```
 
 **2.4b Data-backed activity filters** · S · Lane Map · Needs: 2.4a, 4.2, 4.3
 ```
-Add "Beginner-friendly" (from 4.2 structured details) and "Has room" / "Needs players" (from 4.3 capacity and
-minimum). Show them only for activity kinds where the data exists. Tests: events without structured details are
-neither matched nor silently excluded without saying so.
+Add filter tabs "Beginner-friendly" (from 4.2 structured details) and "Has room" / "Needs players" (from 4.3
+capacity and minimum). Show them only for activity kinds where the data exists. Tests: events without structured
+details are neither matched nor silently excluded without saying so.
 ```
 
-**2.5 Place decision summary** · M · Lane Place · Needs: 1.1
+**2.5 Place page, photo first** · M · Lane Place · Needs: 1.1
 ```
-Reorder src/app/places/[id]/page.tsx so the first screen answers why go / will it work / what next:
-1 name, category, neighborhood; 2 one "known for" sentence; 3 price, travel time, hours (unknowns said honestly);
-4 rating WITH count, then friend/local evidence kept separate from community rating; 5 best for / less suitable for
-(placeholder until 2.7); 6 one local tip (Inset surface); 7 Save, Add to outing (disabled until M5), Directions.
-Photos and long stories follow. The no-photo version must be a complete composition. No schema changes.
+Rework src/app/places/[id]/page.tsx photo first, per the founder decision (it reverses the old "photos follow"):
+the first screen leads with the place's photo, then name, category and neighborhood. Scroll down for more:
+1 one "known for" sentence; 2 price, travel time, hours (unknowns said honestly); 3 the rating shown next to its
+count; 4 the most relevant recent observation (a dated tip from 2.6 once merged); 5 personal fit, friends and
+community as separate blocks, never blended into one score; 6 friends' reviews: the actual reviews, each
+attributed, shown when you open the place, never a summary of what friends think; 7 one local tip (Inset
+surface); 8 Save, Add to outing (disabled: M5 is blocked on open question 2), Directions.
+Claims open their evidence: any line that asserts something (a rating, "confirmed", a count) opens what it is
+based on. Sponsored content stays visibly separate from these blocks and never replaces a result.
+The no-photo version must be a complete composition (PlaceGlyph fallback). No schema changes.
 ```
+Before briefing:
+- Open question 8: the research didn't document Beli's place page. Check the app before writing the friends'
+  reviews block.
+- Open question 7: the research example "Two friends recommend it for quiet conversation" summarizes friends'
+  opinions. Don't use it. The no-summaries decision wins.
+- The old "best for / less suitable for" slot is removed while 2.7 is blocked (open question 6).
+- Use today's place photos. Public and private photos are 2.8, which is blocked.
 
 **2.6 Tip provenance and freshness** · M · Lane Place · Needs: 2.5 · migration
 ```
 Local tips get: author, created_at, last_confirmed_at, last_confirmed_by, and a kind: lasting story / practical tip
 / temporary condition (temporary ones need expires_at). Add "Still true?" confirm and "Suggest a correction"
-actions. An edit is not a confirmation. Display "Confirmed by Maya, 2 weeks ago". Rate-limit confirmations; tests
-for RLS, expiry hiding, and self-confirmation not counting.
+actions. An edit is not a confirmation. Display "Confirmed by Maya, 2 weeks ago". The claim opens its evidence:
+tapping it shows the tip, who confirmed it and when, and any corrections. Supply 2.5's most relevant recent
+observation: a recent, unexpired, confirmed tip, with its date shown. Rate-limit confirmations; tests for RLS,
+expiry hiding, self-confirmation not counting, and the evidence view respecting hidden or removed tips.
 ```
 
-**2.7 Best for / less suitable for** · M · Lane Place · Needs: 2.6 · migration
+**2.7 Best for / less suitable for** · M · Lane Place · Needs: 2.6 · migration · **BLOCKED: open question 6 (keep as contributor-written advice, or drop it along with friend summaries?)**
+Don't brief this until question 6 is answered. If it is kept, it must follow the no-summaries decision: show
+individual attributed notes and never summarize what friends think. Below is the earlier draft.
 ```
 Contributors can add short attributed occasion notes ("Good for a relaxed second date", "Less suitable for a big
 group that wants to talk") picked from a small occasion list plus free text. Multiple opinions coexist; show the
 top one or two with attribution and "see all". No AI-invented experience. Tests: RLS, moderation hide, demo parity.
 ```
 
+**2.8 Public and private place photos** · stub · Lane Place · Needs: 2.5 · **BLOCKED: open questions 3, 4 and 5**
+This is a founder idea, not yet a buildable ticket. Every place has a public photo pulled from online. The first time
+you go to a place (or a friend has gone), you must take one photo. It becomes your private photo, and you always see
+it unless you choose to change it. Write the prompt only after the founder answers these questions:
+3. Photo source: where do public photos come from, and do its terms let us store and display them?
+4. Photo requirement: what does "required" block, and how do we know someone went? An RSVP or directions tap
+   doesn't prove attendance.
+5. Friend-triggered photos: when a friend went but you didn't, whose photo do you see, and did the friend agree
+   to share it?
+The privacy promise in the preamble applies. Commit 0d9a699 already added private place photos, so start from what
+exists.
+
 ### M3 — Personal library and importing
 
 **3.1 Richer saves** · M · Lane Place · Needs: 2.5 · migration
 ```
-Saved places gain: private note, personal tags, source URL, recommended_by (free text), status want_to_go/visited.
-All owner-only. Show "Only you" next to private fields. Separate "why I saved this" from community info on the
-place page. Tests: another user, outing member (future), share link and recommendations never see these fields.
+Save first, organise later: saving a place is one tap and asks nothing; tags are suggested afterwards and are never
+required to save. Saved places gain: private note, personal tags, source URL, recommended_by (free text, kept with
+the save so you remember who recommended it), status want_to_go/visited. All owner-only. Show "Only you" next to
+private fields. Keep what the place is (community info: category, hours, tips) apart from why you saved it (your
+note, tags, who recommended it), on the place page and in the library. Tests: another user, outing member
+(future), share link and recommendations never see these fields; saving with no tags works; dismissing a tag
+suggestion changes nothing.
 ```
+Before briefing: the Mapstr decision doesn't say where tag suggestions come from. The brief proposes a source for
+founder approval, with no AI-invented content about the place.
 
 **3.2 Library tools** · M · Lane Place · Needs: 3.1
 ```
 In src/app/saved: search, filter by tag/status/category, multi-select bulk edit (tag, move list, mark visited,
-remove) with undo, and export (CSV + JSON, owner only). Big libraries (500 saves) stay fast — paginate.
+remove) with undo, and export (CSV + JSON, owner only). Bulk edit, undo and export are required by the Mapstr
+decision, not optional extras. Every bulk action can be undone. Rows keep what the place is apart from why you
+saved it. Big libraries (500 saves) stay fast — paginate.
 ```
+
+**3.6 Pick somewhere from my saves** · S · Lane Place · Needs: 3.2
+```
+Add "Pick somewhere from my saves" to src/app/saved: the user narrows their own saves with the 3.2 filters (tag,
+status, category) and gets one place to go, with a way to pick again and to open or get directions. Owner-only: it
+reads only the viewer's saves and never exposes private fields to anyone else. If nothing matches, say so and
+offer one specific widening. Tests: empty library, one match, filters with no match, another user cannot call it.
+```
+Before briefing: the decision names the feature but not how the pick is made (for example random, nearest or open
+now). The brief proposes it and the founder approves it.
 
 **3.3 SPEC — place matching and provider** · S · Lane Place · Needs: 0.2
 ```
@@ -289,8 +400,10 @@ the save and note survive. No scraping beyond permitted metadata.
 
 **4.1 Event page hierarchy** · M · Lane Events · Needs: 1.1
 ```
-Reorder src/app/events/[id]/page.tsx: what it is → DateBlock with time and timezone → meeting point and travel →
-host and permitted social proof → cost and availability → requirements → status + one primary action. Add a
+Opening an event shows the Local editorial treatment (founder decision). Reorder src/app/events/[id]/page.tsx: what
+it is → date, time and timezone as plain text (no calendar date block; it was rejected as too lifeless) → meeting
+point and travel → host and permitted social proof → cost and availability → requirements → status + one primary
+action. Add a
 "Your first time?" block (meeting spot, who welcomes you, what to bring, solo welcome) from host-entered fields.
 Fix "free to join" copy showing above a paid ticket action. Status labels: Interested / Going / Awaiting approval /
 Waitlisted. No schema changes beyond the newcomer fields if they need a column (then use the claimed migration).
@@ -330,9 +443,11 @@ them in plain language. Validate in validation.ts. Skill = plain descriptions, n
 
 **4.3 Minimum attendance and readiness** · M · Lane Events · Needs: 4.2 · migration
 ```
-Add min_attendance, decision_deadline, venue_status. Row/card copy can say "8 going · 4 spots open · 2 more
-needed · host confirms by 4 p.m." — each number from its own field. A cron marks sessions below minimum at the
-deadline as not happening and notifies attendees (host can override). Tests: frozen clock around the deadline.
+Add min_attendance, decision_deadline, venue_status. Build the Readiness row: the default event card everywhere
+events are shown as cards, unless the host turned on a Party poster (4.8). It reads "8 going · 4 spots open · 2 more
+needed · host confirms by 4 p.m.", each number from its own field. A cron marks sessions below minimum at the
+deadline as not happening and notifies attendees (host can override). Tests: frozen clock around the deadline;
+the Readiness row with missing fields says nothing false.
 ```
 
 **4.4 Waitlist and offers** · M · Lane Events · Needs: 4.3, 4.pre · migration
@@ -365,9 +480,24 @@ Place page lists upcoming sessions at that venue. Map pin labels change with bro
 select), events tonight = start time, pickup = open spots, dense = count. Labels get richer only on zoom/select.
 ```
 
+**4.8 Party poster event card** · M · Lane Events · Needs: 4.3, 1.1 · migration
+```
+Hosts can turn on a Party poster for an event it suits. The toggle is off by default, and every other event keeps
+the Readiness row (4.3). Add a host-only toggle in EventForm and store it on the event. When it is on, the event's
+card renders as a Party poster. Price, full and cancelled stay visible on it. It works with no photo, long titles,
+larger text and keyboard only. Tests: only a host can toggle it, default off, full and cancelled still shown, demo
+parity.
+```
+Before briefing: the decision doesn't describe what the poster looks like. The brief includes a mock for founder
+approval before any build starts.
+
 ### M5 — Shared outings and group decisions
 
-**5.0 SPEC — outings** · M · Lane Outings · Needs: 3.1
+**BLOCKED: open question 2 (group outing scope).** The founder pushed the group outing vote until after events. For
+now, friends can discuss plans among themselves. It isn't decided whether the push covers only the vote (5.3) or
+all of M5, so no M5 ticket is briefed until question 2 is answered. The tickets below are the earlier drafts.
+
+**5.0 SPEC — outings** · M · Lane Outings · Needs: 3.1 · **BLOCKED (open question 2)**
 ```
 Design (no code): outing (owner, title, timezone, decision_deadline, status draft/deciding/locked), members (role
 host/member, invited/joined/removed), invite tokens (expiry, revocation), shortlist items (place ref + who added +
@@ -380,11 +510,11 @@ the occurrence ID, and its timezone and fixed start time become a locked constra
 happens to the outing when the occurrence moves or is cancelled. Batch plan for 5.1–5.5. Wait for approval.
 ```
 
-**5.1 Outing core and invites** · M · Lane Outings · Needs: 5.0 · migration
-**5.2 Shortlist from library** · M · Lane Outings · Needs: 5.1 · (enables "Add to outing" on place page via flag)
-**5.3 Voting, constraints, deadline and lock** · M · Lane Outings · Needs: 5.2 · migration
-**5.4 Invite landing for signed-out friends + notifications** · M · Lane Outings · Needs: 5.3
-**5.5 Start outing from an event** · S · Lane Outings · Needs: 5.1, 4.5 — button on the event page; the outing
+**5.1 Outing core and invites** · M · Lane Outings · Needs: 5.0 · migration · **BLOCKED (open question 2)**
+**5.2 Shortlist from library** · M · Lane Outings · Needs: 5.1 · (enables "Add to outing" on place page via flag) · **BLOCKED (open question 2)**
+**5.3 Voting, constraints, deadline and lock** · M · Lane Outings · Needs: 5.2 · migration · **BLOCKED (open question 2; the vote itself is pushed until after events)**
+**5.4 Invite landing for signed-out friends + notifications** · M · Lane Outings · Needs: 5.3 · **BLOCKED (open question 2)**
+**5.5 Start outing from an event** · S · Lane Outings · Needs: 5.1, 4.5 · **BLOCKED (open question 2)** — button on the event page; the outing
 carries the occurrence ID, timezone and fixed time; a moved/cancelled occurrence flags the outing.
 
 Prompt for each: `Implement batch <5.x> from the approved outings spec in docs/features/5.0.md.` plus the batch's
@@ -405,6 +535,9 @@ persisted, versioned itinerary owned by the outing (stops, times, fixed anchors 
 legs, validation result, version + who changed it), readable by current members only. Wait for approval.
 ```
 Human decision needed: routing provider.
+Open question 2: the routing adapter and validator design can go ahead. The outing-owned itinerary part waits,
+because it depends on outings. Without outings, the walking plan moves too unless it gets a new entry point, and
+that is not decided.
 
 **6.1 Routing adapter** · M · Lane Trips · Needs: 6.0
 **6.2 Feasibility validator** · M · Lane Trips · Needs: 6.0 (can run parallel to 6.1 — pure TS)
@@ -413,11 +546,13 @@ Required cases: 6 p.m. reservation can't be reached at 6:20 and is reported infe
 across a river; unreachable stop; provider timeout → last valid plan kept; overnight window; DST change; venue
 becomes hidden after planning.
 ```
-**6.3 Planner integration + persisted itinerary** · M · Lane Trips · Needs: 6.1, 6.2, 5.3, 5.5 · migration —
+**6.3 Planner integration + persisted itinerary** · M · Lane Trips · Needs: 6.1, 6.2, 5.3, 5.5 · migration ·
+**BLOCKED: open question 2 (group outing scope; 6.3 depends on 5.3 and 5.5, so the walking plan moves too unless it
+gets a new entry point)** —
 plan from a locked outing including its anchor occurrence; save as a versioned itinerary. Acceptance: a second
 member reopens the same plan after refresh; moving or cancelling the game marks the plan invalid; a removed member
 loses access to it (page and API).
-**6.4 Itinerary editor** · M · Lane Trips · Needs: 6.3 — pin a reservation, reorder, drop optional stop, recalculate,
+**6.4 Itinerary editor** · M · Lane Trips · Needs: 6.3 · **BLOCKED: needs 6.3 (open question 2)** — pin a reservation, reorder, drop optional stop, recalculate,
 clear conflict messages, uncertainty labelled; every save creates a new version.
 
 ### M7 — Local freshness and the return loop
@@ -441,16 +576,18 @@ run on a real iOS device and a real Android device; record per-platform evidence
 | --- | --- | --- | --- |
 | 8.1a | Native Explore: event pins + persistent preview, return-to-map keeps camera | 2.2, 4.7 | Co-located pins, back navigation, denied location |
 | 8.1b | Native event details: join / leave / waitlist / accept offer via the 4.4 RPCs only | 4.4 | Last-seat race with web client, offer expiry while app is backgrounded |
-| 8.1c | Native outing participation: view shortlist, vote, see lock | 5.3 | Removed member loses access after relaunch |
-| 8.1d | Signed-out invite deep links → sign in → land on the outing | 5.4 | Cold launch from link, link for an expired invite |
-| 8.1e | View agreed itinerary (read-only) | 6.3 | Plan invalidated by a moved game shows as invalid |
+| 8.1c | Native outing participation: view shortlist, vote, see lock | 5.3 · **BLOCKED (open question 2)** | Removed member loses access after relaunch |
+| 8.1d | Signed-out invite deep links → sign in → land on the outing | 5.4 · **BLOCKED (open question 2)** | Cold launch from link, link for an expired invite |
+| 8.1e | View agreed itinerary (read-only) | 6.3 · **BLOCKED: needs 6.3 (open question 2)** | Plan invalidated by a moved game shows as invalid |
 
 **8.2 Golden-journey e2e** · M · Lane Core · **start in wave 2** — one e2e script for the milestone journey in demo
-mode. Wave 2 version: onboarding → first map → first save. Extend it as each milestone merges (event join in wave
-4, outing decision in wave 6, itinerary in wave 7).
+mode. Wave 2 version: onboarding → first map → first save, using today's onboarding (the picker rewrite, 1.2, is
+blocked on open question 1). Extend it as each milestone merges (event join in wave 4). The outing decision and
+itinerary steps are **blocked on open question 2**, along with the milestone journey itself.
 **8.3 Pilot metrics** · S · Lane Core · **checkpoint events by wave 2** — instrument time to first useful save
-before checkpoint 1 and shortlist → decision time before checkpoint 2; add the rest (import correction rate,
-sessions cancelled below minimum, offers accepted, repeat outings, self-reported attendance) as features land.
+before checkpoint 1. Shortlist → decision time and repeat outings are **blocked on open question 2**. Add the rest
+(import correction rate, sessions cancelled below minimum, offers accepted, self-reported attendance) as features
+land.
 **8.4a Prepare the release gate** · M · Lane Core — record the candidate commit and actual migration head; rewrite
 docs/beta-gate.md rows for every migration through that head and every roadmap capability; update
 scripts/staging-check.ts for the new features with the `--allow-staging-writes` guard. (Supersedes D1/D2, which
@@ -469,32 +606,36 @@ Lanes own files so Astra and Sol can work at once in separate worktrees:
 | Lane | Owns | Tickets |
 | --- | --- | --- |
 | Core | security limiter callers, globals.css, components/ui, config.ts flags, seed, test harness, e2e, gate | 0.1, 0.3, 1.1, 4.pre, 8.2, 8.3, 8.4a |
-| Map | ExploreClient, MapCanvas, onboarding | 1.2–1.4, 2.1–2.3, 2.4a, 2.4b, 4.7, 7.2 |
-| Place | places/[id], saved/, import, tips | 2.5–2.7, 3.1–3.5, 7.1, 7.3, 7.4 |
-| Events | events/, EventForm, event types, attendee write paths | 1.5, 4.0–4.6 |
-| Outings | new outings area | 5.0–5.5 |
-| Trips | src/server/trips, components/trips, plan/ | 6.0–6.4 |
-| Native | apps/mobile | 8.1a–8.1e |
+| Map | ExploreClient, MapCanvas, onboarding | 1.2–1.4, 2.1, 2.2, 2.4a, 2.4b, 4.7, 7.2 (2.3 dropped) |
+| Place | places/[id], saved/, import, tips | 2.5–2.8, 3.1–3.6, 7.1, 7.3, 7.4 |
+| Events | events/, EventForm, event types, attendee write paths | 1.5, 4.0–4.6, 4.8 |
+| Outings | new outings area | 5.0–5.5 (blocked, open question 2) |
+| Trips | src/server/trips, components/trips, plan/ | 6.0–6.4 (6.3–6.4 blocked, open question 2) |
+| Native | apps/mobile | 8.1a–8.1e (8.1c–e blocked, open question 2) |
 
 Suggested waves with two agents (A = Astra, S = Sol). Spec tickets are cheap — run them early so your approval
-isn't the bottleneck.
+isn't the bottleneck. *Italic* entries are blocked; they keep their slot until the named question is answered,
+and the agent moves on to the next unblocked ticket.
 
 | Wave | Agent A | Agent S | You (non-code) |
 | --- | --- | --- | --- |
-| 0 | 0.1 (blocked until green, then Codex review) | 0.2 (read-only, can start now) | Pick the pilot neighborhood; name the integration owner |
-| 1 | 0.3 → 1.1 | 4.0 SPEC, 3.3 SPEC, 6.0 SPEC | Approve specs; choose place + routing providers; start recruiting 3–5 hosts |
-| 2 | 1.2 → 1.3 → 1.4, 8.2 (first-save e2e), 8.3 (checkpoint 1 events) | 1.5 → 4.1, 4.pre | Mobbin session; **checkpoint 1** with 5 newcomers |
-| 3 | 2.1 → 2.2 → 2.3 → 2.4a | 4.2 → 4.3 | Gather real places + firsthand tips for the pilot |
-| 4 | 2.5 → 2.6 → 2.7, 2.4b | 4.4 → 4.5a → 4.5b → 4.6; extend 8.2 | Hosts create real series in staging |
-| 5 | 3.1 → 3.2 → 5.0 SPEC | 6.1 + 6.2; 8.1a, 8.1b | Approve outings spec |
-| 6 | 3.4a → 3.4b → 3.5 | 5.1 → 5.2 → 5.3 → 5.4 → 5.5; 8.3 (checkpoint 2 events) | **Checkpoint 2**: a real 3-friend outing |
-| 7 | 4.7, 7.1, 7.3, 7.4 | 6.3 → 6.4, 7.2; 8.1c–8.1e; extend 8.2 | Recruit a flash-map curator |
+| 0 | 0.1 (blocked until green, then Codex review) | 0.2 (read-only, can start now) | Pick the pilot neighborhood; name the integration owner; finish founder review (Atlas Obscura onward, feature pass) |
+| 1 | 0.3 → 1.1 | 4.0 SPEC, 3.3 SPEC, 6.0 SPEC (routing part) | Approve specs; choose place + routing providers; start recruiting 3–5 hosts; answer open questions 1–8 |
+| 2 | *1.2 → 1.3 (Q1)*, *1.4 (on hold)*, 8.2 (first-save e2e), 8.3 (checkpoint 1 events) | 1.5 → 4.1, 4.pre | Mobbin session; **checkpoint 1** with 5 newcomers |
+| 3 | 2.1 → 2.2 → 2.4a | 4.2 → 4.3 | Gather real places + firsthand tips for the pilot |
+| 4 | 2.5 → 2.6, *2.7 (Q6)*, 2.4b | 4.4 → 4.5a → 4.5b → 4.6; extend 8.2 | Hosts create real series in staging |
+| 5 | 3.1 → 3.2 → 3.6, *5.0 SPEC (Q2)* | 6.1 + 6.2; 8.1a, 8.1b; 4.8 | *Approve outings spec (Q2)* |
+| 6 | 3.4a → 3.4b → 3.5 | *5.1 → 5.2 → 5.3 → 5.4 → 5.5 (Q2)*; *8.3 checkpoint 2 events (Q2)* | ***Checkpoint 2** (Q2)* |
+| 7 | 4.7, 7.1, 7.3, 7.4 | *6.3 → 6.4 (Q2)*, 7.2; *8.1c–8.1e (Q2)*; extend 8.2 | Recruit a flash-map curator |
 | 8 | 8.4a | 8.4b with you | Device testing; per-platform go/no-go |
+
+Not scheduled: 2.8 (blocked, open questions 3–5).
 
 **Checkpoints** — stop and look at the whole product, not just tickets:
 - After wave 2: can a real newcomer get from onboarding to a first useful save? If not, fix before going further.
 - After wave 6: can a real group agree on and attend an outing? Only then invest heavily in routing polish, live
-  reports and incentives.
+  reports and incentives. **Blocked: open question 2.** Outings are pushed until after events, so this checkpoint
+  needs rewriting once the scope is decided.
 
 ---
 
@@ -521,12 +662,12 @@ recorded — not when code merges.
 
 | Capability | Pts | Tickets | Acceptance test | Required surface | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| Local editorial design and onboarding | 8 | 1.1–1.5 | 8.2 e2e: onboarding (choose / skip) → first map honours choices → first save | Mobile web | ☐ |
-| Explore and place decisions | 12 | 2.1–2.7, 4.7 | Co-located pins, map↔list sync, state restore, no-photo place decision | Mobile web; native 8.1a | ☐ |
-| Personal library and importing | 10 | 3.1–3.5 | Import fixture (duplicate, two branches, unknown, aside) → private reviewed saves; nothing published | Authenticated web | ☐ |
-| Events, sports, recurring groups | 13 | 4.0–4.6, 4.pre | Two-connection last-seat + offer races; cancel one occurrence leaves next intact | Mobile web; native 8.1b | ☐ |
-| Shared outings and group decisions | 12 | 5.0–5.5 | Three users: 5 suggestions → locked choice; removed member / expired invite denied via API | Mobile web; native 8.1c–d | ☐ |
-| Dependable itinerary planning | 10 | 6.0–6.4 | 6 p.m. anchor infeasible at 6:20; second member reopens plan; moved game invalidates it | Mobile web; native 8.1e | ☐ |
+| Design foundation and onboarding (Local editorial + Quiet utility) | 8 | 1.1–1.5 (1.2–1.3 blocked Q1; 1.4 on hold) | 8.2 e2e: onboarding (choose / skip) → first map honours choices → first save. The choose step waits on open question 1 | Mobile web | ☐ |
+| Explore and place decisions | 12 | 2.1, 2.2, 2.4a, 2.4b, 2.5–2.7, 4.7 (2.3 dropped; 2.7 blocked Q6; 2.8 not scored until unblocked) | Co-located pins, pin selection and state restore with no list on the map tab, photo-first place page with a complete no-photo version | Mobile web; native 8.1a | ☐ |
+| Personal library and importing | 10 | 3.1–3.6 | Import fixture (duplicate, two branches, unknown, aside) → private reviewed saves; nothing published | Authenticated web | ☐ |
+| Events, sports, recurring groups | 13 | 4.0–4.6, 4.8, 4.pre | Two-connection last-seat + offer races; cancel one occurrence leaves next intact | Mobile web; native 8.1b | ☐ |
+| Shared outings and group decisions — **BLOCKED (open question 2)** | 12 | 5.0–5.5 | The 12 outing points need rewriting either way; the acceptance test below stays a placeholder until question 2 is answered. Three users: 5 suggestions → locked choice; removed member / expired invite denied via API | Mobile web; native 8.1c–d | ☐ |
+| Dependable itinerary planning | 10 | 6.0–6.4 (6.3–6.4 blocked Q2) | 6 p.m. anchor infeasible at 6:20; second member reopens plan; moved game invalidates it. The last two wait on open question 2 | Mobile web; native 8.1e | ☐ |
 | Local knowledge and return visits | 7 | 7.1–7.4 | Expired report/map hidden from current discovery; declining post-visit prompt never blocks | Mobile web | ☐ |
 | Platform and release readiness | 8 | 0.1, 0.3, 8.2–8.4b | 8.4b staging gate + multi-user checks + device evidence per approved platform | Staging; iOS; Android | ☐ |
 
@@ -538,10 +679,13 @@ pilot shows repeat outings.
 
 ## 8. Human-only work (agents can't do these)
 
+- Finish the founder review (Atlas Obscura onward in the reference list, and the full feature pass), then answer
+  the open questions in [founder-decisions.md](founder-decisions.md) that block 1.2, 1.3, 2.7, 2.8, M5 and 6.3.
 - Choose the place-data provider (3.3) and routing provider (6.0) after reading the specs' terms comparison.
 - Recruit 3–5 dependable hosts and one flash-map curator in the pilot neighborhood.
 - Collect real places and firsthand tips with permission; keep them separate from fictional demo data.
-- Mobbin research: interest pickers, map + bottom sheet, event detail with attendees, no-photo saved places.
+- Mobbin research: interest pickers, map with filter tabs (no list on the map tab), event detail with attendees,
+  no-photo saved places.
   Capture untouched / one selected / next screen for each.
 - Five-person usability tests at the two checkpoints. Record first wrong tap and whether predictions were right.
 - Approve every SPEC before its build tickets start.
