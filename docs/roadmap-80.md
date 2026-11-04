@@ -1,5 +1,7 @@
 # Roadmap to the 80% beta — vibecoding plan
 
+> **Founder decisions from 2026-11-02 override this file where they disagree:** see [founder-decisions.md](founder-decisions.md). Tickets here have not been rewritten yet.
+
 Source: the competitor research and 80-point implementation plan from 2026-10-30/31 (Corner, Mapstr, Yelp,
 Infatuation, Atlas Obscura, Beli, Airbnb, Apple/Google Maps, Partiful, Luma, Meetup, Strava, Playtomic, Pinterest,
 BeReal, Retro, Arc, Things 3, Linear). This file turns that plan into **tickets an agent can finish in one session**.
