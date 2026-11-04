@@ -62,45 +62,5 @@ export function parseRateLimitMessage(message: string): DataError | null {
   return rateLimitError(m[1] as RateLimitAction, Number(m[2]));
 }
 
-// ----------------------------------------------------------------------------
-// In-memory limiter for things the database cannot see: sign-ups and password
-// reset requests, keyed by client IP (and email). It is per process: a deploy
-// with several instances needs a shared store (Redis, Upstash, or a Postgres
-// table) to make these limits global. The database limits above are global.
-// ----------------------------------------------------------------------------
-export interface MemoryLimit {
-  max: number;
-  windowSeconds: number;
-}
-
-export const SIGN_UP_LIMIT: MemoryLimit = { max: 5, windowSeconds: HOUR };
-export const PASSWORD_RESET_LIMIT: MemoryLimit = { max: 5, windowSeconds: HOUR };
-/** Sponsored cards served per IP, so nobody burns an advertiser's budget by reloading. */
-export const AD_SERVE_LIMIT: MemoryLimit = { max: 120, windowSeconds: HOUR };
-
-/** At most this many keys are tracked; the oldest are dropped first. */
-const MAX_KEYS = 10_000;
-
-export function createMemoryLimiter(limit: MemoryLimit, clock: () => number = Date.now) {
-  const hits = new Map<string, { windowStart: number; count: number }>();
-  return {
-    /** Records one attempt; returns the seconds to wait when over the limit, else null. */
-    consume(key: string): number | null {
-      const now = clock();
-      const size = limit.windowSeconds * 1000;
-      const start = Math.floor(now / size) * size;
-      const entry = hits.get(key);
-      if (!entry || entry.windowStart !== start) {
-        hits.delete(key);
-        if (hits.size >= MAX_KEYS) hits.delete(hits.keys().next().value as string);
-        hits.set(key, { windowStart: start, count: 1 });
-        return null;
-      }
-      entry.count += 1;
-      return entry.count > limit.max ? Math.max(1, Math.ceil((start + size - now) / 1000)) : null;
-    },
-    reset() {
-      hits.clear();
-    },
-  };
-}
+// Sign-up, sign-in, password reset, deletion re-authentication, geocode and the ad request cap are
+// limited durably across server instances by src/server/limiters.ts (0040), not here.

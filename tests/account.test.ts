@@ -173,7 +173,6 @@ vi.mock("@/lib/auth/server", () => ({
 
 describe("account actions (demo mode)", async () => {
   const { requestPasswordResetAction, resetPasswordAction, deleteAccountAction } = await import("../src/server/actions/account");
-  const { limiters } = await import("../src/server/limiters");
   const { getDemoStore, verifyPassword } = await import("../src/lib/data/demo/store");
   const form = (fields: Record<string, string>) => {
     const f = new FormData();
@@ -185,7 +184,8 @@ describe("account actions (demo mode)", async () => {
     globalThis.__findmaxxingDemoStore = createIsolatedStore();
     nav.cookies.clear();
     nav.ip = "203.0.113.9";
-    limiters().passwordReset.reset();
+    // The durable limiter's demo counters live in the store replaced above; the ingress header is trusted.
+    vi.stubEnv("TRUSTED_PROXY_HEADER", "x-forwarded-for");
   });
 
   it("answers a reset request the same way whether or not the account exists", async () => {

@@ -23,6 +23,9 @@ export async function startDemoServer({ port = 3210, env = {} } = {}) {
       FINDMAXXING_DEMO_FRESH: "1",
       FINDMAXXING_DEMO_NO_PERSIST: "1",
       FINDMAXXING_ALLOW_DEMO_IN_PRODUCTION: "1",
+      // Production refuses to start without it (D1). Local runs send no such header, so every
+      // request is an "unknown" client and gets the documented unknown-client limits.
+      TRUSTED_PROXY_HEADER: "x-real-ip",
       FINDMAXXING_DEMO_UPLOAD_DIR: uploads,
       ...env,
     },

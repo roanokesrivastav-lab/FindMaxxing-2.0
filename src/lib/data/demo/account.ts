@@ -74,7 +74,6 @@ export function deleteDemoAccount(handle: StoreHandle, userId: string): DeletedO
   // Their campaigns go (with the places and events they promoted).
   const campaigns = new Set(state.adCampaigns.filter((c) => c.advertiserId === userId || (c.placeId && ownPlaces.has(c.placeId)) || (c.eventId && ownEvents.has(c.eventId))).map((c) => c.id));
   state.adCampaigns = state.adCampaigns.filter((c) => !campaigns.has(c.id));
-  state.adClientDaily = state.adClientDaily.filter((i) => !campaigns.has(i.campaignId));
   state.adImpressions = state.adImpressions.filter((i) => !campaigns.has(i.campaignId));
   for (const c of state.adCampaigns) if (c.reviewedBy === userId) c.reviewedBy = null;
   state.eventTags = state.eventTags.filter((t) => !ownEvents.has(t.eventId));

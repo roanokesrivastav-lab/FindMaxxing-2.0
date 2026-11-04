@@ -2,8 +2,8 @@ import type { Instrumentation } from "next";
 
 /** Runs once when a server instance starts. */
 export async function register() {
-  const { demoModeRefusal } = await import("@/lib/config");
-  const refusal = demoModeRefusal();
+  const { demoModeRefusal, trustedProxyRefusal } = await import("@/lib/config");
+  const refusal = demoModeRefusal() ?? trustedProxyRefusal();
   if (refusal) {
     console.error(`\n[findmaxxing] ${refusal}\n`);
     throw new Error(refusal);

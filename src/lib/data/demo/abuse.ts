@@ -1,13 +1,18 @@
 import { ABUSE_LIMITS, type AbuseKey } from "@/lib/abuseLimits";
 import type { StoreHandle } from "./store";
 
-/** Demo-only shared store twin. Production always uses Postgres. */
+/**
+ * Demo-only twin of consume_server_abuse (0040). Same caps, windows and wait seconds (ABUSE_LIMITS);
+ * check every budget before reserving any. Production always uses Postgres.
+ */
 export function consumeDemoAbuse(handle: StoreHandle, keys: AbuseKey[], now = Date.now()): number {
   const { state } = handle;
   state.abuseCounters = state.abuseCounters.filter((c) => c.expires > now);
   const budgets = [...new Map(keys.map((k) => [`${k.action}:${k.key}`, k])).values()].map((k) => {
     const rule = ABUSE_LIMITS[k.action];
-    const start = Math.floor(now / (rule.seconds * 1000)) * rule.seconds * 1000;
+    // As in SQL: a stale-stamped request counts against the newest stored window, never an older one.
+    const latest = Math.max(-Infinity, ...state.abuseCounters.filter((c) => c.action === k.action && c.key === k.key).map((c) => c.start));
+    const start = Math.max(Math.floor(now / (rule.seconds * 1000)) * rule.seconds * 1000, latest);
     const row = state.abuseCounters.find((c) => c.action === k.action && c.key === k.key && c.start === start);
     return { k, rule, start, row, expires: start + rule.seconds * 1000 };
   });
@@ -20,6 +25,7 @@ export function consumeDemoAbuse(handle: StoreHandle, keys: AbuseKey[], now = Da
   handle.persist();
   return 0;
 }
+/** Twin of claim_geocode_provider: at most one Nominatim call per 1.1 s, no queue. */
 export function claimDemoGeocode(handle: StoreHandle, now = Date.now()): boolean {
   const row = handle.state.abuseCounters.find((c) => c.action === "nominatim");
   if (row && row.expires > now) return false;
@@ -28,10 +34,11 @@ export function claimDemoGeocode(handle: StoreHandle, now = Date.now()): boolean
   handle.persist();
   return true;
 }
-export function purgeDemoAbuse(handle: StoreHandle, now = Date.now()) {
-  const day = new Date(now).toISOString().slice(0, 10);
+/** Twin of purge_server_abuse: drops expired counters (SQL: expires_at < now). Returns rows removed. */
+export function purgeDemoAbuse(handle: StoreHandle, now = Date.now()): number {
+  const before = handle.state.abuseCounters.length;
   handle.state.abuseCounters = handle.state.abuseCounters.filter((c) => c.expires >= now);
-  handle.state.adBeaconNonces = handle.state.adBeaconNonces.filter((c) => c.expires >= now);
-  handle.state.adClientDaily = handle.state.adClientDaily.filter((c) => c.day >= day);
-  handle.persist();
+  const removed = before - handle.state.abuseCounters.length;
+  if (removed) handle.persist();
+  return removed;
 }

@@ -33,6 +33,25 @@ export function demoModeRefusal(env: Record<string, string | undefined> = proces
   );
 }
 
+/** Forwarding headers an ingress can be trusted to overwrite with exactly one client address. */
+export const TRUSTED_PROXY_HEADERS = ["x-forwarded-for", "x-real-ip"] as const;
+
+/**
+ * Abuse limits key on the client address, which is only knowable through a trusted ingress header
+ * (src/server/http/clientIp.ts). A production server refuses to start unless TRUSTED_PROXY_HEADER names
+ * one of TRUSTED_PROXY_HEADERS (owner decision D1). Same pattern as demoModeRefusal. Returns the reason
+ * to refuse, or null.
+ */
+export function trustedProxyRefusal(env: Record<string, string | undefined> = process.env): string | null {
+  if (env.NODE_ENV !== "production") return null;
+  if ((TRUSTED_PROXY_HEADERS as readonly string[]).includes(env.TRUSTED_PROXY_HEADER ?? "")) return null;
+  return (
+    `FindMaxxing will not run in production without TRUSTED_PROXY_HEADER. Set it to ${TRUSTED_PROXY_HEADERS.join(" or ")}, ` +
+    "naming a header your ingress overwrites with exactly one client address (never a header clients can set). " +
+    "Abuse limits for sign-in, sign-up, password reset, geocoding and ads depend on it."
+  );
+}
+
 export function getMapboxToken(): string | null {
   return process.env.NEXT_PUBLIC_MAPBOX_TOKEN || null;
 }

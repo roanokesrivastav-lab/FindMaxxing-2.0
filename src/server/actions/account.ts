@@ -6,9 +6,7 @@ import { getDataMode } from "@/lib/config";
 import { getViewer } from "@/lib/auth/server";
 import { DataError } from "@/lib/data/types";
 import { deleteAccountSchema, fieldErrors, newPasswordSchema, passwordResetRequestSchema } from "@/lib/validation/schemas";
-import { waitPhrase } from "@/lib/rateLimits";
-import { clientIp } from "@/server/http/clientIp";
-import { limiters } from "@/server/limiters";
+import { limitAuth } from "@/server/limiters";
 import { completePasswordReset, requestPasswordReset } from "@/server/passwordReset";
 import { WRONG_PASSWORD, deleteAccount } from "@/server/accountDeletion";
 import { fail, str, succeed, toFailure, type ActionResult } from "./result";
@@ -28,10 +26,9 @@ const DEMO_COOKIE_OPTS = {
 export async function requestPasswordResetAction(_prev: ActionResult<{ demoLink: string | null }> | null, formData: FormData): Promise<ActionResult<{ demoLink: string | null }>> {
   const parsed = passwordResetRequestSchema.safeParse({ email: str(formData, "email") });
   if (!parsed.success) return fail("Check the highlighted fields", fieldErrors(parsed.error));
-  const { passwordReset } = limiters();
-  const wait = passwordReset.consume(`ip:${await clientIp()}`) ?? passwordReset.consume(`email:${parsed.data.email}`);
-  if (wait !== null) return fail(`Too many reset requests. Try again in ${waitPhrase(wait)}.`, undefined, "rate_limited");
   try {
+    // Durable per-network and per-email budget, reserved before any email is sent.
+    await limitAuth("reset", parsed.data.email);
     return succeed(await requestPasswordReset(parsed.data.email));
   } catch (err) {
     return toFailure(err);

@@ -6,9 +6,7 @@ import { getDataMode, getSiteUrl } from "@/lib/config";
 import { fieldErrors, signInSchema, signUpSchema } from "@/lib/validation/schemas";
 import { DataError } from "@/lib/data/types";
 import { fail, str, toFailure, type ActionResult } from "./result";
-import { waitPhrase } from "@/lib/rateLimits";
-import { clientIp } from "@/server/http/clientIp";
-import { limiters } from "@/server/limiters";
+import { limitAuth } from "@/server/limiters";
 import { safeAuthNext } from "@/lib/auth/redirect";
 import { EMAIL_LINK_INVALID, parseEmailLink } from "@/lib/auth/emailLink";
 
@@ -26,6 +24,8 @@ export async function signInAction(_prev: ActionResult | null, formData: FormDat
   const next = safeAuthNext(str(formData, "next"));
 
   try {
+    // Reserve capacity before the provider sees the password; every attempt counts, not only failures.
+    await limitAuth("signin", parsed.data.email);
     if (getDataMode() === "supabase") {
       const { createSupabaseServerClient } = await import("@/lib/supabase/server");
       const supabase = await createSupabaseServerClient();
@@ -52,9 +52,12 @@ export async function signUpAction(_prev: ActionResult | null, formData: FormDat
   if (!parsed.success) return fail("Check the highlighted fields", fieldErrors(parsed.error));
   const next = safeAuthNext(str(formData, "next"), "/welcome");
 
-  // Supabase Auth has its own limits (see README); this one holds in both modes.
-  const wait = limiters().signUp.consume(await clientIp());
-  if (wait !== null) return fail(`Too many sign-ups from this network. Try again in ${waitPhrase(wait)}.`, undefined, "rate_limited");
+  // Supabase Auth has its own limits (see README); this durable one holds in both modes and across instances.
+  try {
+    await limitAuth("signup", parsed.data.email);
+  } catch (err) {
+    return toFailure(err);
+  }
 
   try {
     if (getDataMode() === "supabase") {

@@ -1,12 +1,18 @@
 import { beforeEach, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ password: vi.fn(), rpc: vi.fn(), remove: vi.fn(), authDelete: vi.fn() }));
-vi.mock("@/lib/config", () => ({ getDataMode: () => "supabase" }));
+vi.mock("@/lib/config", () => ({ getDataMode: () => "supabase", TRUSTED_PROXY_HEADERS: ["x-forwarded-for", "x-real-ip"] }));
+vi.mock("next/headers", () => ({ headers: async () => new Headers({ "x-real-ip": "203.0.113.5" }) }));
 vi.mock("@/lib/observability", () => ({ reportError: vi.fn(), log: vi.fn() }));
 vi.mock("@/lib/supabase/admin", () => ({
   createSupabaseStatelessClient: () => ({ auth: { signInWithPassword: mocks.password } }),
-  createSupabaseAdminClient: () => ({ rpc: mocks.rpc, storage: { from: () => ({ remove: mocks.remove }) }, auth: { admin: { deleteUser: mocks.authDelete } } }),
+  // The durable limiter's consume_server_abuse admits; every other RPC goes to the deletion mock.
+  createSupabaseAdminClient: () => ({ rpc: (name: string, args: unknown) => name === "consume_server_abuse" ? Promise.resolve({ data: 0, error: null }) : mocks.rpc(name, args), storage: { from: () => ({ remove: mocks.remove }) }, auth: { admin: { deleteUser: mocks.authDelete } } }),
 }));
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.stubEnv("ABUSE_HMAC_SECRET", "test-abuse-secret-at-least-32-characters-long");
+  vi.stubEnv("TRUSTED_PROXY_HEADER", "x-real-ip");
+});
 it("requires the correct password before creating a cleanup job", async () => {
   mocks.password.mockResolvedValueOnce({ error: new Error("wrong password"), data: { user: null } });
   const { deleteAccount, WRONG_PASSWORD } = await import("../src/server/accountDeletion");

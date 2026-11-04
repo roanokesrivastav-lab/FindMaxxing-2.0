@@ -201,10 +201,9 @@ export interface DemoState {
   stripeCustomers: { userId: string; customerId: string }[];
   stripeEvents: { id: string; type: string; objectId: string | null; receivedAt: string;
     state?: "pending" | "processing" | "complete"; token?: string; scope?: string; leasedUntil?: string; outcome?: string }[];
-  /** Mirrors 0023_ads.sql (see ./ads). Impressions are aggregated: no user. */
+  /** Mirrors server_abuse_counters in 0040 (see ./abuse). Keys are HMAC digests, never raw IPs or emails. */
   abuseCounters: { action: string; key: string; start: number; expires: number; count: number }[];
-  adBeaconNonces: { nonce: string; expires: number }[];
-  adClientDaily: { campaignId: string; key: string; day: string; count: number }[];
+  /** Mirrors 0023_ads.sql (see ./ads). Impressions are aggregated: no user. */
   adCampaigns: AdCampaignRow[];
   adImpressions: { campaignId: string; day: string; slot: "places" | "events"; count: number }[];
   /** Mirrors 0031_user_interactions.sql (see ./interactions): private, per user. */
@@ -333,7 +332,7 @@ const COLLECTIONS = [
   "conversations", "conversationMembers", "messages", "blocks",
   "notifications", "notificationSettings", "pushSubscriptions", "pushLog",
   "tickets", "hostAccounts", "entitlements", "stripeCustomers", "stripeEvents",
-  "adCampaigns", "adImpressions", "userInteractions", "placeComparisons", "abuseCounters", "adBeaconNonces", "adClientDaily",
+  "adCampaigns", "adImpressions", "userInteractions", "placeComparisons", "abuseCounters",
 ] as const;
 
 const LEGACY_PLACE_UPLOAD = /^\/api\/uploads\/(places-[^/]+)$/;
@@ -451,10 +450,9 @@ const MIGRATIONS: Record<number, (state: LooseState) => void> = {
       i.propensity ??= null;
     }
   },
+  // v15 → v16: durable abuse counters (0040). The ad beacon tables arrive with 0.1b.
   15(state) {
     state.abuseCounters ??= [];
-    state.adBeaconNonces ??= [];
-    state.adClientDaily ??= [];
   },
   // v14 → v15: head-to-head place comparisons. None answered yet.
   14(state) {
@@ -542,7 +540,7 @@ export function buildSeedState(now = new Date()): DemoState {
     entitlements: [],
     stripeCustomers: [],
     stripeEvents: [],
-    abuseCounters: [], adBeaconNonces: [], adClientDaily: [],
+    abuseCounters: [],
     adCampaigns: [],
     adImpressions: [],
     userInteractions: [],

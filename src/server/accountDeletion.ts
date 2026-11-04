@@ -3,6 +3,7 @@ import { getDataMode } from "@/lib/config";
 import { DataError } from "@/lib/data/types";
 import { log, reportError } from "@/lib/observability";
 import { runAccountDeletion, supabaseDeletionPort } from "./accountDeletionJobs";
+import { limitAuth } from "./limiters";
 
 export const WRONG_PASSWORD = "That password isn't right";
 
@@ -11,6 +12,9 @@ export const WRONG_PASSWORD = "That password isn't right";
  * Billing and stored objects are cleaned before Auth deletion and cascades.
  */
 export async function deleteAccount(userId: string, email: string, password: string): Promise<void> {
+  // The password check shares the sign-in budget (per email, and per IP when known), reserved before
+  // any provider call. Denial throws rate_limited/unavailable before anything else happens.
+  await limitAuth("signin", email);
   if (getDataMode() === "supabase") await deleteSupabaseAccount(userId, email, password);
   else await deleteDemoAccountWithPassword(userId, password);
   // The id (nothing else) is logged so a restore from an older backup can

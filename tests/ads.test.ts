@@ -249,7 +249,7 @@ describe("the ads endpoint and actions", async () => {
   const get = () => GET(new Request(`http://x/api/ads?slot=places&bbox=${bbox}`));
   beforeEach(() => {
     globalThis.__findmaxxingDemoStore = createIsolatedStore();
-    globalThis.__findmaxxingLimiters = undefined;
+    vi.stubEnv("TRUSTED_PROXY_HEADER", "x-forwarded-for");
     vi.stubEnv("NEXT_PUBLIC_FEATURES", "ads,payments");
   });
 

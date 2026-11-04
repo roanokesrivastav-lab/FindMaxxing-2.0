@@ -6,7 +6,8 @@ vi.mock("next/headers", () => ({ cookies: async () => ({ set: mocks.cookie }) })
 vi.mock("@/lib/config", () => ({ getDataMode: () => "demo", getSiteUrl: () => "https://findmaxxing.test" }));
 vi.mock("@/lib/auth/server", () => ({ getViewer: async () => ({ id: "viewer" }) }));
 vi.mock("@/server/http/clientIp", () => ({ clientIp: async () => "test-ip" }));
-vi.mock("@/server/limiters", () => ({ limiters: () => ({ signUp: { consume: () => null } }) }));
+// Redirect behaviour only; the limiter itself is verified in tests/auth-limits.test.ts.
+vi.mock("@/server/limiters", () => ({ limitAuth: async () => {} }));
 vi.mock("@/lib/data/demo/auth", () => ({ DEMO_SESSION_COOKIE: "test-session", demoSignIn: () => ({ userId: "viewer" }), demoSignUp: () => ({ userId: "viewer" }) }));
 
 beforeEach(() => vi.clearAllMocks());

@@ -1,11 +1,12 @@
 import type { NextConfig } from "next";
-import { demoModeRefusal } from "./src/lib/config";
+import { demoModeRefusal, trustedProxyRefusal } from "./src/lib/config";
 
 // On a deploy target, fail the build rather than ship a demo-mode site by
 // accident. Local `next build` (and CI) may build without Supabase; starting
 // that build in production still refuses (src/instrumentation.ts).
 if (process.env.VERCEL) {
-  const refusal = demoModeRefusal({ ...process.env, NODE_ENV: "production" });
+  const env = { ...process.env, NODE_ENV: "production" };
+  const refusal = demoModeRefusal(env) ?? trustedProxyRefusal(env);
   if (refusal) throw new Error(refusal);
 }
 

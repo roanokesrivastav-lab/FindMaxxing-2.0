@@ -8,7 +8,7 @@ import { createIsolatedStore } from "../src/lib/data/demo/store";
 import { createDemoRepository } from "../src/lib/data/demo/repository";
 import type { DataRepository } from "../src/lib/data/repository";
 import { SEED_USERS, stableId } from "../src/lib/seed/seed-data";
-import { SIGN_UP_LIMIT } from "../src/lib/rateLimits";
+import { ABUSE_LIMITS } from "../src/lib/abuseLimits";
 
 const user = (username: string) => SEED_USERS.find((u) => u.username === username)!.id;
 const sam = user("sam_k");
@@ -23,7 +23,7 @@ vi.mock("@/lib/auth/server", () => ({
 }));
 vi.mock("@/lib/data", () => ({ getRepository: async () => ctx.repo }));
 vi.mock("next/headers", () => ({
-  headers: async () => new Headers({ "x-forwarded-for": `${ctx.ip}, 10.0.0.1` }),
+  headers: async () => new Headers({ "x-forwarded-for": ctx.ip }),
   cookies: async () => ({ set: () => {}, get: () => undefined, delete: () => {} }),
 }));
 vi.mock("next/navigation", () => ({
@@ -38,7 +38,6 @@ vi.mock("next/navigation", () => ({
 const { resolveReportsAction, setLocalStatusAction } = await import("../src/server/actions/moderation");
 const { signUpAction } = await import("../src/server/actions/auth");
 const { updateProfileAction } = await import("../src/server/actions/profile");
-const { limiters } = await import("../src/server/limiters");
 
 beforeEach(() => {
   // Sign-up goes through the process-wide demo store; keep it in memory.
@@ -47,7 +46,8 @@ beforeEach(() => {
   ctx.repo = createDemoRepository(createIsolatedStore());
   ctx.ip = "203.0.113.7";
   revalidatePath.mockClear();
-  limiters().signUp.reset();
+  // Sign-up counters live in the demo store replaced above (durable limiter's demo twin).
+  vi.stubEnv("TRUSTED_PROXY_HEADER", "x-forwarded-for");
 });
 
 describe("moderation actions", () => {
@@ -94,7 +94,7 @@ describe("sign-up limit", () => {
   };
 
   it("allows a handful of sign-ups per network per hour, then says how long to wait", async () => {
-    for (let i = 0; i < SIGN_UP_LIMIT.max; i++) {
+    for (let i = 0; i < ABUSE_LIMITS.signup_ip.max; i++) {
       await expect(signUpAction(null, form(i))).rejects.toMatchObject({ digest: expect.stringContaining("NEXT_REDIRECT") });
     }
     const blocked = await signUpAction(null, form(99));

@@ -11,7 +11,8 @@ import { createIsolatedStore } from "../src/lib/data/demo/store";
 import { createDemoRepository } from "../src/lib/data/demo/repository";
 import { DataError } from "../src/lib/data/types";
 import type { DataRepository } from "../src/lib/data/repository";
-import { RATE_LIMITS, createMemoryLimiter, parseRateLimitMessage, waitPhrase, type RateLimitAction } from "../src/lib/rateLimits";
+import { RATE_LIMITS, parseRateLimitMessage, waitPhrase, type RateLimitAction } from "../src/lib/rateLimits";
+import { createMemoryLimiter } from "../src/server/http/memoryLimiter";
 
 const user = (username: string) => SEED_USERS.find((u) => u.username === username)!.id;
 const maya = user("maya_r");
@@ -164,7 +165,7 @@ describe("rate limits in demo mode", () => {
   });
 });
 
-describe("in-memory limiter for sign-ups and password resets", () => {
+describe("per-process memory limiter (client error reports only)", () => {
   it("allows the limit per key and window, then says how long to wait", () => {
     let now = Date.UTC(2026, 0, 1, 10, 0, 0);
     const limiter = createMemoryLimiter({ max: 2, windowSeconds: 3600 }, () => now);

@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { reportError } from "@/lib/observability";
-import { createMemoryLimiter } from "@/lib/rateLimits";
+import { createMemoryLimiter } from "@/server/http/memoryLimiter";
 import { clientIp } from "@/server/http/clientIp";
 
-// A broken page can loop; one client may report at most 30 errors a minute.
+// A broken page can loop; one client may report at most 30 errors a minute. Per process by design
+// (see memoryLimiter.ts); clients with no trusted IP share one bucket, which can only drop reports.
 const limiter = createMemoryLimiter({ max: 30, windowSeconds: 60 });
 
 const reportSchema = z.object({

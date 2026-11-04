@@ -13,7 +13,8 @@ vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: async () => ({ auth: { verifyOtp: mocks.verifyOtp, exchangeCodeForSession: mocks.exchangeCodeForSession } }),
 }));
 vi.mock("@/server/http/clientIp", () => ({ clientIp: async () => "test-ip" }));
-vi.mock("@/server/limiters", () => ({ limiters: () => ({ signUp: { consume: () => null } }) }));
+// Redirect behaviour only; the limiter itself is verified in tests/auth-limits.test.ts.
+vi.mock("@/server/limiters", () => ({ limitAuth: async () => {} }));
 
 import { EMAIL_LINK_INVALID, parseEmailLink } from "../src/lib/auth/emailLink";
 
