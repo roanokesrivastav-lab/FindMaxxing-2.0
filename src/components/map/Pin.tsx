@@ -75,3 +75,45 @@ export function DraftPin() {
     </div>
   );
 }
+
+/**
+ * Cluster (roadmap 2.1): a round count that zooms to its members. The count reads "40+" when the map
+ * query was capped; the label says it is partial.
+ */
+export function ClusterPin({ count, label }: { count: string; label: string }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      data-cluster=""
+      className={cn(PIN_BUTTON, "min-h-11 min-w-11 px-2 rounded-full bg-ink text-white border-[2.5px] border-white font-bold tabular-nums inline-flex items-center justify-center hover:scale-110 focus-visible:scale-110 transition-transform duration-150")}
+      style={{ boxShadow: "var(--shadow-pin)" }}
+    >
+      <span aria-hidden>{count}</span>
+    </button>
+  );
+}
+
+/**
+ * Several records at exactly the same spot (roadmap 2.1): the first one's pin with a count badge.
+ * Opens the selected-pin preview with "1 of N" (no list on the map tab).
+ */
+export function StackPin({ color, categorySlug, count, label, active }: { color: string; categorySlug: string; count: string; label: string; active?: boolean }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={!!active}
+      data-stack=""
+      className={cn(PIN_BUTTON, "relative flex flex-col items-center transition-transform duration-150", active ? "scale-125 z-10" : "hover:scale-110 focus-visible:scale-110")}
+    >
+      <span className="relative">
+        <PinHead color={color} categorySlug={categorySlug} />
+        <span className="absolute -top-2 -right-2 min-w-5 h-5 px-1 rounded-full bg-ink text-white text-xs font-bold tabular-nums border-2 border-white inline-flex items-center justify-center" aria-hidden>
+          {count}
+        </span>
+      </span>
+      <span className="h-1.5 w-3 rounded-full bg-ink/25 blur-[1px] -mt-0.5" aria-hidden />
+    </button>
+  );
+}

@@ -1,7 +1,7 @@
 "use client";
 import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, List, Loader2, LocateFixed, Map as MapIcon, PanelLeftClose, PanelLeftOpen, RotateCw, Search, SlidersHorizontal, X, Compass, Sparkles, CalendarDays, MapPin } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, List, Loader2, LocateFixed, Map as MapIcon, PanelLeftClose, PanelLeftOpen, RotateCw, Search, SlidersHorizontal, X, Compass, Sparkles, CalendarDays, MapPin } from "lucide-react";
 import type { Event, GeoBounds, Place } from "@/lib/data/types";
 import type { MapCanvasHandle } from "@/components/map/MapCanvas";
 import { MapView } from "@/components/map/MapView";
@@ -59,6 +59,7 @@ export function ExploreClient({
   ads = false,
   logImpressions = false,
   pilotFoundation = false,
+  pilotExplore = false,
   arrival = null,
 }: {
   initial: DiscoveryResults;
@@ -74,6 +75,8 @@ export function ExploreClient({
   logImpressions?: boolean;
   /** Roadmap 1.x pilot: interest filters stop at the map's limit instead of being dropped silently. */
   pilotFoundation?: boolean;
+  /** Roadmap 2.x pilot: clustering, co-located stepping preview. Off keeps today's map exactly. */
+  pilotExplore?: boolean;
   /** Roadmap 1.3: the first visit after onboarding, with the server's per-interest counts. Null otherwise. */
   arrival?: InterestPresence[] | null;
 }) {
@@ -99,6 +102,8 @@ export function ExploreClient({
     [folds, setFolds],
   );
   const [selected, setSelected] = useState<Selected>(null);
+  // Roadmap 2.1: records at exactly one spot, stepped through in the preview ("1 of N"), never a list.
+  const [stack, setStack] = useState<{ markers: MapMarker[]; index: number } | null>(null);
   const [view, setView] = useState<ViewState>({ latitude: DEFAULT_CENTER.lat, longitude: DEFAULT_CENTER.lng, zoom: DEFAULT_ZOOM });
   const mapRef = useRef<MapCanvasHandle>(null);
   const geo = useGeolocation(true);
@@ -175,9 +180,8 @@ export function ExploreClient({
   // Pins are compact records; the preview needs the full one. Use it if a list
   // page already has it, otherwise fetch it. Only the latest click wins.
   const lastClick = useRef<string | null>(null);
-  const onMarkerClick = async (m: MapMarker) => {
+  const openMarker = async (m: MapMarker) => {
     lastClick.current = m.id;
-    mapRef.current?.flyTo({ lat: m.lat, lng: m.lng }, Math.max(view.zoom, 14));
     const loaded = m.kind === "place" ? places.find((p) => p.id === m.id) : events.find((e) => e.id === m.id);
     if (loaded) {
       setSelected(m.kind === "place" ? { kind: "place", item: loaded as Place, fromMap: true } : { kind: "event", item: loaded as Event, fromMap: true });
@@ -191,6 +195,27 @@ export function ExploreClient({
     } catch {
       // The pin stays highlighted-free; the viewer can tap again.
     }
+  };
+  const onMarkerClick = (m: MapMarker) => {
+    setStack(null);
+    mapRef.current?.flyTo({ lat: m.lat, lng: m.lng }, Math.max(view.zoom, 14));
+    void openMarker(m);
+  };
+  const onStackClick = (stackMarkers: MapMarker[]) => {
+    setStack({ markers: stackMarkers, index: 0 });
+    mapRef.current?.flyTo({ lat: stackMarkers[0].lat, lng: stackMarkers[0].lng }, Math.max(view.zoom, 14));
+    void openMarker(stackMarkers[0]);
+  };
+  const stepStack = (delta: number) => {
+    if (!stack) return;
+    const index = Math.min(stack.markers.length - 1, Math.max(0, stack.index + delta));
+    if (index === stack.index) return;
+    setStack({ ...stack, index });
+    void openMarker(stack.markers[index]);
+  };
+  const closePreview = () => {
+    setSelected(null);
+    setStack(null);
   };
 
   const clearFilters = () => {
@@ -313,7 +338,9 @@ export function ExploreClient({
           markers={markers}
           activeMarkerId={selected?.item.id ?? null}
           onMarkerClick={onMarkerClick}
-          onMapClick={() => setSelected(null)}
+          onMapClick={closePreview}
+          clustering={pilotExplore ? { partial: truncated } : null}
+          onStackClick={pilotExplore ? onStackClick : undefined}
           userLocation={geo.location}
           padding={{ top: 160, bottom: 220 }}
         />
@@ -372,8 +399,11 @@ export function ExploreClient({
         {selected ? (
           <div className={cn("absolute inset-x-0 z-30 px-4 md:right-4", panelOpen ? "md:left-[420px]" : "md:left-4")} style={{ bottom: "calc(var(--nav-height) + var(--safe-bottom) + 5.25rem)" }}>
             <div className="max-w-md mx-auto md:mx-0">
+              {stack && stack.markers.some((m) => m.id === selected.item.id) ? (
+                <StackStepper index={stack.index} total={stack.markers.length} onStep={stepStack} />
+              ) : null}
               <Impression impression={selected.fromMap ? seen(selected.kind, selected.item.id, "map", null) : null}>
-                <PreviewCard selected={selected} onClose={() => setSelected(null)} distanceMeters={geo.location ? distanceMeters(geo.location, selected.item) : null} />
+                <PreviewCard selected={selected} onClose={closePreview} distanceMeters={geo.location ? distanceMeters(geo.location, selected.item) : null} />
               </Impression>
             </div>
           </div>
@@ -680,6 +710,23 @@ function ResultsSummary({
       </div>
       <button type="button" onClick={onList} className="chip" data-active="true">
         <List size={15} /> List
+      </button>
+    </div>
+  );
+}
+
+/** "1 of N" for records at one spot (roadmap 2.1): previous/next inside the preview, never a list. */
+function StackStepper({ index, total, onStep }: { index: number; total: number; onStep: (delta: number) => void }) {
+  return (
+    <div className="surface-raised rounded-full mb-item mx-auto w-fit flex items-center gap-item px-item py-hair" data-stack-stepper="">
+      <button type="button" onClick={() => onStep(-1)} disabled={index === 0} aria-label="Previous at this spot" className="h-11 w-11 inline-flex items-center justify-center rounded-full disabled:opacity-40">
+        <ChevronLeft size={18} aria-hidden />
+      </button>
+      <span className="type-body font-semibold tabular-nums" aria-live="polite">
+        {index + 1} of {total} here
+      </span>
+      <button type="button" onClick={() => onStep(1)} disabled={index === total - 1} aria-label="Next at this spot" className="h-11 w-11 inline-flex items-center justify-center rounded-full disabled:opacity-40">
+        <ChevronRight size={18} aria-hidden />
       </button>
     </div>
   );
