@@ -69,6 +69,7 @@ import type {
   UserActivity,
 } from "./types";
 import type { PlaceTip, TipEvidence, TipInput, TipStatus } from "@/lib/places/tips";
+import type { OccasionInput, OccasionNote } from "@/lib/places/occasions";
 
 /**
  * The single data-access contract used by pages and server actions.
@@ -161,6 +162,21 @@ export interface DataRepository {
     suggestCorrection(userId: string, tipId: string, body: string): Promise<void>;
     /** Moderators only. */
     setStatus(moderatorId: string, tipId: string, status: TipStatus): Promise<void>;
+  };
+  /**
+   * Best for / less suited for (roadmap 2.7, 0061_place_occasions.sql): attributed
+   * occasion notes, one per author, place, occasion and side. Follows place visibility;
+   * hidden notes are seen only by their author and moderators.
+   */
+  occasions: {
+    /** Published notes on a place the viewer can see, newest first. */
+    list(placeId: string, viewerId?: string | null): Promise<OccasionNote[]>;
+    /** Adds, or updates the note text of, the author's note for that occasion and side. */
+    add(userId: string, placeId: string, input: OccasionInput): Promise<OccasionNote>;
+    /** Author only. */
+    remove(userId: string, noteId: string): Promise<void>;
+    /** Moderators only. */
+    setStatus(moderatorId: string, noteId: string, status: OccasionNote["status"]): Promise<void>;
   };
   events: {
     /** Discovery list: visible published events, soonest first (starts_at, id), in cursor pages. */
