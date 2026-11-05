@@ -48,6 +48,23 @@
   --shadow-float: 0 4px 12px -2px rgba(23, 24, 29, 0.12), 0 20px 40px -16px rgba(23, 24, 29, 0.28);
   --shadow-pin: 0 2px 6px rgba(23, 24, 29, 0.28);
 
+  /* ── Roadmap 1.1: type roles (phone). Three roles only; use them through the
+     .type-* classes below so family, size, leading and weight stay together. ── */
+  --text-page-title: clamp(1.75rem, 1.55rem + 1vw, 2rem);   /* 28–32px, Bricolage */
+  --text-page-title--line-height: 1.15;
+  --text-item-title: clamp(1rem, 0.95rem + 0.25vw, 1.125rem); /* 16–18px, Figtree */
+  --text-item-title--line-height: 1.3;
+  --text-body: clamp(0.875rem, 0.84rem + 0.2vw, 1rem);       /* 14–16px, Figtree */
+  --text-body--line-height: 1.5;
+
+  /* ── Roadmap 1.1: spacing scale. 4/8 within an item, 16 between rows,
+     24–32 between sections, one left edge (the page gutter). ── */
+  --spacing-hair: 0.25rem;                                 /* 4px: within an item */
+  --spacing-item: 0.5rem;                                  /* 8px: within an item */
+  --spacing-row: 1rem;                                     /* 16px: between rows */
+  --spacing-section: clamp(1.5rem, 1.25rem + 1vw, 2rem);   /* 24–32px: between sections */
+  --spacing-edge: 1rem;                                    /* the one left alignment edge */
+
   --animate-rise: rise 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
   --animate-fade: fade 200ms ease-out both;
   --animate-pop: pop 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
@@ -128,6 +145,64 @@ body {
 }
 
 @layer components {
+  /* ── Roadmap 1.1: role-based surfaces. Elevation comes from the role, never
+     decoration. New UI uses <Surface> (src/components/ui/Surface.tsx).
+       raised: floats over the map, or is the selected item. The only shadow.
+       flat:   a comparable item in a list. No box: a hairline between rows.
+       inset:  tinted, for a local tip or a note. No border, no shadow. ── */
+  .surface-raised {
+    background: var(--color-surface);
+    border-radius: var(--radius-2xl);
+    box-shadow: var(--shadow-float);
+  }
+  .surface-flat {
+    background: transparent;
+    border-bottom: 1px solid var(--color-line);
+  }
+  .surface-flat:last-child {
+    border-bottom: 0;
+  }
+  .surface-inset {
+    background: var(--color-paper-2);
+    border-radius: var(--radius-xl);
+  }
+
+  /* ── Roadmap 1.1: type roles. ── */
+  .type-page-title {
+    font-family: var(--font-display);
+    font-size: var(--text-page-title);
+    line-height: var(--text-page-title--line-height);
+    font-weight: 700;
+    letter-spacing: -0.015em;
+  }
+  .type-item-title {
+    font-family: var(--font-sans);
+    font-size: var(--text-item-title);
+    line-height: var(--text-item-title--line-height);
+    font-weight: 600;
+    letter-spacing: 0;
+  }
+  .type-body {
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+  }
+
+  /* ── Roadmap 1.1: treatments, each for its own scenario.
+       editorial: event detail and featured content; photo-led, roomy sections.
+       utility:   the Events tab and rows people compare; dense, flat rows. ── */
+  .treatment-editorial {
+    --section-gap: var(--spacing-section);
+    --row-gap: var(--spacing-row);
+  }
+  .treatment-utility {
+    --section-gap: var(--spacing-section);
+    --row-gap: var(--spacing-item);
+  }
+
+  /* Legacy: the old "background + border + radius + shadow on everything" card.
+     Kept only so existing screens don't restyle before their own tickets (1.1:
+     "do not restyle existing screens yet"). New UI must use a role surface. */
   .card {
     background: var(--color-surface);
     border: 1px solid var(--color-line);
