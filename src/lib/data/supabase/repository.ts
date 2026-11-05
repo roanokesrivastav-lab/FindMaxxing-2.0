@@ -1,5 +1,6 @@
 import type { SupabaseClient, PostgrestError } from "@supabase/supabase-js";
 import type { DataRepository } from "../repository";
+import { DEFAULT_TIME_ZONE } from "@/lib/utils/timezone";
 import {
   DataError,
   MAX_INTERACTION_BATCH,
@@ -133,6 +134,8 @@ interface EventRow {
   capacity: number | null;
   price_cents?: number | null;
   newcomer?: Event["newcomer"];
+  activity_details?: Event["activityDetails"];
+  time_zone?: string;
   status: Event["status"];
   created_at: string;
   creator?: ProfileSummaryRow | null;
@@ -210,6 +213,8 @@ function mapEvent(r: EventRow): Event {
     createdAt: r.created_at,
     priceCents: r.price_cents ?? null,
     newcomer: r.newcomer ?? null,
+    activityDetails: r.activity_details ?? null,
+    timeZone: r.time_zone ?? DEFAULT_TIME_ZONE,
   };
 }
 
@@ -577,6 +582,8 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
   async function writeEventPilotFields(id: string, input: NewEventInput): Promise<void> {
     const patch: Record<string, unknown> = {};
     if (input.newcomer !== undefined) patch.newcomer = input.newcomer;
+    if (input.activityDetails !== undefined) patch.activity_details = input.activityDetails;
+    if (input.timeZone !== undefined) patch.time_zone = input.timeZone;
     if (!Object.keys(patch).length) return;
     unwrap(await supabase.from("events").update(patch).eq("id", id).select("id"));
   }

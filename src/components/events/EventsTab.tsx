@@ -11,6 +11,7 @@ import { useViewerTime } from "@/components/time/ViewerTime";
 import { eventHasEnded, formatInZone } from "@/lib/utils/format";
 import { groupByBucket, type UsualEvent } from "@/lib/events/tab";
 import { EventRow } from "./EventRow";
+import { describeActivity } from "@findmaxxing/shared/events";
 
 const PAGE_SIZE = 30;
 type View = "upcoming" | "past";
@@ -61,6 +62,7 @@ export function EventsTab({
         price={showPrices ? (e.priceCents ?? null) : null}
         going={goingIds.has(e.id)}
         note={u && !goingIds.has(e.id) ? `Like ${u.like.title}, which you went to` : null}
+        details={activityLines(e)}
         impression={feed && logImpressions ? { itemType: "event", itemId: e.id, surface: "list", position: positions.get(e.id) ?? null } : null}
       />
     );
@@ -152,4 +154,14 @@ function PastList({ events }: { events: Event[] }) {
       ))}
     </>
   );
+}
+
+/** 4.2: activity details as plain lines in the expanded row (equipment, format, pace). */
+function activityLines(e: Event) {
+  const lines = describeActivity(e.activityDetails);
+  return lines.length ? (
+    <ul className="flex flex-col gap-hair">
+      {lines.map((l) => <li key={l} className="type-body text-ink-2">{l}</li>)}
+    </ul>
+  ) : null;
 }

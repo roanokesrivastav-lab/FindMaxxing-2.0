@@ -93,6 +93,9 @@ on conflict (id) do nothing;`);
 values (${q(e.id)}, ${q(e.title)}, ${q(e.description)}, ${e.place ? q(seedPlaceByName(e.place).id) : "null"}, ${q(e.locationName)}, ${q(e.address)}, ${e.lat}, ${e.lng}, ${start}, ${end}, ${q(seedUserByName(e.creator).id)}, ${q(e.categorySlug)}, ${n(e.capacity)})
 on conflict (id) do nothing;`);
     for (const t of e.tags) out.push(`insert into public.event_tags (event_id, interest_slug) values (${q(e.id)}, ${q(t)}) on conflict do nothing;`);
+    // Roadmap M4 pilot fields (column grants for owners; the seed writes them directly).
+    if (e.newcomer) out.push(`update public.events set newcomer = ${q(JSON.stringify(e.newcomer))}::jsonb where id = ${q(e.id)};`);
+    if (e.activityDetails) out.push(`update public.events set activity_details = ${q(JSON.stringify(e.activityDetails))}::jsonb where id = ${q(e.id)};`);
   }
   out.push("");
   out.push("-- Attendees (the join trigger blocks past events, so bypass it for historical seed rows)");
