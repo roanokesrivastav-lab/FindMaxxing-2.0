@@ -6,7 +6,10 @@
 import type { DataRepository } from "../repository";
 import { DataError } from "../types";
 import { countTags, normalizeSaveInput, type SaveDetails, type SaveStatus } from "@/lib/places/saves";
-import type { DemoState } from "./store";
+import type { DemoState, PlaceRow } from "./store";
+import type { Place } from "../types";
+import { libraryOps } from "../libraryOps";
+import { libraryOrder } from "@/lib/places/library";
 
 export type SaveRow = DemoState["savedPlaces"][number] & {
   note?: string | null;
@@ -28,9 +31,24 @@ export const toSaveDetails = (r: SaveRow): SaveDetails => ({
   updatedAt: r.updatedAt ?? r.createdAt,
 });
 
-export function createDemoSaves(state: DemoState, h: { persist(): void; assertActive(userId: string): void }): DataRepository["saves"] {
+export function createDemoSaves(
+  state: DemoState,
+  h: { persist(): void; assertActive(userId: string): void; canViewPlace(p: PlaceRow, viewerId: string | null): boolean; toPlace(p: PlaceRow): Place; repo(): DataRepository },
+): DataRepository["saves"] {
   const rows = () => state.savedPlaces as SaveRow[];
   return {
+    ...libraryOps(h.repo),
+    async library(ownerId) {
+      return rows()
+        .filter((s) => s.userId === ownerId)
+        .flatMap((s) => {
+          const p = state.places.find((x) => x.id === s.placeId);
+          if (!p || p.status !== "published" || !h.canViewPlace(p, ownerId)) return [];
+          const listIds = state.savedListItems.filter((i) => i.ownerId === ownerId && i.placeId === p.id).map((i) => i.listId);
+          return [{ place: h.toPlace(p), save: toSaveDetails(s), listIds }];
+        })
+        .sort(libraryOrder);
+    },
     async get(ownerId, placeId) {
       const row = rows().find((s) => s.userId === ownerId && s.placeId === placeId);
       return row ? toSaveDetails(row) : null;
