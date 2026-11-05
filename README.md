@@ -569,6 +569,23 @@ or `all`): `analytics`, `reputation`, `admin`, `recommendations`, `aiRerank`, `t
 The flag is inlined at build time, so changing it needs a rebuild. The database objects for every
 feature exist regardless (migrations always apply); the flags decide what the app uses and shows.
 
+**Pilot flags (roadmap 0.3).** Unfinished roadmap work sits behind one flag per milestone, in the same
+registry: `pilotFoundation` (M1), `pilotExplore` (M2), `pilotLibrary` (M3), `pilotEvents` (M4),
+`pilotOutings` (M5), `pilotItinerary` (M6), `pilotLocal` (M7). A pilot flag is on **only** when it is named
+in `NEXT_PUBLIC_FEATURES` or when the list contains the explicit token `pilot`. **`all` never turns one on**,
+so a deployment using `all` gains no unfinished feature on rebuild. They are on in demo and test
+configuration, never by a code default: `.env.development` (loaded by `next dev` only, never by
+`next build`/`next start`), `scripts/lib/demo-server.mjs` (scripted demo runs) and `vitest.config.mts`.
+A `NEXT_PUBLIC_FEATURES` in your `.env.local` replaces `.env.development`'s, so add `pilot` there if you
+want both. Client components get pilot availability as a prop from a server component (`pilotFlags()`).
+
+**Pilot role accounts.** Demo and local seeds include four fictional accounts for multi-user checks, all
+with the demo password: `host@example.com` (hosts "Thursday pickup basketball"),
+`participant@example.com` (joined it), `outsider@example.com` (no follows, saves or events) and
+`moderator@example.com` (a moderator). The credentials live only in `src/lib/seed/seed-data.ts`
+(`SEED_ROLE_ACCOUNTS`). Every seed record is marked `fictional` or `pilot` (`seedOrigin()`); today all of
+it is fictional, and real pilot data must be marked `pilot`.
+
 ## Analytics
 
 First-party and pseudonymous, with no third-party tracker unless you add one (migration 0015).
