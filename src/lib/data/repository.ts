@@ -68,6 +68,7 @@ import type {
   UpdateProfileInput,
   UserActivity,
 } from "./types";
+import type { PlaceTip, TipEvidence, TipInput, TipStatus } from "@/lib/places/tips";
 
 /**
  * The single data-access contract used by pages and server actions.
@@ -141,6 +142,25 @@ export interface DataRepository {
     nextComparison(userId: string, placeId: string): Promise<ComparisonPrompt | null>;
     /** Records that the viewer preferred winnerId to loserId (both rated by them, one category). Answering a pair again replaces the earlier answer. */
     compare(userId: string, winnerId: string, loserId: string): Promise<void>;
+  };
+  /**
+   * Local tips with provenance (roadmap 2.6, 0060_place_tips.sql). A tip follows
+   * its place's visibility and its own status; hidden or removed tips (and their
+   * confirmations and corrections) are seen only by their author and moderators.
+   */
+  tips: {
+    /** Current tips (published, not expired) the viewer can see, most recently confirmed first. */
+    list(placeId: string, viewerId?: string | null, now?: number): Promise<PlaceTip[]>;
+    /** The tip, every confirmation and every correction; null when the viewer may not see the tip. */
+    evidence(tipId: string, viewerId?: string | null): Promise<TipEvidence | null>;
+    add(userId: string, placeId: string, input: TipInput): Promise<PlaceTip>;
+    /** Author only. Never counts as a confirmation. */
+    edit(userId: string, tipId: string, input: TipInput): Promise<PlaceTip>;
+    /** "Still true?" by anyone but the author (forbidden for the author). Rate-limited. */
+    confirm(userId: string, tipId: string): Promise<void>;
+    suggestCorrection(userId: string, tipId: string, body: string): Promise<void>;
+    /** Moderators only. */
+    setStatus(moderatorId: string, tipId: string, status: TipStatus): Promise<void>;
   };
   events: {
     /** Discovery list: visible published events, soonest first (starts_at, id), in cursor pages. */

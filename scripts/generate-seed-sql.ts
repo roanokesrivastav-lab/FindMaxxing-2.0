@@ -5,6 +5,7 @@
  * The output is idempotent-ish (ON CONFLICT DO NOTHING) and creates demo
  * auth users with the shared password from seed-data (demo only!).
  */
+import { SEED_TIP_CONFIRMATIONS } from "../src/lib/places/tipSeed";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { CATEGORIES, INTERESTS } from "../src/lib/data/taxonomy";
@@ -112,6 +113,12 @@ on conflict (id) do nothing;`);
   out.push("-- Follows");
   for (const f of SEED_FOLLOWS) {
     out.push(`insert into public.follows (follower_id, following_id) values (${q(seedUserByName(f.follower).id)}, ${q(seedUserByName(f.following).id)}) on conflict do nothing;`);
+  }
+  out.push("");
+  out.push("-- Local tips as provenance rows (roadmap 2.6): the same copy 0060 makes for existing places");
+  out.push("insert into public.place_tips (place_id, author_id, body, kind) select p.id, p.creator_id, left(btrim(p.local_tip), 280), 'practical' from public.places p where p.local_tip is not null and btrim(p.local_tip) <> '' and not exists (select 1 from public.place_tips t where t.place_id = p.id);");
+  for (const c of SEED_TIP_CONFIRMATIONS) {
+    out.push(`insert into public.place_tip_confirmations (tip_id, user_id) select t.id, ${q(seedUserByName(c.user).id)} from public.place_tips t where t.place_id = ${q(seedPlaceByName(c.place).id)} and t.author_id is distinct from ${q(seedUserByName(c.user).id)} limit 1;`);
   }
   out.push("");
   out.push("-- Reputation levels from the seeded activity (the hourly cron keeps them current)");

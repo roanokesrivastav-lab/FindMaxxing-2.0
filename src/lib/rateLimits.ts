@@ -5,7 +5,7 @@
  */
 import { DataError } from "@/lib/data/types";
 
-export type RateLimitAction = "places" | "events" | "ratings" | "lists" | "reports" | "photos" | "photo_objects" | "avatars" | "analytics" | "trip_plans" | "messages" | "trip_plans_plus" | "tickets" | "ad_campaigns" | "interactions";
+export type RateLimitAction = "places" | "events" | "ratings" | "lists" | "reports" | "photos" | "photo_objects" | "avatars" | "analytics" | "trip_plans" | "messages" | "trip_plans_plus" | "tickets" | "ad_campaigns" | "interactions" | "tips" | "tip_confirmations";
 
 export interface RateLimitRule {
   max: number;
@@ -33,6 +33,8 @@ export const RATE_LIMITS: Record<RateLimitAction, RateLimitRule> = {
   tickets: { max: 20, windowSeconds: HOUR, label: "ticket checkouts" },
   ad_campaigns: { max: 10, windowSeconds: DAY, label: "ad campaigns" },
   interactions: { max: 600, windowSeconds: HOUR, label: "interaction batches" },
+  tips: { max: 20, windowSeconds: DAY, label: "tips" },
+  tip_confirmations: { max: 60, windowSeconds: DAY, label: "tip confirmations" },
 };
 
 /** Start of the fixed window containing `now`, the same rounding as check_rate_limit(). */
