@@ -33,6 +33,8 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 !.env.example
+# Dev-only pilot flags (roadmap 0.3); holds no secrets.
+!.env.development
 
 # vercel
 .vercel

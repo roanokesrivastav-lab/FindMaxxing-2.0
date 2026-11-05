@@ -13,7 +13,9 @@ export default defineConfig({
     maxWorkers: 4,
     testTimeout: 60_000,
     // Tests must never write the developer's demo store (.data/demo-store.json).
-    env: { FINDMAXXING_DEMO_NO_PERSIST: "1" },
+    // Pilot flags (roadmap 0.3) are on in test configuration: "pilot" enables only those, so every
+    // existing flag stays off unless a test lists it.
+    env: { FINDMAXXING_DEMO_NO_PERSIST: "1", NEXT_PUBLIC_FEATURES: "pilot" },
   },
   resolve: {
     alias: {

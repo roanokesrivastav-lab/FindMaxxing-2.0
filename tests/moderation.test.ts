@@ -61,7 +61,9 @@ describe("moderation in the database", () => {
 
   describe("the moderator role", () => {
     it("is seeded from SQL and reported by is_moderator()", async () => {
-      expect(SEED_MODERATORS).toEqual(["sam_k"]);
+      // sam_k, plus the pilot moderator role account (roadmap 0.3).
+      expect(SEED_MODERATORS).toEqual(["sam_k", "mo_moderator"]);
+      expect((await as<{ ok: boolean }>(user("mo_moderator"), "select public.is_moderator() as ok"))[0].ok).toBe(true);
       expect((await as<{ ok: boolean }>(sam, "select public.is_moderator() as ok"))[0].ok).toBe(true);
       expect((await as<{ ok: boolean }>(maya, "select public.is_moderator() as ok"))[0].ok).toBe(false);
       expect((await as<{ ok: boolean }>(null, "select public.is_moderator() as ok"))[0].ok).toBe(false);
@@ -72,11 +74,12 @@ describe("moderation in the database", () => {
       await expect(as(sam, "insert into public.moderators (user_id) values ($1)", [maya])).rejects.toThrow(/permission denied/);
       await expect(as(sam, "update public.moderators set user_id = $1", [maya])).rejects.toThrow(/permission denied/);
       await expect(as(maya, "delete from public.moderators")).rejects.toThrow(/permission denied/);
-      expect((await db.query("select user_id from public.moderators")).rows).toEqual([{ user_id: sam }]);
+      const seeded = SEED_MODERATORS.map(user).sort().map((user_id) => ({ user_id }));
+      expect((await db.query("select user_id from public.moderators order by user_id")).rows).toEqual(seeded);
     });
 
     it("lets a moderator see the moderator list, and others only themselves", async () => {
-      expect(await as(sam, "select user_id from public.moderators")).toHaveLength(1);
+      expect(await as(sam, "select user_id from public.moderators")).toHaveLength(SEED_MODERATORS.length);
       expect(await as(maya, "select user_id from public.moderators")).toHaveLength(0);
     });
   });

@@ -88,7 +88,38 @@ export const FEATURES = [
   "ads",
   "pwa",
 ] as const;
-export type Feature = (typeof FEATURES)[number];
+export type StandardFeature = (typeof FEATURES)[number];
+
+// ----------------------------------------------------------------------------
+// Pilot flags (roadmap 0.3)
+//
+// Unfinished roadmap work for the pilot, one flag per milestone. Same registry and
+// the same NEXT_PUBLIC_FEATURES variable, but a pilot flag is switched on ONLY by
+// naming it, or by the explicit token "pilot" (all pilot flags). "all" never turns
+// one on, so a deployment that uses NEXT_PUBLIC_FEATURES=all does not gain
+// unfinished features when it is rebuilt.
+//
+// Demo and test configuration turn them on explicitly (never a code default):
+// .env.development (next dev only; never loaded by next build or next start),
+// scripts/lib/demo-server.mjs (scripted demo runs) and vitest.config.mts.
+// ----------------------------------------------------------------------------
+export const PILOT_FEATURES = [
+  "pilotFoundation", // M1: design tokens/primitives, onboarding (1.1–1.5)
+  "pilotExplore", // M2: explore density and place decisions (2.x, 4.7)
+  "pilotLibrary", // M3: personal library and importing (3.x)
+  "pilotEvents", // M4: events, sports and recurring groups (4.x)
+  "pilotOutings", // M5: shared outings and group decisions (5.x)
+  "pilotItinerary", // M6: dependable itinerary (6.x)
+  "pilotLocal", // M7: local freshness and the return loop (7.x)
+] as const;
+export type PilotFeature = (typeof PILOT_FEATURES)[number];
+export type Feature = StandardFeature | PilotFeature;
+/** Turns on every pilot flag. Deliberately separate from "all". */
+export const PILOT_ALL_TOKEN = "pilot";
+
+export function isPilotFeature(feature: string): feature is PilotFeature {
+  return (PILOT_FEATURES as readonly string[]).includes(feature);
+}
 
 /** Server-side env vars a feature cannot work without. */
 const requiredKeys: Partial<Record<Feature, string[]>> = {
@@ -105,11 +136,23 @@ function listedFeatures(env: Record<string, string | undefined>): Set<string> {
  * Whether a feature is switched on. On the server this also checks the keys
  * it needs; client components get the answer as a prop from a server
  * component rather than calling this (secret keys are not visible there).
+ * Pilot flags ignore "all" (see PILOT_FEATURES).
  */
 export function featureEnabled(feature: Feature, env: Record<string, string | undefined> = process.env): boolean {
   const listed = listedFeatures(env);
-  if (!listed.has("all") && !listed.has(feature)) return false;
+  const on = isPilotFeature(feature)
+    ? listed.has(feature) || listed.has(PILOT_ALL_TOKEN)
+    : listed.has("all") || listed.has(feature);
+  if (!on) return false;
   return (requiredKeys[feature] ?? []).every((key) => !!env[key]);
+}
+
+/**
+ * Resolved pilot availability, computed on the server and passed to client
+ * components as a prop (they must not call featureEnabled themselves).
+ */
+export function pilotFlags(env: Record<string, string | undefined> = process.env): Record<PilotFeature, boolean> {
+  return Object.fromEntries(PILOT_FEATURES.map((f) => [f, featureEnabled(f, env)])) as Record<PilotFeature, boolean>;
 }
 
 /** Push is a global opt-in; browser credentials do not gate Expo devices. */

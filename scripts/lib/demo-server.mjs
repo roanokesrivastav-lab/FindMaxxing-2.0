@@ -28,6 +28,8 @@ export async function startDemoServer({ port = 3210, env = {} } = {}) {
       TRUSTED_PROXY_HEADER: "x-real-ip",
       FINDMAXXING_DEMO_UPLOAD_DIR: uploads,
       ...env,
+      // Pilot flags are on in demo configuration (roadmap 0.3), added to whatever the caller lists.
+      NEXT_PUBLIC_FEATURES: [env.NEXT_PUBLIC_FEATURES ?? process.env.NEXT_PUBLIC_FEATURES ?? "", "pilot"].filter(Boolean).join(","),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
