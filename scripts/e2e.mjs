@@ -141,7 +141,8 @@ await step("onboarding: interests, home city, location, people, then the filtere
   await hydrated(page, "button");
   await page.getByRole("button", { name: /Coffee/ }).first().click();
   await page.getByRole("button", { name: /Hiking/ }).first().click();
-  await page.getByRole("button", { name: /^Next$/ }).click();
+  // The pilot picker (roadmap 1.2, on in demo runs) says "Continue"; the flag-off picker says "Next".
+  await page.getByRole("button", { name: /^(Next|Continue)$/ }).click();
   await page.getByLabel("Home city").fill("Columbus");
   await page.getByRole("button", { name: /^Next$/ }).click();
   await page.getByRole("button", { name: /^Not now$/ }).click();

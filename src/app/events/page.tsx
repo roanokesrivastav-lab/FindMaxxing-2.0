@@ -5,14 +5,20 @@ import type { Metadata } from "next";
 import { CalendarPlus } from "lucide-react";
 import { getRepository } from "@/lib/data";
 import { getViewer } from "@/lib/auth/server";
-import { featureEnabled } from "@/lib/config";
+import { featureEnabled, paymentsMode } from "@/lib/config";
 import { EventsClient } from "@/components/events/EventsClient";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { EventsTab } from "@/components/events/EventsTab";
+import { usualEvents } from "@/lib/events/tab";
+import { MAX_PAGE_SIZE } from "@/lib/data/discovery";
+import { getViewerTime } from "@/lib/time/server";
 
 export const metadata: Metadata = { title: "Events" };
 export const dynamic = "force-dynamic";
 
 export default async function EventsPage() {
+  // Roadmap 1.5 (pilotFoundation): the Quiet-utility tab. Off: the screen below, unchanged.
+  if (featureEnabled("pilotFoundation")) return QuietEventsTab();
   const [repo, viewer] = await Promise.all([getRepository(), getViewer()]);
   // The client pages onward and refetches page 1 when a filter changes.
   const initial = await repo.events.search({ limit: 30, viewerId: viewer?.id ?? null });
@@ -37,6 +43,34 @@ export default async function EventsPage() {
       />
       <ForYouRail events={forYou} title="Events for you" />
       <EventsClient initial={initial} joined={joined} signedIn={!!viewer} logImpressions={!!viewer && featureEnabled("recommendations")} />
+    </div>
+  );
+}
+
+async function QuietEventsTab() {
+  const [repo, viewer, time] = await Promise.all([getRepository(), getViewer(), getViewerTime()]);
+  const viewerId = viewer?.id ?? null;
+  const [initial, joined, candidates] = await Promise.all([
+    repo.events.search({ limit: 30, viewerId }),
+    viewer ? repo.events.listJoined(viewer.id, viewer.id) : Promise.resolve([]),
+    // "Usually go to" candidates: the viewer's own visible upcoming feed (first page).
+    viewer ? repo.events.search({ limit: MAX_PAGE_SIZE, viewerId }) : Promise.resolve(null),
+  ]);
+  const usual = candidates ? usualEvents(joined, candidates.items, time.now) : [];
+  return (
+    <div className="treatment-utility max-w-2xl mx-auto px-edge md:px-6 pt-5 md:pt-8 pb-nav md:pb-10">
+      <div className="flex flex-wrap items-end justify-between gap-row">
+        <div className="min-w-0">
+          <h1 className="type-page-title text-ink">Events</h1>
+          <p className="type-body text-ink-2 mt-hair">What you signed up for and what you usually go to.</p>
+        </div>
+        <Link href={viewer ? "/events/new" : "/auth/sign-in?next=/events/new"} className="chip shrink-0" data-active="true">
+          <CalendarPlus size={15} /> Create
+        </Link>
+      </div>
+      <div className="mt-row">
+        <EventsTab initial={initial} joined={joined} usual={usual} signedIn={!!viewer} showPrices={!!paymentsMode()} logImpressions={!!viewer && featureEnabled("recommendations")} />
+      </div>
     </div>
   );
 }
