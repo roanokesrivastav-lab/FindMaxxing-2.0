@@ -5,6 +5,7 @@ import { getRepository } from "@/lib/data";
 import { LOCAL_MIN_ACCOUNT_AGE_DAYS } from "@/lib/data/types";
 import { localEligibleAt } from "@/lib/data/localTier";
 import { WelcomeFlow } from "@/components/onboarding/WelcomeFlow";
+import { featureEnabled } from "@/lib/config";
 
 export const metadata: Metadata = { title: "Welcome" };
 export const dynamic = "force-dynamic";
@@ -22,6 +23,7 @@ export default async function WelcomePage() {
       initialHomeCity={viewer.profile.homeCity}
       localFrom={localEligibleAt(viewer.profile.createdAt)}
       localDays={LOCAL_MIN_ACCOUNT_AGE_DAYS}
+      pilotFoundation={featureEnabled("pilotFoundation")}
       people={people.map((p) => ({ id: p.id, username: p.username, displayName: p.displayName, avatarUrl: p.avatarUrl, interests: p.interests }))}
     />
   );

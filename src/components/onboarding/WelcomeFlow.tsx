@@ -15,6 +15,8 @@ import { finishOnboardingAction, saveOnboardingStepAction } from "@/server/actio
 import { formatInZone } from "@/lib/utils/format";
 import { useViewerTime } from "@/components/time/ViewerTime";
 import { InterestIcon } from "@/components/ui/TaxonomyIcon";
+import { InterestPicker } from "./InterestPicker";
+import { toggleInterest, welcomeMapHref } from "@/lib/onboarding/interests";
 
 interface Person {
   id: string;
@@ -38,6 +40,7 @@ export function WelcomeFlow({
   localFrom,
   localDays,
   people,
+  pilotFoundation = false,
 }: {
   displayName: string;
   initialInterests: string[];
@@ -45,11 +48,14 @@ export function WelcomeFlow({
   localFrom: string;
   localDays: number;
   people: Person[];
+  /** Roadmap 1.2: the thumbnail-row picker. Off keeps the chip picker exactly as before. */
+  pilotFoundation?: boolean;
 }) {
   const [step, setStep] = useState(0);
   const [interests, setInterests] = useState<string[]>(initialInterests);
   const [homeCity, setHomeCity] = useState(initialHomeCity ?? "");
   const [error, setError] = useState<string | null>(null);
+  const [moreInterests, setMoreInterests] = useState(false);
   const [location, setLocation] = useState<"idle" | "asking" | "granted" | "denied">("idle");
   const [pending, start] = useTransition();
   const router = useRouter();
@@ -81,6 +87,10 @@ export function WelcomeFlow({
       const res = await finishOnboardingAction();
       if (!res.ok) {
         setError(res.error);
+        return;
+      }
+      if (pilotFoundation) {
+        router.replace(toMap ? welcomeMapHref(res.data.interests) : "/?welcome=1");
         return;
       }
       const tags = toMap && res.data.interests.length ? `?tags=${encodeURIComponent(res.data.interests.slice(0, 8).join(","))}&welcome=1` : "?welcome=1";
@@ -126,7 +136,22 @@ export function WelcomeFlow({
         </div>
 
         <section className="card p-5">
-          {step === 0 ? (
+          {step === 0 && pilotFoundation ? (
+            <>
+              <p className="type-body text-ink-2">Welcome, {displayName.split(" ")[0]}.</p>
+              <h1 ref={headingRef} tabIndex={-1} className="type-page-title outline-none mt-hair">What would you go out for?</h1>
+              <p className="type-body text-muted mt-item mb-row">The map starts with these, and we suggest people who share them.</p>
+              <InterestPicker
+                selected={interests}
+                expanded={moreInterests}
+                onToggle={(slug) => setInterests((s) => toggleInterest(s, slug))}
+                onExpandedChange={setMoreInterests}
+              />
+              <StepButtons pending={pending} onSkip={next} onNext={() => save({ interests })} nextLabel="Continue" />
+            </>
+          ) : null}
+
+          {step === 0 && !pilotFoundation ? (
             <>
               <h1 ref={headingRef} tabIndex={-1} className="text-2xl font-bold outline-none">Welcome, {displayName.split(" ")[0]}. What are you into?</h1>
               <p className="text-sm text-muted mt-1 mb-4">The map starts filtered to these, and we suggest people who share them.</p>
