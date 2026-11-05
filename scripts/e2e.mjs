@@ -110,7 +110,10 @@ const { ctx, page, problems } = await phone();
 await step("explore loads with labelled, focusable pins", async () => {
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
   await page.locator(".maplibregl-map, .mapboxgl-map").first().waitFor({ timeout: 30_000 });
-  const pin = page.locator('.maplibregl-marker button[aria-label], .mapboxgl-marker button[aria-label]').first();
+  // With pilotExplore (on in demo runs) wide zooms also show cluster and stack buttons (roadmap 2.1);
+  // this step checks a single place or event pin's label, as before.
+  const single = "button[aria-label]:not([data-cluster]):not([data-stack])";
+  const pin = page.locator(`.maplibregl-marker ${single}, .mapboxgl-marker ${single}`).first();
   await pin.waitFor({ timeout: 30_000 });
   const label = await pin.getAttribute("aria-label");
   check("explore loads with labelled, focusable pins", /, .+, (rated|not rated)|event, /.test(label ?? ""), label ?? "");
