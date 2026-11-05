@@ -491,6 +491,53 @@ export const SEED_EVENTS: SeedEvent[] = [
   },
 ];
 
+/**
+ * Roadmap 4.5b: one recurring series so the series page has something in demo mode. Its first
+ * occurrences are seeded with stable ids (both seeds); the generator adds the rest later. Weekly on
+ * `weekday` (ISO, in New York) from the next such day after seed time, at the local start time.
+ */
+export interface SeedSeries {
+  id: string;
+  title: string;
+  description: string;
+  categorySlug: string;
+  locationName: string;
+  address: string | null;
+  lat: number;
+  lng: number;
+  owner: string;
+  backups: string[];
+  /** ISO weekday, 1 = Monday … 7 = Sunday. */
+  weekday: number;
+  startHour: number;
+  startMinute: number;
+  durationMinutes: number;
+  occurrences: number;
+  capacity: number;
+  minAttendance: number;
+  decisionLeadMinutes: number;
+  tags: string[];
+  activityDetails: ActivityDetails;
+  newcomer: EventNewcomer;
+  /** Usernames going to the first occurrence. */
+  firstAttendees: string[];
+  followers: string[];
+}
+export const SEED_SERIES: SeedSeries[] = [
+  {
+    id: stableId("series:Saturday morning pickleball"), title: "Saturday morning pickleball", categorySlug: "pickup-sports",
+    description: "Weekly doubles on the Schiller Park courts. Rotate partners every game, all levels mixed. Paddles in the bin by the gate.",
+    locationName: "Schiller Park courts", address: null, lat: 39.9419, lng: -82.9948, owner: "hana_host", backups: ["marcus"],
+    weekday: 6, startHour: 9, startMinute: 0, durationMinutes: 90, occurrences: 3, capacity: 8, minAttendance: 4, decisionLeadMinutes: 720,
+    tags: ["pickup-sports", "sports"],
+    activityDetails: { kind: "pickleball", level: "casual", play: "doubles", paddlesAvailable: true },
+    newcomer: { meetingSpot: "The bench by court 2", welcomer: "Hana, or Marcus in the red cap", bring: "Water and court shoes", soloWelcome: true },
+    firstAttendees: ["hana_host", "pat_participant"],
+    followers: ["pat_participant"],
+  },
+];
+export const seriesOccurrenceId = (s: SeedSeries, k: number) => stableId(`series:${s.title}:${k}`);
+
 export const SEED_RATINGS: SeedRating[] = [
   { place: "Cannon & Crown", user: "theo", score: 5, note: "The only bar that turns the sound on." },
   { place: "Cannon & Crown", user: "maya_r", score: 4, note: null },

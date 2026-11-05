@@ -61,7 +61,7 @@ export function EventsTab({
         event={e}
         price={showPrices ? (e.priceCents ?? null) : null}
         going={goingIds.has(e.id)}
-        note={u && !goingIds.has(e.id) ? `Like ${u.like.title}, which you went to` : null}
+        note={u && !goingIds.has(e.id) ? (u.followed ? `From ${u.like.title}, which you follow` : `Like ${u.like.title}, which you went to`) : null}
         details={activityLines(e)}
         impression={feed && logImpressions ? { itemType: "event", itemId: e.id, surface: "list", position: positions.get(e.id) ?? null } : null}
       />

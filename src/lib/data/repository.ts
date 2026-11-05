@@ -278,6 +278,8 @@ export interface DataRepository {
     /** The owner adds or removes a backup host. */
     setHost(ownerId: string, seriesId: string, userId: string, on: boolean): Promise<void>;
     follow(userId: string, seriesId: string, on: boolean): Promise<void>;
+    /** 4.5b: ids of the series the user follows (their own rows only). */
+    followed(userId: string): Promise<string[]>;
     /** After the occurrence ends, a host records whether someone came. */
     setAttended(hostId: string, eventId: string, userId: string, attended: boolean): Promise<void>;
     /** Attendance as recorded, for hosts of the occurrence (null = not recorded). */

@@ -44,6 +44,8 @@ export interface EditorialEventProps {
   availability?: ReactNode;
   /** The viewer's participation status text, when it is not plain going (4.4). */
   status?: ReactNode;
+  /** 4.5b: the series this occurrence belongs to. */
+  series?: { id: string; title: string } | null;
 }
 
 /**
@@ -95,6 +97,11 @@ export function EditorialEvent(p: EditorialEventProps) {
             {cancelled ? <StatusLabel tone="negative">Cancelled</StatusLabel> : ended ? <StatusLabel tone="neutral">Ended</StatusLabel> : null}
           </div>
           <h1 className="type-page-title text-ink break-words">{event.title}</h1>
+          {p.series ? (
+            <Link href={`/series/${p.series.id}`} className="type-body font-semibold text-pulse-ink underline underline-offset-4 self-start">
+              Part of a weekly series: {p.series.title}
+            </Link>
+          ) : null}
           <p className="type-body text-ink-2 whitespace-pre-line break-words">{event.description}</p>
           {event.tags.length ? (
             <div className="flex flex-wrap gap-item">

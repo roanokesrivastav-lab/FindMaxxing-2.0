@@ -13,6 +13,8 @@ import { CATEGORIES, INTERESTS } from "../src/lib/data/taxonomy";
 import {
   DEMO_PASSWORD,
   SEED_EVENTS,
+  SEED_SERIES,
+  seriesOccurrenceId,
   SEED_FOLLOWS,
   SEED_MODERATORS,
   SEED_ADMINS,
@@ -99,6 +101,29 @@ on conflict (id) do nothing;`);
     if (e.cardStyle) out.push(`update public.events set card_style = ${q(e.cardStyle)} where id = ${q(e.id)};`);
     if (e.minAttendance) out.push(`update public.events set min_attendance = ${e.minAttendance}${e.decisionLeadMinutes ? `, decision_deadline = starts_at - interval '${e.decisionLeadMinutes} minutes'` : ""} where id = ${q(e.id)};`);
     if (e.activityDetails) out.push(`update public.events set activity_details = ${q(JSON.stringify(e.activityDetails))}::jsonb where id = ${q(e.id)};`);
+  }
+  out.push("");
+  out.push("-- Recurring series (roadmap 4.5b): the series, its hosts, followers and first occurrences (stable ids)");
+  for (const r of SEED_SERIES) {
+    // The next ISO weekday r.weekday after today in New York, plus k weeks (a local date).
+    const today = "(now() at time zone 'America/New_York')::date";
+    const day = (k: number) => `(${today} + ((${r.weekday} - extract(isodow from ${today})::int + 6) % 7 + 1 + ${7 * k}))`;
+    const hhmm = `${String(r.startHour).padStart(2, "0")}:${String(r.startMinute).padStart(2, "0")}`;
+    out.push(`insert into public.event_series (id, owner_id, title, description, category_slug, location_name, address, lat, lng, time_zone, weekdays, start_local, duration_minutes, starts_on, capacity, min_attendance, decision_lead_minutes, activity_details, newcomer)
+values (${q(r.id)}, ${q(seedUserByName(r.owner).id)}, ${q(r.title)}, ${q(r.description)}, ${q(r.categorySlug)}, ${q(r.locationName)}, ${q(r.address)}, ${r.lat}, ${r.lng}, 'America/New_York', array[${r.weekday}], '${hhmm}', ${r.durationMinutes}, ${day(0)}::date, ${r.capacity}, ${r.minAttendance}, ${r.decisionLeadMinutes}, ${q(JSON.stringify(r.activityDetails))}::jsonb, ${q(JSON.stringify(r.newcomer))}::jsonb)
+on conflict (id) do nothing;`);
+    out.push(`insert into public.event_series_hosts (series_id, user_id, role) values (${q(r.id)}, ${q(seedUserByName(r.owner).id)}, 'owner') on conflict do nothing;`);
+    for (const b of r.backups) out.push(`insert into public.event_series_hosts (series_id, user_id, role) values (${q(r.id)}, ${q(seedUserByName(b).id)}, 'backup') on conflict do nothing;`);
+    for (const f of r.followers) out.push(`insert into public.event_series_followers (series_id, user_id) values (${q(r.id)}, ${q(seedUserByName(f).id)}) on conflict do nothing;`);
+    for (const t of r.tags) out.push(`insert into public.event_series_tags (series_id, interest_slug) values (${q(r.id)}, ${q(t)}) on conflict do nothing;`);
+    for (let k = 0; k < r.occurrences; k++) {
+      const start = `public.local_to_instant(${day(k)}::date, '${hhmm}', 'America/New_York')`;
+      out.push(`insert into public.events (id, title, description, location_name, address, lat, lng, starts_at, ends_at, creator_id, category_slug, capacity, activity_details, newcomer, min_attendance, decision_deadline, series_id, series_local_date)
+values (${q(seriesOccurrenceId(r, k))}, ${q(r.title)}, ${q(r.description)}, ${q(r.locationName)}, ${q(r.address)}, ${r.lat}, ${r.lng}, ${start}, ${start} + interval '${r.durationMinutes} minutes', ${q(seedUserByName(r.owner).id)}, ${q(r.categorySlug)}, ${r.capacity}, ${q(JSON.stringify(r.activityDetails))}::jsonb, ${q(JSON.stringify(r.newcomer))}::jsonb, ${r.minAttendance}, ${start} - interval '${r.decisionLeadMinutes} minutes', ${q(r.id)}, ${day(k)}::date)
+on conflict (id) do nothing;`);
+      for (const t of r.tags) out.push(`insert into public.event_tags (event_id, interest_slug) values (${q(seriesOccurrenceId(r, k))}, ${q(t)}) on conflict do nothing;`);
+    }
+    for (const a of r.firstAttendees) out.push(`insert into public.event_attendees (event_id, user_id) values (${q(seriesOccurrenceId(r, 0))}, ${q(seedUserByName(a).id)}) on conflict do nothing;`);
   }
   out.push("");
   out.push("-- Attendees (the join trigger blocks past events, so bypass it for historical seed rows)");

@@ -56,7 +56,10 @@ async function QuietEventsTab() {
     // "Usually go to" candidates: the viewer's own visible upcoming feed (first page).
     viewer ? repo.events.search({ limit: MAX_PAGE_SIZE, viewerId }) : Promise.resolve(null),
   ]);
-  const usual = candidates ? usualEvents(joined, candidates.items, time.now) : [];
+  // 4.5b (pilotEvents): series the viewer follows count as events they usually go to.
+  const followedIds = viewer && featureEnabled("pilotEvents") ? await repo.series.followed(viewer.id) : [];
+  const followed = (await Promise.all(followedIds.map((id) => repo.series.get(id, viewerId)))).filter((s): s is NonNullable<typeof s> => !!s).map((s) => ({ id: s.id, title: s.title }));
+  const usual = candidates ? usualEvents(joined, candidates.items, time.now, followed) : [];
   return (
     <div className="treatment-utility max-w-2xl mx-auto px-edge md:px-6 pt-5 md:pt-8 pb-nav md:pb-10">
       <div className="flex flex-wrap items-end justify-between gap-row">
