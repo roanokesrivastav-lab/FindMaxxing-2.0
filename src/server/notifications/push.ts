@@ -2,7 +2,7 @@ import "server-only";
 import type { DataRepository } from "@/lib/data/repository";
 import type { PushClaim, PushDevice } from "@/lib/data/types";
 import { MAX_PUSHES_PER_DAY, notificationHref, notificationText } from "@/lib/notifications";
-import { getSiteUrl } from "@/lib/config";
+import { featureEnabled, getSiteUrl } from "@/lib/config";
 import { isWebPushEndpoint } from "@/lib/security/pushEndpoints";
 import { webPushAgent } from "./pushAgent";
 
@@ -89,6 +89,8 @@ export function pushPayload(c: PushClaim): string {
 }
 
 export interface PushRunResult {
+  /** 4.3 (pilotEvents): sessions called off at their decision deadline. */
+  notHappening?: number;
   reminders: number;
   claimed: number;
   sent: number;
@@ -103,8 +105,11 @@ export interface PushRunResult {
  * not consumed; they stay pending until ready or normal notification expiry.
  */
 export async function runNotificationJobs(repo: DataRepository, sender: PushSender | null, now = new Date().toISOString()): Promise<PushRunResult> {
+  // 4.3 (pilotEvents): decide sessions at their deadline first, so the "not happening" notices go out
+  // in this run's pushes.
+  const notHappening = featureEnabled("pilotEvents") && typeof repo.events?.decideSessions === "function" ? await repo.events.decideSessions(now) : undefined;
   const reminders = await repo.notifications.scheduleReminders(now);
-  const result: PushRunResult = { reminders, claimed: 0, sent: 0, failed: 0, dropped: 0 };
+  const result: PushRunResult = { ...(notHappening !== undefined ? { notHappening } : {}), reminders, claimed: 0, sent: 0, failed: 0, dropped: 0 };
   if (!sender) return result;
   const kinds = sender.supportedKinds ?? ["web", "expo"];
   if (!kinds.length) return result;

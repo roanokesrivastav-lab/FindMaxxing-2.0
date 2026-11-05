@@ -220,6 +220,10 @@ export interface DataRepository {
     listByCreator(userId: string, viewerId?: string | null): Promise<Event[]>;
     listJoined(userId: string, viewerId?: string | null): Promise<Event[]>;
     listForPlace(placeId: string): Promise<Event[]>;
+    /** 4.3: the creator confirms the session is happening (before its deadline). */
+    confirmSession(userId: string, eventId: string): Promise<void>;
+    /** 4.3 service (cron): sessions past their deadline below minimum become not happening; returns how many. */
+    decideSessions(now: string): Promise<number>;
   };
   tags: {
     /** Visible places and upcoming events per interest slug, over the whole data set. */

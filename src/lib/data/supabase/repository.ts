@@ -1,6 +1,7 @@
 import type { SupabaseClient, PostgrestError } from "@supabase/supabase-js";
 import type { DataRepository } from "../repository";
 import { DEFAULT_TIME_ZONE } from "@/lib/utils/timezone";
+import { featureEnabled } from "@/lib/config";
 import {
   DataError,
   MAX_INTERACTION_BATCH,
@@ -138,6 +139,12 @@ interface EventRow {
   newcomer?: Event["newcomer"];
   activity_details?: Event["activityDetails"];
   time_zone?: string;
+  min_attendance?: number | null;
+  decision_deadline?: string | null;
+  venue_status?: Event["venueStatus"];
+  decision?: Event["decision"];
+  cancel_reason?: Event["cancelReason"];
+  readiness?: Event["readiness"];
   status: Event["status"];
   created_at: string;
   creator?: ProfileSummaryRow | null;
@@ -148,7 +155,11 @@ interface EventRow {
 
 const PROFILE_SUMMARY = "id, username, display_name, avatar_url";
 export const PLACE_SELECT = `*, creator:profiles!places_creator_id_fkey(${PROFILE_SUMMARY}), place_tags(interest_slug), place_photos(id, url, storage_path, uploader_id, sort_order)`;
-const EVENT_SELECT = `*, creator:profiles!events_creator_id_fkey(${PROFILE_SUMMARY}), place:places!events_place_id_fkey(name), event_tags(interest_slug), attendee_count:event_attendees(count)`;
+// 4.3: with pilotEvents on, each event also carries its Readiness numbers (public.event_readiness, a
+// computed column). Read once at start-up: the flag comes from the build/deploy environment.
+const EVENT_SELECT_BASE = `*, creator:profiles!events_creator_id_fkey(${PROFILE_SUMMARY}), place:places!events_place_id_fkey(name), event_tags(interest_slug), attendee_count:event_attendees(count)`;
+// Typed as the base select so supabase-js keeps parsing it; `readiness` is read through EventRow.
+const EVENT_SELECT = `${EVENT_SELECT_BASE}${featureEnabled("pilotEvents") ? ", readiness:event_readiness" : ""}` as typeof EVENT_SELECT_BASE;
 const PROFILE_SELECT = "*, profile_interests(interest_slug)";
 
 function mapSummary(r: ProfileSummaryRow | null | undefined): ProfileSummary | null {
@@ -217,6 +228,12 @@ function mapEvent(r: EventRow): Event {
     newcomer: r.newcomer ?? null,
     activityDetails: r.activity_details ?? null,
     timeZone: r.time_zone ?? DEFAULT_TIME_ZONE,
+    minAttendance: r.min_attendance ?? null,
+    decisionDeadline: r.decision_deadline ?? null,
+    venueStatus: r.venue_status ?? "confirmed",
+    decision: r.decision ?? "open",
+    cancelReason: r.cancel_reason ?? null,
+    ...(r.readiness !== undefined ? { readiness: r.readiness } : {}),
   };
 }
 
@@ -586,6 +603,9 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
     if (input.newcomer !== undefined) patch.newcomer = input.newcomer;
     if (input.activityDetails !== undefined) patch.activity_details = input.activityDetails;
     if (input.timeZone !== undefined) patch.time_zone = input.timeZone;
+    if (input.minAttendance !== undefined) patch.min_attendance = input.minAttendance;
+    if (input.decisionDeadline !== undefined) patch.decision_deadline = input.decisionDeadline;
+    if (input.venueStatus !== undefined) patch.venue_status = input.venueStatus;
     if (!Object.keys(patch).length) return;
     unwrap(await supabase.from("events").update(patch).eq("id", id).select("id"));
   }
@@ -1013,6 +1033,11 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
         if (current.status !== "published" || new Date(current.ends_at ?? current.starts_at).getTime() <= Date.now()) throw new DataError("Only future published events can be edited", "invalid");
         const attendees = unwrap(await supabase.from("event_attendees").select("user_id", { count: "exact" }).eq("event_id", id)) as { user_id: string }[];
         if (input.capacity !== null && input.capacity !== undefined && input.capacity < attendees.length) throw new DataError("Capacity cannot be below the existing attendee count", "invalid");
+        // 4.3: a new start may move before the old deadline (or capacity below the old minimum), so clear
+        // them first; writeEventPilotFields sets the new values after the update.
+        if (input.decisionDeadline !== undefined || input.minAttendance !== undefined) {
+          unwrap(await supabase.from("events").update({ ...(input.decisionDeadline !== undefined ? { decision_deadline: null } : {}), ...(input.minAttendance !== undefined ? { min_attendance: null } : {}) }).eq("id", id).select("id"));
+        }
         unwrap(
           await supabase.rpc("update_event_with_tags", {
             p_id: id,
@@ -1065,6 +1090,12 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
           .filter((e): e is EventRow => !!e && (e.status === "published" || e.status === "cancelled"))
           .sort((a, b) => a.starts_at.localeCompare(b.starts_at))
           .map(mapEvent);
+      },
+      async confirmSession(_userId, eventId) {
+        unwrap(await supabase.rpc("confirm_session", { p_event: eventId }));
+      },
+      async decideSessions(now) {
+        return Number(unwrap(await supabase.rpc("decide_sessions", { p_now: now })));
       },
       async listForPlace(placeId) {
         const cutoff = new Date().toISOString();

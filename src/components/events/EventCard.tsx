@@ -9,6 +9,10 @@ import { useViewerTime } from "@/components/time/ViewerTime";
 import { cn } from "@/lib/utils/cn";
 import { AvatarStack } from "@/components/ui/Avatar";
 import { CategoryIcon } from "@/components/ui/TaxonomyIcon";
+import { ReadinessRow } from "./ReadinessRow";
+import { StatusLabel } from "@/components/ui/StatusLabel";
+import { PlaceGlyph } from "@/components/ui/PlaceGlyph";
+import { formatPrice } from "@/lib/data/payments";
 
 export function EventCard({
   event,
@@ -25,6 +29,8 @@ export function EventCard({
 }) {
   const c = getCategory(event.categorySlug);
   const time = useViewerTime();
+  // 4.3 (pilotEvents): events carry Readiness numbers, and the card is the Readiness row. No date block.
+  if (event.readiness) return <ReadinessCard event={event} compact={compact} className={className} onHover={onHover} />;
   const isPast = eventHasEnded(event.startsAt, event.endsAt, time.now);
   const cancelled = event.status === "cancelled";
   const full = event.capacity !== null && event.attendeeCount >= event.capacity;
@@ -74,6 +80,36 @@ export function EventCard({
           </span>
         </div>
       </div>
+    </Link>
+  );
+}
+
+/**
+ * Roadmap 4.3: the default event card with pilotEvents on. Category, title, when and where as plain
+ * text, then the Readiness row. Price, Full and Cancelled stay visible. No calendar date block (founder
+ * decision); complete without a photo (PlaceGlyph).
+ */
+function ReadinessCard({ event, compact, className, onHover }: { event: Event; compact?: boolean; className?: string; onHover?: () => void }) {
+  const time = useViewerTime();
+  const c = getCategory(event.categorySlug);
+  const isPast = eventHasEnded(event.startsAt, event.endsAt, time.now);
+  const cancelled = event.status === "cancelled";
+  const zone = { timeZone: event.timeZone ?? time.timeZone };
+  return (
+    <Link href={`/events/${event.id}`} onMouseEnter={onHover} data-card="readiness" className={cn("surface-flat flex gap-row py-row rounded-xl hover:bg-paper-2/60", className)}>
+      <PlaceGlyph categorySlug={event.categorySlug} size={compact ? 40 : 56} />
+      <span className="min-w-0 flex-1 flex flex-col gap-hair">
+        <span className="type-body flex flex-wrap items-center gap-x-item text-ink-2">
+          <span className="font-semibold">{c.label}</span>
+          {cancelled ? <StatusLabel tone="negative">Cancelled</StatusLabel> : isPast ? <StatusLabel tone="neutral">Ended</StatusLabel> : null}
+          {event.priceCents ? <span className="font-semibold text-ink">{formatPrice(event.priceCents)}</span> : null}
+        </span>
+        <span className={cn("type-item-title text-ink break-words", compact ? "line-clamp-1" : "line-clamp-2")}>{event.title}</span>
+        <span className="type-body text-ink-2 break-words">
+          {formatEventDate(event.startsAt, zone)} · {formatTimeRange(event.startsAt, event.endsAt, zone)} · {event.locationName}
+        </span>
+        {event.readiness ? <ReadinessRow readiness={event.readiness} timeZone={zone.timeZone} now={time.now} cancelled={cancelled} /> : null}
+      </span>
     </Link>
   );
 }
