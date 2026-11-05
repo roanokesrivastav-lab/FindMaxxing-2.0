@@ -72,6 +72,7 @@ import type { PlaceTip, TipEvidence, TipInput, TipStatus } from "@/lib/places/ti
 import type { OccasionInput, OccasionNote } from "@/lib/places/occasions";
 import type { SaveDetails, SaveDetailsInput } from "@/lib/places/saves";
 import type { BulkOp, LibraryItem, SaveSnapshot } from "@/lib/places/library";
+import type { PersonalPhoto, PersonalPhotoDelivery, PublicPhotoCredit } from "@/lib/places/personalPhotos";
 
 /**
  * The single data-access contract used by pages and server actions.
@@ -202,6 +203,24 @@ export interface DataRepository {
     bulk(ownerId: string, placeIds: string[], op: BulkOp): Promise<SaveSnapshot[]>;
     /** Puts saves back as snapshots describe (undo). Only ever the owner's own saves and lists. */
     restore(ownerId: string, snapshots: SaveSnapshot[]): Promise<void>;
+  };
+  /**
+   * Personal photos (roadmap 2.8, 0063_personal_photos.sql): one per user and place,
+   * owner-only in every method; there is no way to read someone else's.
+   */
+  personalPhotos: {
+    get(ownerId: string, placeId: string): Promise<PersonalPhoto | null>;
+    /** Stores (or replaces) the owner's photo for a place they can see. The image has been through the pipeline. */
+    upload(ownerId: string, placeId: string, image: ImageUpload): Promise<PersonalPhoto>;
+    remove(ownerId: string, placeId: string): Promise<void>;
+    /** The owner's own photo: a short-lived signed URL (Supabase) or bytes (demo); null otherwise. */
+    deliver(ownerId: string, placeId: string): Promise<PersonalPhotoDelivery | null>;
+  };
+  /** The team-chosen public photo of a place, with credit (roadmap 2.8). */
+  publicPhotos: {
+    get(placeId: string, viewerId?: string | null): Promise<PublicPhotoCredit | null>;
+    /** Moderators and admins only; the photo must be one of the place's photos. It becomes the first photo. */
+    set(moderatorId: string, placeId: string, photoId: string, permissionNote: string): Promise<void>;
   };
   events: {
     /** Discovery list: visible published events, soonest first (starts_at, id), in cursor pages. */
