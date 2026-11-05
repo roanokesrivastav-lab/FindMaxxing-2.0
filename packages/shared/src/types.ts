@@ -1,4 +1,4 @@
-import type { ActivityDetails, EventNewcomer } from "./events";
+import type { ActivityDetails, CancelReason, EventNewcomer, EventReadiness, SessionDecision, VenueStatus } from "./events";
 /**
  * Domain types shared by the UI, server actions and both repository
  * implementations (Supabase + demo). All dates are ISO-8601 strings.
@@ -151,6 +151,14 @@ export interface Event {
   activityDetails?: ActivityDetails | null;
   /** 4.2: the event's IANA time zone (backfilled to America/New_York). */
   timeZone?: string;
+  /** 4.3: session rules. */
+  minAttendance?: number | null;
+  decisionDeadline?: string | null;
+  venueStatus?: VenueStatus;
+  decision?: SessionDecision;
+  cancelReason?: CancelReason | null;
+  /** 4.3: the Readiness numbers (public.event_readiness); present only with pilotEvents on. */
+  readiness?: EventReadiness | null;
 }
 
 export interface EventDetail extends Event {
@@ -215,6 +223,10 @@ export interface NewEventInput {
   activityDetails?: ActivityDetails | null;
   /** 4.2 (pilotEvents): the host's IANA zone; undefined leaves it unchanged. */
   timeZone?: string;
+  /** 4.3 (pilotEvents): undefined leaves each unchanged; null clears. */
+  minAttendance?: number | null;
+  decisionDeadline?: string | null;
+  venueStatus?: VenueStatus;
 }
 
 export type UpdateEventInput = NewEventInput;

@@ -1,6 +1,8 @@
 import type { DataRepository } from "../repository";
 import { activityDetailsSchema, type EventNewcomer } from "@findmaxxing/shared/events";
 import { DEFAULT_TIME_ZONE, normalizeTimeZone } from "@/lib/utils/timezone";
+import { computeReadiness } from "@/lib/events/readiness";
+import { featureEnabled } from "@/lib/config";
 import {
   DataError,
   MAX_PLACE_PHOTOS,
@@ -29,7 +31,7 @@ import { createHash } from "node:crypto";
 import { LEVEL_RANK, refreshDemoReputation } from "./reputation";
 import { demoTaste, recommendDemoEvents, recommendDemoPlaces } from "./recommend";
 import { createDemoMessaging, dropEventChats, joinEventChat, leaveEventChat } from "./messaging";
-import { createDemoNotifications, notifyOn } from "./notifications";
+import { createDemoNotifications, notifyDemo, notifyOn } from "./notifications";
 import { createDemoAds } from "./ads";
 import { fitScores } from "@/lib/ranking/bradleyTerry";
 import { nextOpponent } from "@/lib/ranking/nextComparison";
@@ -138,6 +140,13 @@ function applyEventPilotFields(row: EventRow, input: NewEventInput): void {
     if (!normalizeTimeZone(input.timeZone)) throw new DataError("Unknown time zone", "invalid");
     row.timeZone = input.timeZone;
   }
+  if (input.minAttendance !== undefined) row.minAttendance = input.minAttendance;
+  if (input.decisionDeadline !== undefined) row.decisionDeadline = input.decisionDeadline;
+  if (input.venueStatus !== undefined) {
+    if (input.venueStatus !== "confirmed" && input.venueStatus !== "unconfirmed") throw new DataError("Invalid venue status", "invalid");
+    row.venueStatus = input.venueStatus;
+  }
+  checkSessionRules(row);
 }
 
 /** Mirrors public.valid_event_newcomer(). */
@@ -150,6 +159,27 @@ function validNewcomer(n: EventNewcomer | null): boolean {
     if (!(k in limits) || typeof v !== "string" || v.length > limits[k]) return false;
   }
   return true;
+}
+
+/** Mirrors public.event_readiness(e) (visibility is checked by the callers that return the event). */
+export function demoReadiness(state: DemoState, row: EventRow) {
+  const now = Date.now();
+  return computeReadiness({
+    going: state.eventAttendees.filter((a) => a.eventId === row.id).length,
+    held: state.tickets.filter((t) => t.eventId === row.id && t.status === "pending" && Date.parse(t.expiresAt) > now).length,
+    capacity: row.capacity,
+    minAttendance: row.minAttendance ?? null,
+    decisionDeadline: row.decisionDeadline ?? null,
+    decision: row.decision ?? "open",
+    venueStatus: row.venueStatus ?? "confirmed",
+  });
+}
+
+/** Mirrors the 0052 checks: 2 <= min <= capacity; deadline on or before the start. */
+function checkSessionRules(row: EventRow): void {
+  const min = row.minAttendance ?? null;
+  if (min !== null && (!Number.isInteger(min) || min < 2 || min > 5000 || (row.capacity !== null && min > row.capacity))) throw new DataError("Minimum must be at least 2 and no more than capacity", "invalid");
+  if (row.decisionDeadline && Date.parse(row.decisionDeadline) > Date.parse(row.startsAt)) throw new DataError("The decision deadline must be on or before the start", "invalid");
 }
 
 function toEvent(state: DemoState, row: EventRow): Event {
@@ -178,6 +208,13 @@ function toEvent(state: DemoState, row: EventRow): Event {
     newcomer: row.newcomer ?? null,
     activityDetails: row.activityDetails ?? null,
     timeZone: row.timeZone ?? DEFAULT_TIME_ZONE,
+    minAttendance: row.minAttendance ?? null,
+    decisionDeadline: row.decisionDeadline ?? null,
+    venueStatus: row.venueStatus ?? "confirmed",
+    decision: row.decision ?? "open",
+    cancelReason: row.cancelReason ?? null,
+    // 4.3: mirrors the computed column the Supabase repository selects only with pilotEvents on.
+    ...(featureEnabled("pilotEvents") ? { readiness: demoReadiness(state, row) } : {}),
   };
 }
 
@@ -897,6 +934,8 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         if (input.capacity !== null && input.capacity !== undefined && input.capacity < attendeeCount) {
           throw new DataError("capacity cannot be below the existing attendee count", "invalid");
         }
+        // Validate the pilot fields against the new start and capacity before changing anything.
+        applyEventPilotFields({ ...ev, startsAt: input.startsAt, capacity: input.capacity ?? null }, input);
         // Mirrors the trigger's "when or where changed" test (instants, not their spelling).
         const where = (e: EventRow) => JSON.stringify([Date.parse(e.startsAt), e.endsAt ? Date.parse(e.endsAt) : null, e.locationName, e.address, e.lat, e.lng, e.placeId]);
         const before = where(ev);
@@ -990,6 +1029,36 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           .filter((e) => ids.has(e.id) && canViewEvent(state, e, viewer))
           .sort(byStart)
           .map((e) => toEvent(state, e));
+      },
+      async confirmSession(userId, eventId) {
+        assertActive(userId);
+        const ev = state.events.find((e) => e.id === eventId);
+        if (!ev || ev.creatorId !== userId) throw new DataError("You do not own this event", "forbidden");
+        if (ev.status !== "published" || eventEndOrStart(ev) <= Date.now()) throw new DataError("Only future published events can be confirmed", "invalid");
+        if (ev.decision === "happening") return;
+        if (ev.decisionDeadline && Date.parse(ev.decisionDeadline) <= Date.now()) throw new DataError("The decision deadline has passed", "invalid");
+        ev.decision = "happening";
+        persist();
+      },
+      async decideSessions(now) {
+        const at = Date.parse(now);
+        let cancelled = 0;
+        for (const ev of state.events) {
+          if (ev.status !== "published" || (ev.decision ?? "open") !== "open" || !ev.decisionDeadline) continue;
+          if (Date.parse(ev.decisionDeadline) > at || eventEndOrStart(ev) <= at) continue;
+          const going = state.eventAttendees.filter((a) => a.eventId === ev.id);
+          if (ev.minAttendance != null && going.length < ev.minAttendance) {
+            for (const a of going) notifyDemo(state, a.userId, { type: "event_cancelled", actorId: null, subjectType: "event", subjectId: ev.id, label: ev.title, dedupeKey: `event_not_happening:${ev.id}`, detail: "Not enough people signed up" });
+            ev.status = "cancelled";
+            ev.cancelReason = "below_minimum";
+            ev.decision = "not_happening";
+            ev.updatedAt = new Date(at).toISOString();
+            refundOnCancel(state, ev.id);
+            cancelled++;
+          } else ev.decision = "happening";
+        }
+        persist();
+        return cancelled;
       },
       async listForPlace(placeId) {
         const now = Date.now();

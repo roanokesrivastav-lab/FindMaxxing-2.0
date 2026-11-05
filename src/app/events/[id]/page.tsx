@@ -27,6 +27,8 @@ import { getViewerTime } from "@/lib/time/server";
 import { InterestIcon } from "@/components/ui/TaxonomyIcon";
 import { EditorialEvent } from "@/components/events/detail/EditorialEvent";
 import { describeActivity } from "@findmaxxing/shared/events";
+import { ReadinessRow } from "@/components/events/ReadinessRow";
+import { ConfirmSessionButton } from "@/components/events/detail/ConfirmSessionButton";
 
 export const dynamic = "force-dynamic";
 
@@ -96,11 +98,24 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
               {sp.new ? <div className="mt-row"><NewBanner kind="event" /></div> : null}
             </>
           }
-          hostTools={payments && isHost && !cancelled && !ended ? (
-            <div className="mt-row">
-              <EventPricing eventId={event.id} priceCents={price} summary={ticketSummary} canSell={canSell} locked={event.attendees.some((a) => a.id !== event.creatorId)} demo={payments === "demo"} />
-            </div>
-          ) : null}
+          availability={event.readiness ? (
+            <ReadinessRow readiness={event.readiness} timeZone={event.timeZone ?? time.timeZone} now={time.now} cancelled={cancelled} className="mt-hair" />
+          ) : undefined}
+          hostTools={
+            <>
+              {isHost && !cancelled && !ended && event.decision === "open" && event.minAttendance ? (
+                <div className="mt-row flex flex-wrap items-center gap-row">
+                  <ConfirmSessionButton eventId={event.id} />
+                  <span className="type-body text-muted">Confirming stops the automatic cancel at the deadline.</span>
+                </div>
+              ) : null}
+              {payments && isHost && !cancelled && !ended ? (
+                <div className="mt-row">
+                  <EventPricing eventId={event.id} priceCents={price} summary={ticketSummary} canSell={canSell} locked={event.attendees.some((a) => a.id !== event.creatorId)} demo={payments === "demo"} />
+                </div>
+              ) : null}
+            </>
+          }
           action={price && !event.viewerJoined && !isHost && !cancelled && !ended ? (
             <TicketButton eventId={event.id} priceCents={price} signedIn={!!viewer} disabled={full} />
           ) : (

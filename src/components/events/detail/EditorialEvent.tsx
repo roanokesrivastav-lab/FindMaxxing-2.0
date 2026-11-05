@@ -112,7 +112,10 @@ export function EditorialEvent(p: EditorialEventProps) {
 
         {cancelled ? (
           <Surface variant="inset" className="mt-row rounded-xl p-row">
-            <p className="type-body text-ink">This event has been cancelled. Existing attendees can still view it and leave.</p>
+            <p className="type-body text-ink">
+              {event.cancelReason === "below_minimum" ? "Not happening: not enough people signed up by the deadline. " : "This event has been cancelled. "}
+              Existing attendees can still view it and leave.
+            </p>
           </Surface>
         ) : null}
         {p.notices}

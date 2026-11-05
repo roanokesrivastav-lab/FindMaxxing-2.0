@@ -2,7 +2,7 @@
 import { useState } from "react";
 import type { Event } from "@/lib/data/types";
 import { FormField, Input, Select, Textarea } from "@/components/ui/Field";
-import { ACTIVITY_KINDS, ACTIVITY_KIND_LABELS, NEWCOMER_LIMITS, SKILL_LABELS, SKILL_LEVELS, type ActivityDetails, type ActivityKind } from "@findmaxxing/shared/events";
+import { ACTIVITY_KINDS, ACTIVITY_KIND_LABELS, DECISION_LEADS_MINUTES, NEWCOMER_LIMITS, SKILL_LABELS, SKILL_LEVELS, type ActivityDetails, type ActivityKind } from "@findmaxxing/shared/events";
 
 /**
  * Pilot event form sections (roadmap M4), shown only with pilotEvents on. 4.1: the "Your first
@@ -13,6 +13,7 @@ export function EventPilotFields({ initial, errors }: { initial?: Event; errors:
   return (
     <>
       <ActivityFields initial={initial?.activityDetails ?? null} errors={errors} />
+      <SessionRuleFields initial={initial} errors={errors} />
       <NewcomerFields n={n} errors={errors} />
     </>
   );
@@ -103,6 +104,32 @@ function ActivityFields({ initial, errors }: { initial: ActivityDetails | null; 
           <Input id="walkNote" name="walkNote" maxLength={160} placeholder="e.g. Stroller friendly, flat route" defaultValue={v("note")} error={errors.walkNote} />
         </FormField>
       ) : null}
+    </fieldset>
+  );
+}
+
+const leadLabel = (m: number) => (m < 1440 ? `${m / 60} hour${m === 60 ? "" : "s"} before the start` : `${m / 1440} day${m === 1440 ? "" : "s"} before the start`);
+
+/** 4.3: minimum attendance, when the host decides, and whether the venue is booked. */
+function SessionRuleFields({ initial, errors }: { initial?: Event; errors: Record<string, string | undefined> }) {
+  // The stored deadline as the nearest lead option (the form offers fixed leads).
+  const lead = initial?.decisionDeadline
+    ? DECISION_LEADS_MINUTES.reduce((best, m) => (Math.abs(Date.parse(initial.startsAt) - Date.parse(initial.decisionDeadline!) - m * 60_000) < Math.abs(Date.parse(initial.startsAt) - Date.parse(initial.decisionDeadline!) - best * 60_000) ? m : best), DECISION_LEADS_MINUTES[0])
+    : "";
+  return (
+    <fieldset className="flex flex-col gap-4">
+      <legend className="type-item-title text-ink">Does it need enough people?</legend>
+      <FormField label="Minimum people" htmlFor="minAttendance" hint="optional" error={errors.minAttendance}>
+        <Input id="minAttendance" name="minAttendance" type="number" min={2} max={5000} defaultValue={initial?.minAttendance ?? ""} placeholder="e.g. 8 for a 4v4 game" error={errors.minAttendance} />
+      </FormField>
+      <FormField label="Decide by" htmlFor="decisionLead" hint="optional" error={errors.decisionLead}>
+        <Select id="decisionLead" name="decisionLead" defaultValue={String(lead)} error={errors.decisionLead}>
+          <option value="">No deadline</option>
+          {DECISION_LEADS_MINUTES.map((m) => <option key={m} value={m}>{leadLabel(m)}</option>)}
+        </Select>
+      </FormField>
+      <p className="type-body text-ink-2 -mt-2">If fewer than the minimum have signed up by then, it&apos;s called off and everyone going is told. You can confirm it&apos;s happening earlier.</p>
+      <Check name="venueUnconfirmed" label="The venue isn't booked yet" defaultChecked={initial?.venueStatus === "unconfirmed"} />
     </fieldset>
   );
 }

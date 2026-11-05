@@ -7,6 +7,7 @@ import { useViewerTime } from "@/components/time/ViewerTime";
 import { StatusLabel } from "@/components/ui/StatusLabel";
 import { eventHasEnded, formatInZone, formatTime, timeZoneLabel } from "@/lib/utils/format";
 import { availability, priceText } from "@/lib/events/tab";
+import { ReadinessRow } from "./ReadinessRow";
 import { cn } from "@/lib/utils/cn";
 import { useImpression, type Impression as ImpressionData } from "@/components/interactions/impressions";
 
@@ -61,8 +62,9 @@ export function EventRow({
         <span className="flex min-w-0 flex-1 basis-[10rem] flex-col gap-hair">
           <span className="type-item-title text-ink line-clamp-2 break-words">{event.title}</span>
           <span className="type-body text-ink-2 break-words">{event.locationName}</span>
+          {event.readiness && avail.kind !== "cancelled" ? <ReadinessRow readiness={event.readiness} timeZone={event.timeZone ?? time.timeZone} now={time.now} /> : null}
           <span className="flex flex-wrap items-center gap-x-item gap-y-hair">
-            {avail.kind === "cancelled" ? (
+            {event.readiness && avail.kind !== "cancelled" ? null : avail.kind === "cancelled" ? (
               <StatusLabel tone="negative">Cancelled</StatusLabel>
             ) : avail.kind === "full" ? (
               <StatusLabel tone="warning">Full</StatusLabel>
