@@ -6,6 +6,7 @@
  * survive dev-server restarts. It exists so the app is fully usable without
  * Supabase credentials; it is not intended for production.
  */
+import type { EventNewcomer } from "@findmaxxing/shared/events";
 import { mkdirSync, readFileSync, writeFileSync, existsSync, copyFileSync } from "node:fs";
 import path from "node:path";
 import { scryptSync, randomBytes, timingSafeEqual } from "node:crypto";
@@ -115,6 +116,8 @@ export interface EventRow {
   updatedAt: string;
   /** Ticket price in cents; absent or null for free. */
   priceCents?: number | null;
+  /** 4.1: the "Your first time?" block (mirrors events.newcomer). */
+  newcomer?: EventNewcomer | null;
 }
 export interface ReportRow {
   id: string;

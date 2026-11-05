@@ -9,7 +9,8 @@
     "./taxonomy": "./src/taxonomy.ts",
     "./validation": "./src/validation.ts",
     "./notifications": "./src/notifications.ts",
-    "./timestamps": "./src/timestamps.ts"
+    "./timestamps": "./src/timestamps.ts",
+    "./events": "./src/events.ts"
   },
   "dependencies": {
     "zod": "^4.5.4"

@@ -8,6 +8,7 @@ import {
   MAX_PLACE_PHOTOS,
   type Event,
   type EventDetail,
+  type NewEventInput,
   type NeighborhoodSummary,
   type Place,
   type PlaceDetail,
@@ -130,6 +131,7 @@ interface EventRow {
   category_slug: string;
   capacity: number | null;
   price_cents?: number | null;
+  newcomer?: Event["newcomer"];
   status: Event["status"];
   created_at: string;
   creator?: ProfileSummaryRow | null;
@@ -206,6 +208,7 @@ function mapEvent(r: EventRow): Event {
     status: r.status,
     createdAt: r.created_at,
     priceCents: r.price_cents ?? null,
+    newcomer: r.newcomer ?? null,
   };
 }
 
@@ -566,6 +569,17 @@ const PLACE_MAP_SELECT = "id, name, category_slug, lat, lng, rating_avg, rating_
 const EVENT_MAP_SELECT = "id, title, category_slug, lat, lng, starts_at";
 
 export function createSupabaseRepository(supabase: SupabaseClient): DataRepository {
+  /**
+   * Pilot event fields (roadmap M4) the creator sets through column grants after the create/update
+   * RPC; RLS and guard_owner_event_change() still apply. Undefined fields are left as they are.
+   */
+  async function writeEventPilotFields(id: string, input: NewEventInput): Promise<void> {
+    const patch: Record<string, unknown> = {};
+    if (input.newcomer !== undefined) patch.newcomer = input.newcomer;
+    if (!Object.keys(patch).length) return;
+    unwrap(await supabase.from("events").update(patch).eq("id", id).select("id"));
+  }
+
   const repo: DataRepository = {
     places: {
       async search(opts = {}) {
@@ -978,6 +992,7 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
             p_tags: input.tags,
           }),
         ) as string;
+        await writeEventPilotFields(id, input);
         const created = await repo.events.get(id, creatorId);
         if (!created) throw new DataError("Event not found after create", "not_found");
         return created;
@@ -1005,6 +1020,7 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
             p_tags: input.tags,
           }),
         );
+        await writeEventPilotFields(id, input);
         const updated = await repo.events.get(id, creatorId);
         if (!updated) throw new DataError("Event not found after update", "not_found");
         return updated;
