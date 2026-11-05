@@ -20,6 +20,7 @@ export function RatingControl({
   viewerRatingNote,
   signedIn,
   hideAggregate = false,
+  lockedReason = null,
 }: {
   placeId: string;
   ratingAvg: number;
@@ -29,6 +30,8 @@ export function RatingControl({
   signedIn: boolean;
   /** The photo-first place page (2.5) shows the community average in its own block, with its evidence. */
   hideAggregate?: boolean;
+  /** 2.8: why a first rating is not possible yet (no personal photo). Null = unlocked. */
+  lockedReason?: string | null;
 }) {
   const [agg, setAgg] = useState({ ratingAvg, ratingCount });
   const [mine, setMine] = useState<number | null>(viewerRating);
@@ -106,7 +109,8 @@ export function RatingControl({
   const label = <p className="text-sm font-semibold">{mine ? "Your rating" : "Rate this place"}</p>;
   const picker = (
     <>
-      <StarPicker value={mine} onChange={rate} disabled={pending} size={few ? 26 : 30} />
+      <StarPicker value={mine} onChange={rate} disabled={pending || (!!lockedReason && !mine)} size={few ? 26 : 30} />
+      {lockedReason && !mine ? <p className="text-xs text-ink-2 mt-0.5" data-rating-locked="">{lockedReason}</p> : null}
       <div className="flex items-center gap-3 mt-0.5 flex-wrap">
         <p className="text-xs text-muted">{mine ? "Tap to change" : "One rating per person. You can update it anytime."}</p>
         {mine ? (

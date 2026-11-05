@@ -32,6 +32,8 @@ import { PlaceDecisionPage } from "@/components/places/decision/PlaceDecisionPag
 import { PlaceTips, RecentObservation } from "@/components/places/decision/PlaceTips";
 import { PlaceOccasions } from "@/components/places/decision/PlaceOccasions";
 import { MySaveSection } from "@/components/saved/MySaveSection";
+import { PersonalPhotoBlock } from "@/components/places/decision/PersonalPhotoBlock";
+import { PHOTO_REQUIRED_MESSAGE } from "@/lib/places/personalPhotos";
 import { suggestTags } from "@/lib/places/saves";
 import { recentObservation, requestNow } from "@/lib/places/tips";
 
@@ -68,11 +70,21 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
   if (featureEnabled("pilotExplore")) {
     // Roadmap 2.5: the photo-first place page. Flag off keeps the page below exactly as it was.
     const now = requestNow();
-    const [following, tips, occasionNotes] = await Promise.all([
+    const [following, tips, occasionNotes, personal, credit] = await Promise.all([
       viewer ? repo.profiles.listFollowing(viewer.id) : Promise.resolve([]),
       repo.tips.list(place.id, viewer?.id ?? null, now),
       repo.occasions.list(place.id, viewer?.id ?? null),
+      // 2.8: the viewer's own personal photo (owner-only) and the public photo's credit.
+      viewer ? repo.personalPhotos.get(viewer.id, place.id) : Promise.resolve(null),
+      repo.publicPhotos.get(place.id, viewer?.id ?? null),
     ]);
+    const firstPhoto = place.photos[0];
+    const leadPhoto = personal
+      ? { url: personal.url, alt: `Your photo of ${place.name}`, note: <span className="type-body rounded-full bg-ink/80 text-white px-item py-hair">Your photo · only you see it</span> }
+      : firstPhoto
+        ? { url: firstPhoto.url, alt: place.name, note: credit && credit.photoId === firstPhoto.id ? <span className="type-body rounded-full bg-ink/80 text-white px-item py-hair">Photo: {credit.permissionNote}</span> : undefined }
+        : null;
+    const needsPhoto = !!viewer && place.viewerRating === null && !personal;
     // 2.6: each tip's claim opens its evidence (a handful of tips per place).
     const tipEvidence = (await Promise.all(tips.map((t) => repo.tips.evidence(t.id, viewer?.id ?? null)))).filter((e) => e !== null);
     const observed = recentObservation(tips, now);
@@ -93,6 +105,9 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
           viewerId={viewer?.id ?? null}
           isNew={!!sp.new}
           extendedTiers={featureEnabled("reputation")}
+          leadPhoto={leadPhoto}
+          ratingLockedReason={needsPhoto ? PHOTO_REQUIRED_MESSAGE : null}
+          personalExtra={viewer ? <PersonalPhotoBlock placeId={place.id} photoUrl={personal?.url ?? null} required={place.viewerRating === null} /> : null}
           observation={observedEvidence ? <RecentObservation evidence={observedEvidence} now={now} /> : null}
           mySave={mySave ? <MySaveSection details={mySave} suggestions={suggestTags(myTags, place.tags, mySave.tags)} /> : null}
           occasions={<PlaceOccasions placeId={place.id} notes={occasionNotes} followingIds={following.map((p) => p.id)} viewerId={viewer?.id ?? null} />}

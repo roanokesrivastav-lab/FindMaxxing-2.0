@@ -7,6 +7,7 @@
 import type { DemoState } from "./store";
 import { ensureTips } from "./tips";
 import { ensureOccasions } from "./occasions";
+import { ensurePersonalPhotos, ensurePublicPhotos, removePersonalFile } from "./personalPhotos";
 
 export function forgetPlaceExtras(state: DemoState, userId: string, ownPlaces: Set<string>): void {
   const tips = ensureTips(state);
@@ -22,4 +23,12 @@ export function forgetPlaceExtras(state: DemoState, userId: string, ownPlaces: S
   const notes = ensureOccasions(state);
   (state as DemoState & { placeOccasionNotes: typeof notes }).placeOccasionNotes = notes.filter((n) => !ownPlaces.has(n.placeId));
   for (const n of ensureOccasions(state)) if (n.authorId === userId) n.authorId = null;
+  // Personal photos are the user's alone: every one goes, file and row. Public-photo
+  // credits on their own places go with the places; credits they set stay, unattributed.
+  const mine = ensurePersonalPhotos(state);
+  for (const r of mine) if (r.userId === userId || ownPlaces.has(r.placeId)) removePersonalFile(r.file);
+  (state as DemoState & { personalPlacePhotos: typeof mine }).personalPlacePhotos = mine.filter((r) => r.userId !== userId && !ownPlaces.has(r.placeId));
+  const credits = ensurePublicPhotos(state);
+  (state as DemoState & { placePublicPhotos: typeof credits }).placePublicPhotos = credits.filter((c) => !ownPlaces.has(c.placeId));
+  for (const c of ensurePublicPhotos(state)) if (c.setBy === userId) c.setBy = null;
 }

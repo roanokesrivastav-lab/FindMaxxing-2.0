@@ -44,7 +44,7 @@ const groups = [
     anon: false,
     reason: "Moderator gate on queue/content and audited changes; no arbitrary member can invoke moderation power.",
     signatures: [
-      "moderate_target(text,uuid,text,text)", "moderation_queue(timestamp with time zone,uuid,integer)",
+      "moderate_target(text,uuid,text,text)", "moderation_queue(timestamp with time zone,uuid,integer)", "set_place_public_photo(uuid,uuid,text)",
       "moderation_target(text,uuid)", "reset_reputation(uuid,text)", "set_local_status(uuid,boolean,text)",
     ],
   },
@@ -77,7 +77,7 @@ const groups = [
     anon: false,
     reason: "Work is charged/scoped to auth.uid(): own quota, ticket, conversation membership, analytics or notification; no caller-supplied victim ID.",
     signatures: [
-      "check_rate_limit(text)", "consume_trip_plan()", "count_upload(text,text)", "reserve_ticket(uuid)",
+      "check_rate_limit(text)", "consume_trip_plan()", "count_upload(text,text)", "count_personal_upload(text)", "reserve_ticket(uuid)",
       "start_direct(uuid)", "track_event(text,jsonb)", "notify_trip_plan_ready(text)",
     ],
   },

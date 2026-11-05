@@ -71,6 +71,7 @@ import { UPLOAD_DIR } from "./uploads";
 import { createDemoTips } from "./tips";
 import { createDemoOccasions } from "./occasions";
 import { createDemoSaves } from "./saves";
+import { createDemoPersonalPhotos, createDemoPublicPhotos } from "./personalPhotos";
 /** Generated upload names (and their .sm/.md size siblings) only; anything else is refused before touching disk. */
 export const DEMO_UPLOAD_NAME = /^(places|avatars)-[0-9a-f]{8}-[0-9a-f-]{36}(\.(sm|md))?\.(jpg|png|webp)$/;
 
@@ -1698,6 +1699,8 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
     notifications: createDemoNotifications(state, { persist, summary: (id) => profileOf(state, id) }),
 
     ads: createDemoAds(state, { persist, assertActive, rateLimit, isAdmin }),
+    personalPhotos: createDemoPersonalPhotos(state, { persist, assertActive, rateLimit, canViewPlace: (p, viewerId) => canViewPlace(state, p, viewerId) }),
+    publicPhotos: createDemoPublicPhotos(state, { persist, assertActive, canViewPlace: (p, viewerId) => canViewPlace(state, p, viewerId), summary: (id) => profileOf(state, id) }),
     saves: createDemoSaves(state, { persist, assertActive, canViewPlace: (p, viewerId) => canViewPlace(state, p, viewerId), toPlace: (p) => toPlace(state, p), repo: () => repo }),
     occasions: createDemoOccasions(state, { persist, assertActive, rateLimit, canViewPlace: (p, viewerId) => canViewPlace(state, p, viewerId), summary: (id) => profileOf(state, id) }),
     tips: createDemoTips(state, { persist, assertActive, rateLimit, canViewPlace: (p, viewerId) => canViewPlace(state, p, viewerId), summary: (id) => profileOf(state, id) }),

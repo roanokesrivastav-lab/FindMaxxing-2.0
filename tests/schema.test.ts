@@ -381,6 +381,8 @@ describe("session 1 — private photos and save counts", () => {
     const { rows } = await db.query<{ id: string; public: boolean }>("select id, public from storage.buckets order by id");
     expect(rows).toEqual([
       { id: "avatars", public: true },
+      // Roadmap 2.8 (0063): the owner-only personal-photos bucket, also private.
+      { id: "personal-photos", public: false },
       { id: "place-photos", public: false },
     ]);
   });

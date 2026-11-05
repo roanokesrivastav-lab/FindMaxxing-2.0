@@ -71,6 +71,7 @@ import { nextOpponent } from "@/lib/ranking/nextComparison";
 import { createSupabaseTips } from "./tips";
 import { createSupabaseOccasions } from "./occasions";
 import { createSupabaseSaves } from "./saves";
+import { createSupabasePersonalPhotos, createSupabasePublicPhotos } from "./personalPhotos";
 import { photoObjectPaths, photoVariantPath } from "@/lib/images/sizes";
 
 /**
@@ -1675,6 +1676,8 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
     tips: createSupabaseTips(supabase, { translate }),
     occasions: createSupabaseOccasions(supabase, { translate }),
     saves: createSupabaseSaves(supabase, { translate, repo: () => repo }),
+    personalPhotos: createSupabasePersonalPhotos(supabase, { translate }),
+    publicPhotos: createSupabasePublicPhotos(supabase, { translate }),
     ads: {
       async create(_advertiserId, input) {
         validateCampaign(input);
