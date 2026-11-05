@@ -112,6 +112,11 @@ describe("EventRow", () => {
     expect(html).toMatch(/<div id="[^"]+" hidden=""/);
     expect(html).toContain('href="/events/');
     expect(html).toContain("From the host: </span>Bring water.");
+    // A visible link to the event, outside the hidden panel (the e2e suite and keyboard users follow it).
+    const panelAt = html.search(/<div id="[^"]+" hidden=""/);
+    const visibleLink = html.indexOf('aria-label="Open event: ');
+    expect(visibleLink).toBeGreaterThan(-1);
+    expect(visibleLink).toBeLessThan(panelAt);
     const full = wrap(h("ul", null, h(EventRow, { event: ev({ capacity: 8 }) })));
     expect(full).toMatch(/data-status="warning"[^>]*>.*Full/);
     const cancelled = wrap(h("ul", null, h(EventRow, { event: ev({ status: "cancelled" }), price: 500 })));

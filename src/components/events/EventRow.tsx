@@ -1,7 +1,7 @@
 "use client";
 import { useId, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ChevronDown } from "lucide-react";
+import { ArrowRight, ChevronDown } from "lucide-react";
 import type { Event } from "@/lib/data/types";
 import { useViewerTime } from "@/components/time/ViewerTime";
 import { StatusLabel } from "@/components/ui/StatusLabel";
@@ -47,12 +47,13 @@ export function EventRow({
   const dayLabel = formatInZone(event.startsAt, time, { weekday: "short", month: "short", day: "numeric" });
   return (
     <li ref={ref} data-row="" data-event-row={event.id} className="surface-flat">
+      <div className="flex items-start gap-hair">
       <button
         type="button"
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((v) => !v)}
-        className={cn("w-full text-left flex flex-wrap items-start gap-x-row gap-y-hair py-row rounded-xl hover:bg-paper-2/60", (ended || avail.kind === "cancelled") && "text-ink-2")}
+        className={cn("min-w-0 flex-1 text-left flex flex-wrap items-start gap-x-row gap-y-hair py-row rounded-xl hover:bg-paper-2/60", (ended || avail.kind === "cancelled") && "text-ink-2")}
       >
         {/* The shared left edge: a fixed-width time column (wraps above the text at large sizes). */}
         <span className="type-body w-[5.5rem] shrink-0 font-semibold text-ink tabular-nums">
@@ -80,6 +81,11 @@ export function EventRow({
         <ChevronDown size={18} aria-hidden className={cn("mt-hair shrink-0 text-muted transition-transform", open && "rotate-180")} />
         <span className="sr-only">{open ? "Hide details" : "Show details"}</span>
       </button>
+      {/* Always-visible way to open the event itself (the row tap expands in place). */}
+      <Link href={`/events/${event.id}`} aria-label={`Open event: ${event.title}`} className="mt-row shrink-0 inline-flex h-10 w-10 items-center justify-center rounded-full text-ink-2 hover:bg-paper-2">
+        <ArrowRight size={18} aria-hidden />
+      </Link>
+      </div>
       <div id={panelId} hidden={!open} className="pb-row pl-[calc(5.5rem+var(--spacing-row))] max-sm:pl-0">
         <div className="surface-inset rounded-xl p-row flex flex-col gap-item">
           <p className="type-body text-ink-2">
