@@ -1,5 +1,5 @@
 "use client";
-import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronLeft, ChevronRight, List, Loader2, LocateFixed, Map as MapIcon, PanelLeftClose, PanelLeftOpen, RotateCw, Search, SlidersHorizontal, X, Compass, Sparkles, CalendarDays, MapPin } from "lucide-react";
 import type { Event, GeoBounds, Place } from "@/lib/data/types";
@@ -33,8 +33,10 @@ import { ArrivalBar } from "./ArrivalBar";
 import { useInterestPresence } from "./useInterestPresence";
 import { widerBounds, type InterestPresence } from "@/lib/explore/arrival";
 import { MAP_INTEREST_LIMIT, toggleInterest as toggleLimited } from "@/lib/onboarding/interests";
+import { parseExploreState, serializeExploreState, type ExploreCamera, type ExploreUrlState } from "@/lib/explore/urlState";
 
 const INITIAL_FALLBACK = { north: DEFAULT_CENTER.lat + 0.07, south: DEFAULT_CENTER.lat - 0.07, east: DEFAULT_CENTER.lng + 0.12, west: DEFAULT_CENTER.lng - 0.12 };
+const LIST_SCROLL_KEY = "findmaxxing:explore-list-scroll";
 const FOLD_STORAGE_KEY = "findmaxxing:explore-folds";
 const DEFAULT_FOLDS = { events: true, places: true, panel: true };
 
@@ -60,6 +62,8 @@ export function ExploreClient({
   logImpressions = false,
   pilotFoundation = false,
   pilotExplore = false,
+  urlState = null,
+  initialSelected = null,
   arrival = null,
 }: {
   initial: DiscoveryResults;
@@ -77,17 +81,27 @@ export function ExploreClient({
   pilotFoundation?: boolean;
   /** Roadmap 2.x pilot: clustering, co-located stepping preview. Off keeps today's map exactly. */
   pilotExplore?: boolean;
+  /** Roadmap 2.2: camera, filters, selection and view parsed from the URL (pilotExplore only). */
+  urlState?: ExploreUrlState | null;
+  /** Roadmap 2.2: the selection restored from the URL, already authorized on the server. */
+  initialSelected?: { kind: "place"; item: Place } | { kind: "event"; item: Event } | null;
   /** Roadmap 1.3: the first visit after onboarding, with the server's per-interest counts. Null otherwise. */
   arrival?: InterestPresence[] | null;
 }) {
-  const [query, setQuery] = useState("");
+  // Roadmap 2.2: back/forward can reuse a server render made for an older URL, so on the client the
+  // live address bar is the source of truth. On a full load it equals the server's own parse, so
+  // hydration matches; on a client navigation there is no hydration to match.
+  const [live] = useState<ExploreUrlState | null>(() =>
+    pilotExplore && typeof window !== "undefined" ? parseExploreState(new URLSearchParams(window.location.search)) : urlState,
+  );
+  const [query, setQuery] = useState(live?.q ?? "");
   const deferredQuery = useDeferredValue(query);
-  const [kind, setKind] = useState<Kind>("all");
-  const [category, setCategory] = useState<string | null>(null);
-  const [interests, setInterests] = useState<string[]>(initialRequest.tags);
+  const [kind, setKind] = useState<Kind>(live?.kind ?? "all");
+  const [category, setCategory] = useState<string | null>(live?.category ?? null);
+  const [interests, setInterests] = useState<string[]>(live ? live.tags : initialRequest.tags);
   const [showWelcome, setShowWelcome] = useState(welcome);
   const [arrivalOpen, setArrivalOpen] = useState(!!arrival);
-  const [mode, setMode] = useState<"map" | "list">("map");
+  const [mode, setMode] = useState<"map" | "list">(live?.view ?? "map");
   const [filtersOpen, setFiltersOpen] = useState(false);
   // Folding the events section hands the whole panel to places. Remembered so
   // the choice survives navigating to a detail page and back.
@@ -96,18 +110,26 @@ export function ExploreClient({
   const placesOpen = folds.places;
   // Collapsing the whole panel hands the entire map over on desktop. Mobile
   // already has the map/list toggle, so this control is desktop-only.
-  const panelOpen = folds.panel;
+  // Roadmap 2.2: with pilotExplore there is no list beside the map on any screen size; the list is
+  // its own view, so the desktop drawer never opens.
+  const panelOpen = !pilotExplore && folds.panel;
   const setFold = useCallback(
     (section: "events" | "places" | "panel", open: boolean) => setFolds({ ...folds, [section]: open }),
     [folds, setFolds],
   );
-  const [selected, setSelected] = useState<Selected>(null);
+  const [selected, setSelected] = useState<Selected>(initialSelected);
   // Roadmap 2.1: records at exactly one spot, stepped through in the preview ("1 of N"), never a list.
   const [stack, setStack] = useState<{ markers: MapMarker[]; index: number } | null>(null);
-  const [view, setView] = useState<ViewState>({ latitude: DEFAULT_CENTER.lat, longitude: DEFAULT_CENTER.lng, zoom: DEFAULT_ZOOM });
+  const restoredCamera = live?.camera ?? null;
+  const [view, setView] = useState<ViewState>(
+    restoredCamera ? { latitude: restoredCamera.lat, longitude: restoredCamera.lng, zoom: restoredCamera.zoom } : { latitude: DEFAULT_CENTER.lat, longitude: DEFAULT_CENTER.lng, zoom: DEFAULT_ZOOM },
+  );
+  // The settled camera (after each move ends), which is what the URL records.
+  const [camera, setCamera] = useState<ExploreCamera | null>(restoredCamera);
   const mapRef = useRef<MapCanvasHandle>(null);
   const geo = useGeolocation(true);
-  const flewToUser = useRef(false);
+  // A restored camera is where the viewer left the map: don't jump to their location over it.
+  const flewToUser = useRef(!!restoredCamera);
   // "Nearest" orders the place list by distance from the viewer, in SQL across every page.
   const [nearest, setNearest] = useState(false);
   const near = nearest && geo.location ? geo.location : null;
@@ -141,6 +163,102 @@ export function ExploreClient({
   const discovery = useDiscovery(request, initial, initialRequest);
   const arrivalShown = arrivalOpen && interests.length > 0;
   const presence = useInterestPresence(request, arrivalShown && !searching, arrival ?? [], initialRequest);
+
+  // Roadmap 2.2: the selection named by the live URL, when the render we got was made for another URL.
+  useEffect(() => {
+    const sel = live?.sel;
+    if (!pilotExplore || !sel || initialSelected?.item.id === sel.id) return;
+    let cancelled = false;
+    fetch(`/api/discover/item?kind=${sel.kind}&id=${sel.id}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((item) => {
+        if (item && !cancelled) setSelected(sel.kind === "place" ? { kind: "place", item: item as Place } : { kind: "event", item: item as Event });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [pilotExplore, live, initialSelected]);
+
+  // Roadmap 2.2: keep the URL in step (replace, not push), so back navigation and shared links restore
+  // camera, filters, selection and view. The welcome marker stays while the arrival bar shows.
+  const selKind = selected?.kind ?? null;
+  const selId = selected?.item.id ?? null;
+  useEffect(() => {
+    if (!pilotExplore) return;
+    const qs = serializeExploreState({
+      camera,
+      q: deferredQuery,
+      category,
+      tags: interests,
+      kind,
+      sel: selKind && selId ? { kind: selKind, id: selId } : null,
+      view: mode,
+    });
+    const next = `/${qs || arrivalShown ? "?" : ""}${qs}${arrivalShown ? `${qs ? "&" : ""}welcome=1` : ""}`;
+    if (`${location.pathname}${location.search}` !== next) window.history.replaceState(null, "", next);
+  }, [pilotExplore, camera, deferredQuery, category, interests, kind, selKind, selId, mode, arrivalShown]);
+
+  // The list keeps its scroll position across map ↔ list switches and a detail page round trip.
+  const listRef = useRef<HTMLDivElement>(null);
+  const listScroll = useRef<number | null>(null);
+  const restoringUntil = useRef(0);
+  useLayoutEffect(() => {
+    if (!pilotExplore || mode !== "list" || !listRef.current) return;
+    let top = listScroll.current;
+    if (top === null) {
+      try {
+        top = Number(sessionStorage.getItem(LIST_SCROLL_KEY) ?? 0) || 0;
+      } catch {
+        top = 0;
+      }
+    }
+    const el = listRef.current;
+    // Results can still be arriving, so the list may be too short for the old position yet. Keep
+    // re-applying it each frame (for up to 2 s, until it fits or the viewer scrolls themselves), and
+    // don't record the clamped positions meanwhile.
+    const target = top;
+    const until = performance.now() + 2000;
+    restoringUntil.current = until;
+    const stop = () => {
+      restoringUntil.current = 0;
+    };
+    let frame = 0;
+    const tick = () => {
+      if (restoringUntil.current !== until) return;
+      if (el.scrollHeight - el.clientHeight >= target) {
+        el.scrollTop = target;
+        stop();
+        return;
+      }
+      el.scrollTop = target;
+      if (performance.now() < until) frame = requestAnimationFrame(tick);
+      else stop();
+    };
+    tick();
+    el.addEventListener("wheel", stop, { passive: true });
+    el.addEventListener("touchstart", stop, { passive: true });
+    el.addEventListener("keydown", stop);
+    return () => {
+      cancelAnimationFrame(frame);
+      el.removeEventListener("wheel", stop);
+      el.removeEventListener("touchstart", stop);
+      el.removeEventListener("keydown", stop);
+    };
+  }, [pilotExplore, mode]);
+  const rememberListScroll = () => {
+    if (!pilotExplore || !listRef.current || mode !== "list" || restoringUntil.current) return;
+    listScroll.current = listRef.current.scrollTop;
+    try {
+      sessionStorage.setItem(LIST_SCROLL_KEY, String(listRef.current.scrollTop));
+    } catch {
+      // Storage can be unavailable (private windows); the in-memory position still works.
+    }
+  };
+  const showMode = (next: "map" | "list") => {
+    rememberListScroll();
+    setMode(next);
+  };
   const { results } = discovery;
   const { timeZone } = useViewerTime();
   const places = results.places.items;
@@ -329,11 +447,12 @@ export function ExploreClient({
       </div>
 
       {/* Map */}
-      <div className={cn("explore-map flex-1 relative", mode === "list" && "hidden md:block")}>
+      <div className={cn("explore-map flex-1 relative", mode === "list" && (pilotExplore ? "hidden" : "hidden md:block"))}>
         <MapView
           ref={mapRef}
           viewState={view}
           onViewStateChange={setView}
+          onMoveEnd={pilotExplore ? (v) => setCamera({ lat: v.latitude, lng: v.longitude, zoom: v.zoom }) : undefined}
           onBoundsChange={setViewport}
           markers={markers}
           activeMarkerId={selected?.item.id ?? null}
@@ -410,9 +529,9 @@ export function ExploreClient({
         ) : null}
 
         {/* Map-mode bottom summary (mobile) */}
-        <div className="md:hidden absolute inset-x-0 z-20 px-4" style={{ bottom: "calc(var(--nav-height) + var(--safe-bottom) + 0.75rem)" }}>
+        <div className={cn(!pilotExplore && "md:hidden", "absolute inset-x-0 z-20 px-4")} style={{ bottom: "calc(var(--nav-height) + var(--safe-bottom) + 0.75rem)" }}>
           <div className="mx-auto max-w-md">
-            <ResultsSummary total={totalResults} truncated={truncated} scope={scope} places={placeCount} events={eventCount} onList={() => setMode("list")} activeFilters={activeFilterCount} onClear={clearFilters} />
+            <ResultsSummary total={totalResults} truncated={truncated} scope={scope} places={placeCount} events={eventCount} onList={() => showMode("list")} activeFilters={activeFilterCount} onClear={clearFilters} />
           </div>
         </div>
       </div>
@@ -423,6 +542,8 @@ export function ExploreClient({
           "md:absolute md:left-4 md:top-[8.5rem] md:bottom-4 md:w-[380px] md:z-20 md:flex-col",
           panelOpen ? "md:flex" : "md:hidden",
           mode === "list" ? "flex flex-col flex-1 overflow-hidden pt-[9.75rem]" : "hidden",
+          // Roadmap 2.2: on desktop the list is its own view too (the map hides), never a drawer.
+          pilotExplore && (mode === "list" ? "md:static md:flex md:w-full md:max-w-3xl md:mx-auto md:pt-[9rem]" : "md:hidden"),
         )}
       >
         <div className="md:card md:overflow-hidden flex-1 flex flex-col min-h-0 bg-paper md:bg-surface">
@@ -439,9 +560,10 @@ export function ExploreClient({
                   Clear
                 </button>
               ) : null}
-              <button type="button" onClick={() => setMode("map")} className="md:hidden chip" aria-label="Show map">
+              <button type="button" onClick={() => showMode("map")} className={cn(!pilotExplore && "md:hidden", "chip")} aria-label="Show map">
                 <MapIcon size={15} /> Map
               </button>
+{!pilotExplore ? (
               <button
                 type="button"
                 onClick={() => setFold("panel", false)}
@@ -451,9 +573,10 @@ export function ExploreClient({
               >
                 <PanelLeftClose size={17} />
               </button>
+              ) : null}
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-3 pb-nav md:pb-4">
+          <div ref={listRef} onScroll={pilotExplore ? rememberListScroll : undefined} className={cn("flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-3 pb-nav md:pb-4", pilotExplore && "[overflow-anchor:none]")}>
             {showWelcome ? (
               <div className="rounded-2xl bg-moss-100 border border-moss/30 px-4 py-3 text-sm flex items-start gap-3" role="status">
                 <span className="flex-1">
@@ -499,7 +622,7 @@ export function ExploreClient({
                     {(kind === "events" ? events : events.slice(0, EVENTS_PREVIEW)).map((e, i, shown) => (
                       <Fragment key={e.id}>
                         <Impression impression={seen("event", e.id, searching ? "search" : "list", i)}>
-                          <EventCard event={e} compact onHover={() => setSelected({ kind: "event", item: e })} />
+                          <EventCard event={e} compact onHover={pilotExplore ? undefined : () => setSelected({ kind: "event", item: e })} />
                         </Impression>
                         {ads && i === Math.min(AD_POSITION.events, shown.length) - 1 ? <SponsoredSlot slot="events" bounds={request.bounds} category={category} /> : null}
                       </Fragment>
@@ -544,7 +667,7 @@ export function ExploreClient({
                     {places.map((p, i) => (
                       <Fragment key={p.id}>
                         <Impression impression={seen("place", p.id, searching ? "search" : "list", i)}>
-                          <PlaceCard place={p} compact distanceMeters={geo.location ? distanceMeters(geo.location, p) : null} onHover={() => setSelected({ kind: "place", item: p })} />
+                          <PlaceCard place={p} compact distanceMeters={geo.location ? distanceMeters(geo.location, p) : null} onHover={pilotExplore ? undefined : () => setSelected({ kind: "place", item: p })} />
                         </Impression>
                         {ads && i === Math.min(AD_POSITION.places, places.length) - 1 ? <SponsoredSlot slot="places" bounds={request.bounds} category={category} /> : null}
                       </Fragment>
@@ -561,7 +684,7 @@ export function ExploreClient({
       </div>
 
       {/* Brings the collapsed panel back. Sits where its header was. */}
-      {!panelOpen ? (
+      {!panelOpen && !pilotExplore ? (
         <button
           type="button"
           onClick={() => setFold("panel", true)}
