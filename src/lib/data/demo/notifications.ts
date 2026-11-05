@@ -72,6 +72,15 @@ export function notifyDemo(state: DemoState, userId: string | null, n: NotifyInp
 }
 
 /** Hooks for the writes the database has notification triggers on. */
+/** Mirrors event_cancellation_recipients(): going, offered, waitlisted and interested (D-F). */
+function cancellationRecipients(state: DemoState, eventId: string): Set<string> {
+  const parts = (state as { eventParticipants?: { eventId: string; userId: string; status: string }[] }).eventParticipants ?? [];
+  return new Set([
+    ...state.eventAttendees.filter((a) => a.eventId === eventId).map((a) => a.userId),
+    ...parts.filter((p) => p.eventId === eventId && ["offered", "waitlisted", "interested"].includes(p.status)).map((p) => p.userId),
+  ]);
+}
+
 export const notifyOn = {
   follow(state: DemoState, followerId: string, followingId: string) {
     notifyDemo(state, followingId, { type: "new_follower", actorId: followerId, subjectType: "profile", subjectId: followerId, label: null, dedupeKey: `follow:${followerId}` });
@@ -80,18 +89,34 @@ export const notifyOn = {
     const e = state.events.find((x) => x.id === eventId);
     if (e) notifyDemo(state, e.creatorId, { type: "event_joined", actorId: userId, subjectType: "event", subjectId: e.id, label: e.title, batchKey: `event_joined:${e.id}` });
   },
+  /** 4.6: time or venue changed → going + offered. */
   eventChanged(state: DemoState, eventId: string, actorId: string) {
     const e = state.events.find((x) => x.id === eventId);
     if (!e) return;
-    for (const a of state.eventAttendees.filter((x) => x.eventId === eventId)) {
-      notifyDemo(state, a.userId, { type: "event_changed", actorId, subjectType: "event", subjectId: e.id, label: e.title, batchKey: `event_changed:${e.id}` });
+    const offered = ((state as { eventParticipants?: { eventId: string; userId: string; status: string }[] }).eventParticipants ?? []).filter((p) => p.eventId === eventId && p.status === "offered").map((p) => p.userId);
+    for (const userId of new Set([...state.eventAttendees.filter((x) => x.eventId === eventId).map((a) => a.userId), ...offered])) {
+      notifyDemo(state, userId, { type: "event_changed", actorId, subjectType: "event", subjectId: e.id, label: e.title, batchKey: `event_changed:${e.id}` });
     }
   },
-  eventCancelled(state: DemoState, eventId: string, actorId: string) {
+  /** 4.6: a cancellation → going + offered + waitlisted + interested, then followers of its series. */
+  eventCancelled(state: DemoState, eventId: string, actorId: string | null, kind: "event_cancelled" | "event_not_happening" = "event_cancelled") {
     const e = state.events.find((x) => x.id === eventId);
     if (!e) return;
-    for (const a of state.eventAttendees.filter((x) => x.eventId === eventId)) {
-      notifyDemo(state, a.userId, { type: "event_cancelled", actorId, subjectType: "event", subjectId: e.id, label: e.title, dedupeKey: `event_cancelled:${e.id}` });
+    const told = cancellationRecipients(state, eventId);
+    for (const userId of told) {
+      notifyDemo(state, userId, kind === "event_cancelled"
+        ? { type: "event_cancelled", actorId, subjectType: "event", subjectId: e.id, label: e.title, dedupeKey: `event_cancelled:${e.id}` }
+        : { type: "event_not_happening", actorId: null, subjectType: "event", subjectId: e.id, label: e.title, dedupeKey: `event_not_happening:${e.id}`, detail: "Not enough people signed up" });
+    }
+    if (e.seriesId) notifyOn.seriesFollowers(state, e.seriesId, actorId, `series_update:${e.seriesId}:${e.id}`, kind === "event_cancelled" ? "A date was cancelled" : "A date is not happening", told);
+  },
+  /** 4.6: followers of a series who were not already told. */
+  seriesFollowers(state: DemoState, seriesId: string, actorId: string | null, dedupeKey: string, detail: string, except: Set<string> = new Set()) {
+    const loose = state as { eventSeries?: { id: string; title: string }[]; eventSeriesFollowers?: { seriesId: string; userId: string }[] };
+    const title = loose.eventSeries?.find((s) => s.id === seriesId)?.title ?? null;
+    for (const f of loose.eventSeriesFollowers ?? []) {
+      if (f.seriesId !== seriesId || except.has(f.userId)) continue;
+      notifyDemo(state, f.userId, { type: "series_update", actorId, subjectType: "series", subjectId: seriesId, label: title, dedupeKey, detail });
     }
   },
   message(state: DemoState, conversationId: string, senderId: string) {

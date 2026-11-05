@@ -747,14 +747,17 @@ export type NotificationType =
   | "trip_plan_ready"
   // 4.4: waitlist offers.
   | "event_offer"
-  | "event_offer_expired";
+  | "event_offer_expired"
+  // 4.6: material changes.
+  | "event_not_happening"
+  | "series_update";
 
 export interface AppNotification {
   id: string;
   type: NotificationType;
   /** Who did it; null for saves (private), scheduled reminders and moderation. */
   actor: ProfileSummary | null;
-  subjectType: "profile" | "event" | "place" | "conversation" | "report" | "message" | "plan" | null;
+  subjectType: "profile" | "event" | "place" | "conversation" | "report" | "message" | "plan" | "series" | null;
   subjectId: string | null;
   label: string | null;
   detail: string | null;

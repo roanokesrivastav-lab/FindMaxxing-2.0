@@ -136,7 +136,8 @@ describe("database (PGlite)", () => {
     await db.query("select public.decide_sessions($1)", [at(60_000)]);
     const notes = (await db.query<{ user_id: string; type: string; detail: string }>("select user_id, type, detail from public.notifications where subject_id = $1 order by user_id", [id])).rows;
     expect(notes.map((n) => n.user_id).sort()).toEqual([maya, theo].sort());
-    expect(new Set(notes.map((n) => `${n.type}|${n.detail}`))).toEqual(new Set(["event_cancelled|Not enough people signed up"]));
+    // 4.6 gave this its own type, event_not_happening (4.3 used event_cancelled until then).
+    expect(new Set(notes.map((n) => `${n.type}|${n.detail}`))).toEqual(new Set(["event_not_happening|Not enough people signed up"]));
     expect((await db.query<{ status: string }>("select status from public.tickets where event_id = $1", [id])).rows[0].status).toBe("refund_pending");
   });
 
@@ -176,7 +177,7 @@ describe("demo parity, card and page", () => {
     const pat = user("pat_participant");
     const notes = (await repo.notifications.list(pat)).items.filter((n) => n.subjectId === hanaRun);
     expect(notes).toHaveLength(1);
-    expect(notes[0]).toMatchObject({ type: "event_cancelled", detail: "Not enough people signed up" });
+    expect(notes[0]).toMatchObject({ type: "event_not_happening", detail: "Not enough people signed up" }); // 4.6 type
   });
 
   it("demo: the host confirm blocks the auto-cancel", async () => {
