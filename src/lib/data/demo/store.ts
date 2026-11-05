@@ -13,6 +13,8 @@ import { scryptSync, randomBytes, timingSafeEqual } from "node:crypto";
 import {
   DEMO_PASSWORD,
   SEED_EVENTS,
+  SEED_SERIES,
+  seriesOccurrenceId,
   SEED_FOLLOWS,
   SEED_MODERATORS,
   SEED_ADMINS,
@@ -29,6 +31,7 @@ import {
 import type { UserInteraction, AppNotification, EntitlementStatus, TicketStatus, EventStatus, ModerationLogAction, NotificationSettings, NotificationType, PlaceStatus, ReportReason, ReportStatus, ReportTargetType, ReputationLevel, Visibility } from "../types";
 import { refreshDemoReputation } from "./reputation";
 import { syncAllEventChats } from "./messaging";
+import { zonedParts, zonedTimeToUtc } from "@/lib/utils/timezone";
 import { CATEGORIES, INTERESTS } from "../taxonomy";
 import { oldEnoughToBeLocal, sameCity } from "../localTier";
 import { newId } from "@/lib/utils/ids";
@@ -666,6 +669,45 @@ export function buildSeedState(now = new Date()): DemoState {
   });
 
   // Like the event_attendees trigger as the SQL seed inserts attendance.
+  // Roadmap 4.5b: the seed series and its first occurrences (same stable ids as the SQL seed).
+  const loose = state as DemoState & { eventSeries?: unknown[]; eventSeriesHosts?: unknown[]; eventSeriesFollowers?: unknown[] };
+  loose.eventSeries ??= [];
+  loose.eventSeriesHosts ??= [];
+  loose.eventSeriesFollowers ??= [];
+  for (const r of SEED_SERIES) {
+    // The next ISO weekday r.weekday after today in New York, plus k weeks; the start is local 09:00 there.
+    const p = zonedParts(now, "America/New_York");
+    const todayNy = new Date(Date.UTC(p.year, p.month - 1, p.day));
+    const dowNy = todayNy.getUTCDay() === 0 ? 7 : todayNy.getUTCDay();
+    const hhmm = `${String(r.startHour).padStart(2, "0")}:${String(r.startMinute).padStart(2, "0")}`;
+    const dayOf = (k: number) => new Date(todayNy.getTime() + (((r.weekday - dowNy + 6) % 7) + 1 + 7 * k) * 86_400_000).toISOString().slice(0, 10);
+    const at = (k: number) => zonedTimeToUtc(dayOf(k), hhmm, "America/New_York");
+    const dow = r.weekday;
+    loose.eventSeries.push({
+      id: r.id, ownerId: seedUserByName(r.owner).id, createdAt: daysAgo(30), title: r.title, description: r.description, categorySlug: r.categorySlug,
+      placeId: null, locationName: r.locationName, address: r.address, lat: r.lat, lng: r.lng, timeZone: "America/New_York",
+      rule: { weekdays: [dow], intervalWeeks: 1, startLocal: hhmm, durationMinutes: r.durationMinutes, startsOn: dayOf(0), endsOn: null },
+      capacity: r.capacity, minAttendance: r.minAttendance, decisionLeadMinutes: r.decisionLeadMinutes, activityDetails: r.activityDetails, newcomer: r.newcomer,
+      cardStyle: "readiness", status: "active", ruleVersion: 1, tags: r.tags,
+    });
+    loose.eventSeriesHosts.push({ seriesId: r.id, userId: seedUserByName(r.owner).id, role: "owner", addedAt: daysAgo(30) });
+    for (const b of r.backups) loose.eventSeriesHosts.push({ seriesId: r.id, userId: seedUserByName(b).id, role: "backup", addedAt: daysAgo(20) });
+    for (const f of r.followers) loose.eventSeriesFollowers.push({ seriesId: r.id, userId: seedUserByName(f).id, createdAt: daysAgo(10) });
+    for (let k = 0; k < r.occurrences; k++) {
+      const start = at(k);
+      const id = seriesOccurrenceId(r, k);
+      state.events.push({
+        id, title: r.title, description: r.description, placeId: null, locationName: r.locationName, address: r.address, lat: r.lat, lng: r.lng,
+        startsAt: start.toISOString(), endsAt: new Date(start.getTime() + r.durationMinutes * 60_000).toISOString(), creatorId: seedUserByName(r.owner).id,
+        categorySlug: r.categorySlug, capacity: r.capacity, status: "published", createdAt: daysAgo(14), updatedAt: daysAgo(14),
+        activityDetails: r.activityDetails, newcomer: r.newcomer, minAttendance: r.minAttendance,
+        decisionDeadline: new Date(start.getTime() - r.decisionLeadMinutes * 60_000).toISOString(), seriesId: r.id, seriesLocalDate: dayOf(k), overridden: [],
+      });
+      for (const t of r.tags) state.eventTags.push({ eventId: id, interestSlug: t });
+    }
+    for (const a of r.firstAttendees) state.eventAttendees.push({ eventId: seriesOccurrenceId(r, 0), userId: seedUserByName(a).id, createdAt: daysAgo(3) });
+  }
+
   syncAllEventChats(state, now.toISOString());
 
   SEED_REPORTS.forEach((r, i) => {

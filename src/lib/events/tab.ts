@@ -50,8 +50,10 @@ export function groupByBucket<T extends Pick<Event, "startsAt" | "id">>(events: 
 
 export interface UsualEvent {
   event: Event;
-  /** The past event it is like, for the plain "why" line. */
+  /** The past event it is like (or the followed series), for the plain "why" line. */
   like: { id: string; title: string };
+  /** 4.5b: shown because the viewer follows its series. */
+  followed?: boolean;
 }
 
 /**
@@ -60,7 +62,7 @@ export interface UsualEvent {
  * to that ended within USUAL_LOOKBACK_DAYS (cancelled ones don't count). Only the viewer's own history
  * is used. `candidates` must already be filtered to what the viewer can see.
  */
-export function usualEvents(joined: Event[], candidates: Event[], now: number): UsualEvent[] {
+export function usualEvents(joined: Event[], candidates: Event[], now: number, followedSeries: { id: string; title: string }[] = []): UsualEvent[] {
   const joinedIds = new Set(joined.map((e) => e.id));
   const since = now - USUAL_LOOKBACK_DAYS * 86_400_000;
   const history = joined
@@ -69,8 +71,12 @@ export function usualEvents(joined: Event[], candidates: Event[], now: number): 
   const out: UsualEvent[] = [];
   for (const c of candidates) {
     if (joinedIds.has(c.id) || c.status !== "published" || eventHasEnded(c.startsAt, c.endsAt, now)) continue;
+    // 4.5b: a series you follow, or a series you went to before, is a usual event too.
+    const followed = c.seriesId ? followedSeries.find((f) => f.id === c.seriesId) : undefined;
+    if (followed) { out.push({ event: c, like: { id: followed.id, title: followed.title }, followed: true }); continue; }
     const like = history.find(
-      (h) => h.categorySlug === c.categorySlug && ((!!h.placeId && h.placeId === c.placeId) || (!!h.creatorId && h.creatorId === c.creatorId)),
+      (h) => (!!c.seriesId && h.seriesId === c.seriesId)
+        || (h.categorySlug === c.categorySlug && ((!!h.placeId && h.placeId === c.placeId) || (!!h.creatorId && h.creatorId === c.creatorId))),
     );
     if (like) out.push({ event: c, like: { id: like.id, title: like.title } });
   }

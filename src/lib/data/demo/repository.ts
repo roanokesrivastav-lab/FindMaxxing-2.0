@@ -1328,6 +1328,9 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         if (!on && i >= 0) list.splice(i, 1);
         persist();
       },
+      async followed(userId) {
+        return ser.seriesFollowers(state).filter((f) => f.userId === userId).map((f) => f.seriesId);
+      },
       async setAttended(hostId, eventId, userId, attended) {
         assertActive(hostId);
         const ev = state.events.find((e) => e.id === eventId);

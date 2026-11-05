@@ -94,6 +94,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
           cancelled={cancelled}
           full={seatsFull}
           isHost={isHost}
+          series={series ? { id: series.id, title: series.title } : null}
           status={participation === "waitlisted" ? <StatusLabel tone="pending">Waitlisted{event.readiness?.waitlist ? ` (${event.readiness.waitlist} waiting)` : ""}</StatusLabel>
             : participation === "offered" ? <StatusLabel tone="positive">A spot is yours: accept it</StatusLabel>
             : participation === "interested" ? <StatusLabel tone="neutral">Interested</StatusLabel> : undefined}

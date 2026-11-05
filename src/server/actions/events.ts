@@ -252,3 +252,48 @@ export async function seriesHostAction(op: "cancel-occurrence" | "end-series", i
     return succeed(undefined);
   } catch (err) { return toFailure(err); }
 }
+
+/** 4.5b: follow a series (updates only; never signs you up for a session). */
+export async function followSeriesAction(seriesId: string, on: boolean): Promise<ActionResult<{ following: boolean }>> {
+  const viewer = await getViewer();
+  if (!viewer) return fail("Sign in to follow", undefined, "unauthenticated");
+  const id = uuidSchema.safeParse(seriesId);
+  if (!id.success) return fail("Invalid series");
+  try {
+    const repo = await getRepository();
+    await repo.series.follow(viewer.id, id.data, on);
+    revalidatePath(`/series/${id.data}`);
+    return succeed({ following: on });
+  } catch (err) { return toFailure(err); }
+}
+
+/** 4.5b: the owner adds a backup host by username, or removes one. */
+export async function setSeriesHostAction(seriesId: string, usernameOrId: string, on: boolean): Promise<ActionResult> {
+  const viewer = await getViewer();
+  if (!viewer) return fail("Sign in first", undefined, "unauthenticated");
+  const id = uuidSchema.safeParse(seriesId);
+  if (!id.success) return fail("Invalid series");
+  try {
+    const repo = await getRepository();
+    const asId = uuidSchema.safeParse(usernameOrId);
+    const target = asId.success ? asId.data : (await repo.profiles.getByUsername(usernameOrId.trim().replace(/^@/, "")))?.id;
+    if (!target) return fail("No one with that username", { hostUsername: "No one with that username" });
+    await repo.series.setHost(viewer.id, id.data, target, on);
+    revalidatePath(`/series/${id.data}`);
+    return succeed(undefined);
+  } catch (err) { return toFailure(err); }
+}
+
+/** 4.5b: a host records who came, after the session ended. */
+export async function setAttendedAction(eventId: string, userId: string, attended: boolean): Promise<ActionResult> {
+  const viewer = await getViewer();
+  if (!viewer) return fail("Sign in first", undefined, "unauthenticated");
+  const ev = uuidSchema.safeParse(eventId);
+  const who = uuidSchema.safeParse(userId);
+  if (!ev.success || !who.success) return fail("Invalid request");
+  try {
+    const repo = await getRepository();
+    await repo.series.setAttended(viewer.id, ev.data, who.data, attended);
+    return succeed(undefined);
+  } catch (err) { return toFailure(err); }
+}

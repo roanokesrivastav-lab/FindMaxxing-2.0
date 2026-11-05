@@ -212,6 +212,7 @@ describe("demo parity and the real create action", () => {
     rule: { weekdays, intervalWeeks: 1, startLocal: "19:00", durationMinutes: 60, startsOn: today(), endsOn: null }, capacity: 10, tags: ["running"] });
 
   it("demo: generation, cancel one, edit future with overrides, schedule move, revoked host, follow", async () => {
+    await repo.series.generate(new Date().toISOString()); // the seed series tops up its horizon first
     const { seriesId, firstEventId } = await repo.series.create(input([2, 4]), maya);
     const occ = await repo.series.occurrences(seriesId, null);
     expect(occ.length).toBeGreaterThanOrEqual(8);

@@ -1188,7 +1188,7 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
     },
 
     series: {
-      async create(input, _ownerId) {
+      async create(input) {
         const r = input.rule;
         const seriesId = unwrap(await supabase.rpc("create_series", {
           p_title: input.title, p_description: input.description, p_category_slug: input.categorySlug, p_place_id: input.placeId ?? null,
@@ -1237,6 +1237,10 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
       },
       async follow(_userId, seriesId, on) {
         unwrap(await supabase.rpc("follow_series", { p_series: seriesId, p_on: on }));
+      },
+      async followed(userId) {
+        const rows = unwrap(await supabase.from("event_series_followers").select("series_id").eq("user_id", userId)) as { series_id: string }[];
+        return rows.map((r) => r.series_id);
       },
       async setAttended(_hostId, eventId, userId, attended) {
         unwrap(await supabase.rpc("set_attended", { p_event: eventId, p_user: userId, p_attended: attended }));
