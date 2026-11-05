@@ -5,7 +5,7 @@ import { ChevronDown, ChevronLeft, ChevronRight, List, Loader2, LocateFixed, Map
 import type { Event, GeoBounds, Place } from "@/lib/data/types";
 import type { MapCanvasHandle } from "@/components/map/MapCanvas";
 import { MapView } from "@/components/map/MapView";
-import { CATEGORIES, INTERESTS, getInterest } from "@/lib/data/taxonomy";
+import { CATEGORIES, INTERESTS, getCategory, getInterest } from "@/lib/data/taxonomy";
 import { eventMarker, placeMarker } from "@/lib/map/markers";
 import { useViewerTime } from "@/components/time/ViewerTime";
 import type { MapMarker, ViewState } from "@/lib/map/types";
@@ -30,6 +30,8 @@ import { Sheet } from "@/components/ui/Sheet";
 import { usePersistentJson } from "@/lib/utils/usePersistentJson";
 import { CategoryIcon, InterestIcon } from "@/components/ui/TaxonomyIcon";
 import { ArrivalBar } from "./ArrivalBar";
+import { IntentTabs } from "./IntentTabs";
+import { AREA_METERS, boundsAround, intentWidening, whenWindow, type WhenTab } from "@/lib/explore/intent";
 import { useInterestPresence } from "./useInterestPresence";
 import { widerBounds, type InterestPresence } from "@/lib/explore/arrival";
 import { MAP_INTEREST_LIMIT, toggleInterest as toggleLimited } from "@/lib/onboarding/interests";
@@ -133,6 +135,40 @@ export function ExploreClient({
   // "Nearest" orders the place list by distance from the viewer, in SQL across every page.
   const [nearest, setNearest] = useState(false);
   const near = nearest && geo.location ? geo.location : null;
+  // Roadmap 2.4a: intent filter tabs (pilotExplore).
+  const [whenTab, setWhenTab] = useState<WhenTab>(live?.when ?? "any");
+  const [area, setArea] = useState(false);
+  const [areaPending, setAreaPending] = useState(!!live?.area);
+  const viewerTime = useViewerTime();
+  // Windows move in 5-minute steps, so the clock tick does not refetch every minute.
+  const windowNow = Math.floor(viewerTime.now / 300_000) * 300_000;
+  const timeWindow = useMemo(() => (pilotExplore ? whenWindow(whenTab, windowNow, viewerTime.timeZone) : null), [pilotExplore, whenTab, windowNow, viewerTime.timeZone]);
+  const areaCenter = pilotExplore && area && geo.location ? geo.location : null;
+  const areaBox = useMemo(() => (areaCenter ? boundsAround(areaCenter, AREA_METERS) : null), [areaCenter]);
+  const withinArea = useCallback(
+    (p: { lat: number; lng: number }) => !areaCenter || distanceMeters(areaCenter, p) <= AREA_METERS,
+    [areaCenter],
+  );
+  // Turning on "15 min away" asks for the location first; the tab switches on once it arrives.
+  useEffect(() => {
+    if (!areaPending || !geo.location) return;
+    const box = boundsAround(geo.location, AREA_METERS);
+    mapRef.current?.fitBounds([[box.west, box.south], [box.east, box.north]], 40, 16);
+    const t = setTimeout(() => {
+      setArea(true);
+      setAreaPending(false);
+    }, 0);
+    return () => clearTimeout(t);
+  }, [areaPending, geo.location]);
+  const toggleArea = () => {
+    if (area || areaPending) {
+      setArea(false);
+      setAreaPending(false);
+      return;
+    }
+    setAreaPending(true);
+    if (!geo.location) geo.request();
+  };
 
   useEffect(() => {
     if (geo.location && !flewToUser.current) {
@@ -151,14 +187,15 @@ export function ExploreClient({
   const searching = text.length > 0;
   const request = useMemo<DiscoveryRequest>(
     () => ({
-      bounds: searching ? searchArea : (viewport ?? initialRequest.bounds),
+      bounds: areaBox ?? (searching ? searchArea : (viewport ?? initialRequest.bounds)),
       text,
       category,
       tags: interests,
-      kind,
+      kind: timeWindow ? "events" : kind,
       near,
+      ...(timeWindow ? { window: timeWindow } : {}),
     }),
-    [searching, searchArea, viewport, initialRequest.bounds, text, category, interests, kind, near],
+    [areaBox, searching, searchArea, viewport, initialRequest.bounds, text, category, interests, kind, near, timeWindow],
   );
   const discovery = useDiscovery(request, initial, initialRequest);
   const arrivalShown = arrivalOpen && interests.length > 0;
@@ -194,10 +231,12 @@ export function ExploreClient({
       kind,
       sel: selKind && selId ? { kind: selKind, id: selId } : null,
       view: mode,
+      when: whenTab,
+      area: area || areaPending,
     });
     const next = `/${qs || arrivalShown ? "?" : ""}${qs}${arrivalShown ? `${qs ? "&" : ""}welcome=1` : ""}`;
     if (`${location.pathname}${location.search}` !== next) window.history.replaceState(null, "", next);
-  }, [pilotExplore, camera, deferredQuery, category, interests, kind, selKind, selId, mode, arrivalShown]);
+  }, [pilotExplore, camera, deferredQuery, category, interests, kind, selKind, selId, mode, arrivalShown, whenTab, area, areaPending]);
 
   // The list keeps its scroll position across map ↔ list switches and a detail page round trip.
   const listRef = useRef<HTMLDivElement>(null);
@@ -261,20 +300,23 @@ export function ExploreClient({
   };
   const { results } = discovery;
   const { timeZone } = useViewerTime();
-  const places = results.places.items;
-  const events = results.events.items;
+  const places = areaCenter ? results.places.items.filter(withinArea) : results.places.items;
+  const events = areaCenter ? results.events.items.filter(withinArea) : results.events.items;
   const seen = (itemType: "place" | "event", itemId: string, surface: "list" | "search" | "map", position: number | null): ImpressionData | null =>
     logImpressions ? { itemType, itemId, surface, position } : null;
 
   const markers = useMemo<MapMarker[]>(() => {
-    const list = [...(results.placeMarkers?.items ?? []).map(placeMarker), ...(results.eventMarkers?.items ?? []).map((e) => eventMarker(e, timeZone))];
+    const list = [
+      ...(results.placeMarkers?.items ?? []).filter(withinArea).map(placeMarker),
+      ...(results.eventMarkers?.items ?? []).filter(withinArea).map((e) => eventMarker(e, timeZone)),
+    ];
     // Keep the selected pin on the map across refreshes, even once it falls
     // outside the new results.
     if (selected && !list.some((m) => m.id === selected.item.id)) {
       list.push(selected.kind === "place" ? placeMarker(selected.item) : eventMarker(selected.item, timeZone));
     }
     return list;
-  }, [results.placeMarkers, results.eventMarkers, selected, timeZone]);
+  }, [results.placeMarkers, results.eventMarkers, selected, timeZone, withinArea]);
 
   // A fresh search everywhere: bring its matches into view.
   const fittedFor = useRef<unknown>(null);
@@ -286,12 +328,30 @@ export function ExploreClient({
     if (box) mapRef.current?.fitBounds([[box.west, box.south], [box.east, box.north]], 80, 14);
   }, [searching, searchArea, discovery.stale, results.placeMarkers, results.eventMarkers]);
 
-  const placeCount = results.placeMarkers?.items.length ?? 0;
-  const eventCount = results.eventMarkers?.items.length ?? 0;
+  const placeCount = (results.placeMarkers?.items ?? []).filter(withinArea).length;
+  const eventCount = (results.eventMarkers?.items ?? []).filter(withinArea).length;
   const truncated = !!(results.placeMarkers?.truncated || results.eventMarkers?.truncated);
   const scope = searching && !searchArea ? "everywhere" : "nearby";
   const canSearchArea = searching && !!viewport && !sameBounds(searchArea, viewport);
 
+  // Roadmap 2.4a: when the tabs leave the map empty, say why and offer one specific expansion.
+  const widening = pilotExplore ? intentWidening(whenTab, area, category) : null;
+  const intentEmpty = widening
+    ? {
+        ...widening,
+        text:
+          widening.action === "when"
+            ? `No events ${whenTab === "weekend" ? "this weekend" : whenTab === "now" ? "on now" : "tonight"} here.`
+            : widening.action === "area"
+              ? "Nothing within a 15 min walk."
+              : `No ${category ? getCategory(category).label : ""} here.`,
+        apply: () => {
+          if (widening.action === "when") setWhenTab(({ now: "tonight", tonight: "weekend", weekend: "any", any: "any" } as const)[whenTab]);
+          else if (widening.action === "area") toggleArea();
+          else setCategory(null);
+        },
+      }
+    : null;
   const activeFilterCount = (category ? 1 : 0) + interests.length + (kind !== "all" ? 1 : 0);
   const totalResults = placeCount + eventCount;
 
@@ -415,6 +475,28 @@ export function ExploreClient({
               ) : null}
             </button>
           </div>
+          {pilotExplore ? (
+            <IntentTabs
+              when={whenTab}
+              onWhen={setWhenTab}
+              area={area || areaPending}
+              onArea={toggleArea}
+              locating={areaPending && geo.status === "requesting"}
+              locationDenied={areaPending && (geo.status === "denied" || geo.status === "unsupported")}
+              category={category}
+              onCategory={setCategory}
+              trailing={
+                <>
+            <Link href="/new" className="chip shrink-0 snap-start" title="What locals added in the last 7 days">
+              <Sparkles size={14} aria-hidden /> New
+            </Link>
+            <Link href="/neighborhoods" className="chip shrink-0 snap-start md:hidden" title="Browse by neighborhood">
+              <MapIcon size={14} aria-hidden /> Areas
+            </Link>
+                </>
+              }
+            />
+          ) : (
           <ChipRow>
             <Link href="/new" className="chip shrink-0 snap-start" title="What locals added in the last 7 days">
               <Sparkles size={14} aria-hidden /> New
@@ -431,6 +513,44 @@ export function ExploreClient({
               </Chip>
             ))}
           </ChipRow>
+          )}
+          {pilotExplore ? (
+            <div className="flex justify-center">
+              <div className="pointer-events-auto flex flex-wrap justify-center gap-2" aria-live="polite">
+                {discovery.status === "loading" ? (
+                  <span className="chip bg-surface shadow-card">
+                    <Loader2 size={14} className="animate-spin" /> Updating
+                  </span>
+                ) : null}
+                {discovery.status === "error" ? (
+                  <button type="button" onClick={discovery.retry} className="chip bg-surface shadow-card text-flare-ink">
+                    <RotateCw size={14} /> Couldn&apos;t load results. Retry
+                  </button>
+                ) : null}
+                {canSearchArea ? (
+                  <button type="button" onClick={() => setSearchArea(viewport)} className="chip shadow-card" data-active="true">
+                    <Search size={14} /> Search this area
+                  </button>
+                ) : null}
+                {searching && searchArea ? (
+                  <button type="button" onClick={() => setSearchArea(null)} className="chip bg-surface shadow-card">
+                    Search everywhere
+                  </button>
+                ) : null}
+                {pilotExplore && totalResults === 0 && discovery.status === "idle" && !discovery.stale && intentEmpty ? (
+                  <span className="chip bg-surface shadow-card flex-wrap h-auto py-hair" role="status" data-intent-empty={intentEmpty.action}>
+                    {intentEmpty.text}{" "}
+                    <button type="button" className="font-semibold text-flare-ink underline underline-offset-2" onClick={intentEmpty.apply}>
+                      {intentEmpty.label}
+                    </button>
+                  </span>
+                ) : null}
+                {truncated && discovery.status !== "loading" ? (
+                  <span className="chip bg-surface shadow-card">Showing the top {placeCount + eventCount} here. Zoom in for more</span>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
           {arrivalShown && !searching ? (
             <ArrivalBar
               interests={interests}
@@ -477,7 +597,9 @@ export function ExploreClient({
           </button>
         </div>
 
-        {/* Query status: loading, errors, dense areas, search scope */}
+        {/* Query status: loading, errors, dense areas, search scope. With pilotExplore it flows under the
+            top bar instead (tabs, notes and the arrival bar change its height). */}
+        {!pilotExplore ? (
         <div
           className={cn(
             "absolute inset-x-0 top-[10.25rem] md:top-[9rem] z-20 flex justify-center px-4 pointer-events-none",
@@ -487,32 +609,41 @@ export function ExploreClient({
             panelOpen && "md:left-[400px]",
           )}
         >
-          <div className="pointer-events-auto flex flex-wrap justify-center gap-2" aria-live="polite">
-            {discovery.status === "loading" ? (
-              <span className="chip bg-surface shadow-card">
-                <Loader2 size={14} className="animate-spin" /> Updating
-              </span>
-            ) : null}
-            {discovery.status === "error" ? (
-              <button type="button" onClick={discovery.retry} className="chip bg-surface shadow-card text-flare-ink">
-                <RotateCw size={14} /> Couldn&apos;t load results. Retry
-              </button>
-            ) : null}
-            {canSearchArea ? (
-              <button type="button" onClick={() => setSearchArea(viewport)} className="chip shadow-card" data-active="true">
-                <Search size={14} /> Search this area
-              </button>
-            ) : null}
-            {searching && searchArea ? (
-              <button type="button" onClick={() => setSearchArea(null)} className="chip bg-surface shadow-card">
-                Search everywhere
-              </button>
-            ) : null}
-            {truncated && discovery.status !== "loading" ? (
-              <span className="chip bg-surface shadow-card">Showing the top {placeCount + eventCount} here. Zoom in for more</span>
-            ) : null}
-          </div>
+            <div className="pointer-events-auto flex flex-wrap justify-center gap-2" aria-live="polite">
+              {discovery.status === "loading" ? (
+                <span className="chip bg-surface shadow-card">
+                  <Loader2 size={14} className="animate-spin" /> Updating
+                </span>
+              ) : null}
+              {discovery.status === "error" ? (
+                <button type="button" onClick={discovery.retry} className="chip bg-surface shadow-card text-flare-ink">
+                  <RotateCw size={14} /> Couldn&apos;t load results. Retry
+                </button>
+              ) : null}
+              {canSearchArea ? (
+                <button type="button" onClick={() => setSearchArea(viewport)} className="chip shadow-card" data-active="true">
+                  <Search size={14} /> Search this area
+                </button>
+              ) : null}
+              {searching && searchArea ? (
+                <button type="button" onClick={() => setSearchArea(null)} className="chip bg-surface shadow-card">
+                  Search everywhere
+                </button>
+              ) : null}
+              {pilotExplore && totalResults === 0 && discovery.status === "idle" && !discovery.stale && intentEmpty ? (
+                <span className="chip bg-surface shadow-card flex-wrap h-auto py-hair" role="status" data-intent-empty={intentEmpty.action}>
+                  {intentEmpty.text}{" "}
+                  <button type="button" className="font-semibold text-flare-ink underline underline-offset-2" onClick={intentEmpty.apply}>
+                    {intentEmpty.label}
+                  </button>
+                </span>
+              ) : null}
+              {truncated && discovery.status !== "loading" ? (
+                <span className="chip bg-surface shadow-card">Showing the top {placeCount + eventCount} here. Zoom in for more</span>
+              ) : null}
+            </div>
         </div>
+        ) : null}
 
         {/* Selected pin preview */}
         {selected ? (

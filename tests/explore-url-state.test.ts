@@ -37,7 +37,7 @@ beforeEach(() => {
 });
 
 const UUID = "0b7c1f0e-1d2a-4c3b-8e9f-0a1b2c3d4e5f";
-const base: ExploreUrlState = { camera: null, q: "", category: null, tags: [], kind: "all", sel: null, view: "map" };
+const base: ExploreUrlState = { camera: null, q: "", category: null, tags: [], kind: "all", sel: null, view: "map", when: "any", area: false };
 
 describe("parse and serialize", () => {
   it("the plain map is the plain URL", () => {
@@ -46,13 +46,13 @@ describe("parse and serialize", () => {
   });
 
   it("round-trips camera, filters, selection and view (reopen after panning)", () => {
-    const s: ExploreUrlState = { camera: { lat: 39.98123, lng: -83.00456, zoom: 14.25 }, q: "tacos", category: "food", tags: ["coffee", "food"], kind: "places", sel: { kind: "place", id: UUID }, view: "list" };
+    const s: ExploreUrlState = { camera: { lat: 39.98123, lng: -83.00456, zoom: 14.25 }, q: "tacos", category: "food", tags: ["coffee", "food"], kind: "places", sel: { kind: "place", id: UUID }, view: "list", when: "tonight", area: true };
     expect(parseExploreState(new URLSearchParams(serializeExploreState(s)))).toEqual(s);
   });
 
   it("drops anything unknown or out of range", () => {
     expect(
-      parseExploreState({ at: "999,0,12", category: "nope", tags: "coffee,nope,coffee", kind: "everything", sel: "place:not-a-uuid", view: "grid" }),
+      parseExploreState({ at: "999,0,12", category: "nope", tags: "coffee,nope,coffee", kind: "everything", sel: "place:not-a-uuid", view: "grid", when: "someday", area: "99" }),
     ).toEqual({ ...base, tags: ["coffee"] });
     expect(parseExploreState({ at: "40,-83,40" }).camera).toBeNull(); // zoom out of range
     expect(parseExploreState({ at: "40,-83" }).camera).toBeNull();

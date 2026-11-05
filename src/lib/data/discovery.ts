@@ -18,6 +18,17 @@ export const MAX_MAP_MARKERS = 1000;
 export const UPCOMING_GRACE_MS = 60 * 60_000;
 export const MAX_SEARCH_TEXT = 80;
 
+/**
+ * The "not ended before" cutoff in ms: the later of the upcoming rule (unless past events are wanted)
+ * and a When window's start (roadmap 2.4a). Null means no cutoff.
+ */
+export function eventCutoffMs(includePast: boolean | undefined, endsAfter: string | null | undefined, now = Date.now()): number | null {
+  const upcoming = includePast ? null : now - UPCOMING_GRACE_MS;
+  const windowStart = endsAfter ? Date.parse(endsAfter) : null;
+  if (upcoming === null) return windowStart;
+  return windowStart === null ? upcoming : Math.max(upcoming, windowStart);
+}
+
 export function clampLimit(limit: number | undefined, fallback: number, max: number): number {
   if (limit === undefined || !Number.isFinite(limit)) return fallback;
   return Math.min(max, Math.max(1, Math.floor(limit)));

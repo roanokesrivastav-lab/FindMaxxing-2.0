@@ -45,6 +45,7 @@ import {
   MAX_MAP_MARKERS,
   MAX_PAGE_SIZE,
   UPCOMING_GRACE_MS,
+  eventCutoffMs,
   clampLimit,
   compareTimestamps,
   decodeCursor,
@@ -810,7 +811,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         const limit = clampLimit(opts.limit, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
         const after = decodeCursor(opts.cursor);
         const viewerId = opts.viewerId ?? null;
-        const cutoff = opts.includePast ? null : Date.now() - UPCOMING_GRACE_MS;
+        const cutoff = eventCutoffMs(opts.includePast, normalizeTimestamp(opts.endsAfter, "endsAfter"));
         const startsBefore = normalizeTimestamp(opts.startsBefore, "startsBefore");
         const rows = state.events
           .filter((e) => eventMatches(state, e, f, viewerId, cutoff, startsBefore))
@@ -820,15 +821,15 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
       },
       async count(opts = {}) {
         const f = normalizeFilters(opts);
-        const cutoff = opts.includePast ? null : Date.now() - UPCOMING_GRACE_MS;
+        const cutoff = eventCutoffMs(opts.includePast, normalizeTimestamp(opts.endsAfter, "endsAfter"));
         const startsBefore = normalizeTimestamp(opts.startsBefore, "startsBefore");
         return state.events.filter((e) => eventMatches(state, e, f, opts.viewerId ?? null, cutoff, startsBefore)).length;
       },
       async mapMarkers(opts = {}) {
         const f = normalizeFilters(opts);
         const limit = clampLimit(opts.limit, DEFAULT_MAP_MARKERS, MAX_MAP_MARKERS);
-        const cutoff = opts.includePast ? null : Date.now() - UPCOMING_GRACE_MS;
-        const rows = state.events.filter((e) => eventMatches(state, e, f, opts.viewerId ?? null, cutoff)).sort(soonestFirst);
+        const cutoff = eventCutoffMs(opts.includePast, normalizeTimestamp(opts.endsAfter, "endsAfter"));
+        const rows = state.events.filter((e) => eventMatches(state, e, f, opts.viewerId ?? null, cutoff, normalizeTimestamp(opts.startsBefore, "startsBefore"))).sort(soonestFirst);
         return {
           items: rows.slice(0, limit).map((e) => ({ id: e.id, title: e.title, categorySlug: e.categorySlug, lat: e.lat, lng: e.lng, startsAt: e.startsAt })),
           truncated: rows.length > limit,
