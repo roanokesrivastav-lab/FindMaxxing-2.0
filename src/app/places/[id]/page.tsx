@@ -30,6 +30,7 @@ import { LocalDate } from "@/components/time/LocalDate";
 import { InterestIcon } from "@/components/ui/TaxonomyIcon";
 import { PlaceDecisionPage } from "@/components/places/decision/PlaceDecisionPage";
 import { PlaceTips, RecentObservation } from "@/components/places/decision/PlaceTips";
+import { PlaceOccasions } from "@/components/places/decision/PlaceOccasions";
 import { recentObservation, requestNow } from "@/lib/places/tips";
 
 export const dynamic = "force-dynamic";
@@ -65,9 +66,10 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
   if (featureEnabled("pilotExplore")) {
     // Roadmap 2.5: the photo-first place page. Flag off keeps the page below exactly as it was.
     const now = requestNow();
-    const [following, tips] = await Promise.all([
+    const [following, tips, occasionNotes] = await Promise.all([
       viewer ? repo.profiles.listFollowing(viewer.id) : Promise.resolve([]),
       repo.tips.list(place.id, viewer?.id ?? null, now),
+      repo.occasions.list(place.id, viewer?.id ?? null),
     ]);
     // 2.6: each tip's claim opens its evidence (a handful of tips per place).
     const tipEvidence = (await Promise.all(tips.map((t) => repo.tips.evidence(t.id, viewer?.id ?? null)))).filter((e) => e !== null);
@@ -87,6 +89,7 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
           isNew={!!sp.new}
           extendedTiers={featureEnabled("reputation")}
           observation={observedEvidence ? <RecentObservation evidence={observedEvidence} now={now} /> : null}
+          occasions={<PlaceOccasions placeId={place.id} notes={occasionNotes} followingIds={following.map((p) => p.id)} viewerId={viewer?.id ?? null} />}
           tip={<PlaceTips placeId={place.id} tips={tipEvidence} viewerId={viewer?.id ?? null} now={now} legacyTip={place.localTip} />}
         />
       </>

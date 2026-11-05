@@ -51,6 +51,7 @@ export default async function ExplorePage({ searchParams }: PageProps<"/">) {
       initialRequest={request}
       welcome={welcome}
       pilotFoundation={pilotFoundation}
+      pilotExplore={featureEnabled("pilotExplore")}
       arrival={arrival}
       forYou={<ForYouRail places={forYou} />}
       logImpressions={!!viewer && featureEnabled("recommendations")}

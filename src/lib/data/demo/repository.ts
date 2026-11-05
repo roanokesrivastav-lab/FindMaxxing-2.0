@@ -66,6 +66,7 @@ import path from "node:path";
 
 import { UPLOAD_DIR } from "./uploads";
 import { createDemoTips } from "./tips";
+import { createDemoOccasions } from "./occasions";
 /** Generated upload names (and their .sm/.md size siblings) only; anything else is refused before touching disk. */
 export const DEMO_UPLOAD_NAME = /^(places|avatars)-[0-9a-f]{8}-[0-9a-f-]{36}(\.(sm|md))?\.(jpg|png|webp)$/;
 
@@ -1621,6 +1622,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
     notifications: createDemoNotifications(state, { persist, summary: (id) => profileOf(state, id) }),
 
     ads: createDemoAds(state, { persist, assertActive, rateLimit, isAdmin }),
+    occasions: createDemoOccasions(state, { persist, assertActive, rateLimit, canViewPlace: (p, viewerId) => canViewPlace(state, p, viewerId), summary: (id) => profileOf(state, id) }),
     tips: createDemoTips(state, { persist, assertActive, rateLimit, canViewPlace: (p, viewerId) => canViewPlace(state, p, viewerId), summary: (id) => profileOf(state, id) }),
     interactions: createDemoInteractions(state, {
       persist, assertActive, rateLimit,

@@ -6,6 +6,7 @@ import { getViewer } from "@/lib/auth/server";
 import { featureEnabled } from "@/lib/config";
 import { uuidSchema } from "@/lib/validation/schemas";
 import type { TipKind } from "@/lib/places/tips";
+import type { Occasion, Polarity } from "@/lib/places/occasions";
 import { fail, succeed, toFailure, type ActionResult } from "./result";
 
 /** Roadmap 2.6: tip actions (pilotExplore). The repository and RLS do the authorization. */
@@ -53,6 +54,35 @@ export async function suggestTipCorrectionAction(placeId: string, tipId: string,
   try {
     const repo = await getRepository();
     await repo.tips.suggestCorrection(v.viewer.id, tipId, body);
+    revalidatePath(`/places/${placeId}`);
+    return succeed(undefined);
+  } catch (err) {
+    return toFailure(err);
+  }
+}
+
+/** Roadmap 2.7: add (or update the text of) the viewer's best for / less suited note. */
+export async function addOccasionNoteAction(input: { placeId: string; polarity: Polarity; occasion: Occasion; note?: string | null }): Promise<ActionResult> {
+  const v = await viewerFor("add a note");
+  if (v.error) return v.error;
+  if (!ids(input.placeId)) return fail("Place not found", undefined, "not_found");
+  try {
+    const repo = await getRepository();
+    await repo.occasions.add(v.viewer.id, input.placeId, { polarity: input.polarity, occasion: input.occasion, note: input.note ?? null });
+    revalidatePath(`/places/${input.placeId}`);
+    return succeed(undefined);
+  } catch (err) {
+    return toFailure(err);
+  }
+}
+
+export async function removeOccasionNoteAction(placeId: string, noteId: string): Promise<ActionResult> {
+  const v = await viewerFor("remove a note");
+  if (v.error) return v.error;
+  if (!ids(placeId, noteId)) return fail("Note not found", undefined, "not_found");
+  try {
+    const repo = await getRepository();
+    await repo.occasions.remove(v.viewer.id, noteId);
     revalidatePath(`/places/${placeId}`);
     return succeed(undefined);
   } catch (err) {
