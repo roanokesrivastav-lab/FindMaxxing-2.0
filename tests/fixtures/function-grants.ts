@@ -120,6 +120,19 @@ const groups = [
       "set_attended(uuid,uuid,boolean)", "moderate_series(uuid,boolean)",
     ],
   },
+  {
+    anon: true,
+    reason: "Roadmap R3 (0056): club visibility, the caller's right to see member names, and the member count (never names); caller-bound.",
+    signatures: ["can_view_club(uuid)", "viewer_sees_club_members(uuid)", "club_member_count(uuid)"],
+  },
+  {
+    anon: false,
+    reason: "Roadmap R3 (0056): owner-only club changes (owner_id = auth.uid()); series attach requires is_series_host for auth.uid(); join/leave writes only the caller's row; moderate_club requires is_moderator().",
+    signatures: [
+      "create_club(text,text,uuid[])", "set_club_series(uuid,uuid,boolean)", "join_club(uuid,boolean)",
+      "remove_club_member(uuid,uuid)", "moderate_club(uuid,boolean)",
+    ],
+  },
 ];
 
 export const FUNCTION_GRANT_ALLOWLIST = groups.flatMap(({ anon, reason, signatures }) =>

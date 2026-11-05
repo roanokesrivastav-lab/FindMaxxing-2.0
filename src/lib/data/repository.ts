@@ -68,7 +68,7 @@ import type {
   UpdateProfileInput,
   UserActivity,
 } from "./types";
-import type { EventSeries, HostParticipant, JoinOutcome, NewSeriesInput, SeriesUpdateInput, ViewerParticipation } from "@findmaxxing/shared/events";
+import type { Club, EventSeries, HostParticipant, JoinOutcome, NewSeriesInput, SeriesUpdateInput, ViewerParticipation } from "@findmaxxing/shared/events";
 import type { PlaceTip, TipEvidence, TipInput, TipStatus } from "@/lib/places/tips";
 import type { OccasionInput, OccasionNote } from "@/lib/places/occasions";
 import type { SaveDetails, SaveDetailsInput } from "@/lib/places/saves";
@@ -286,6 +286,16 @@ export interface DataRepository {
     attendance(hostId: string, eventId: string): Promise<{ userId: string; attended: boolean | null }[]>;
     /** Service (cron): materializes occurrences within the horizon. Idempotent. */
     generate(now: string): Promise<number>;
+  };
+  /** R3 lightweight clubs (0056). Joining never RSVPs; member names are members-only. */
+  clubs: {
+    create(ownerId: string, input: { name: string; description: string; seriesIds: string[] }): Promise<string>;
+    get(clubId: string, viewerId?: string | null): Promise<Club | null>;
+    /** Active clubs that gather the series, for its page. */
+    forSeries(seriesId: string, viewerId?: string | null): Promise<{ id: string; name: string }[]>;
+    join(userId: string, clubId: string, on: boolean): Promise<void>;
+    removeMember(ownerId: string, clubId: string, userId: string): Promise<void>;
+    setSeries(ownerId: string, clubId: string, seriesId: string, on: boolean): Promise<void>;
   };
   tags: {
     /** Visible places and upcoming events per interest slug, over the whole data set. */

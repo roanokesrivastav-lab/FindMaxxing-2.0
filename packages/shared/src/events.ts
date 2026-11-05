@@ -321,3 +321,24 @@ export const seriesRuleSchema = z.object({
   startsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   endsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().default(null),
 }).refine((r) => !r.endsOn || r.endsOn >= r.startsOn, { message: "The end date comes after the start", path: ["endsOn"] });
+
+// ---------------------------------------------------------------------------
+// R3 Lightweight clubs (docs/features/R3.md)
+// ---------------------------------------------------------------------------
+export interface Club {
+  id: string;
+  ownerId: string;
+  name: string;
+  description: string;
+  status: "active" | "removed";
+  seriesIds: string[];
+  memberCount: number;
+  /** Names only for members and club hosts (members-only privacy); null for everyone else. */
+  members: { userId: string; displayName: string; username: string; role: "owner" | "member" }[] | null;
+  viewerIsMember: boolean;
+  viewerIsHost: boolean;
+}
+export const clubSchema = z.object({
+  name: z.string().trim().min(3, "At least 3 characters").max(80, "Keep it under 80 characters"),
+  description: z.string().trim().max(600, "Keep it under 600 characters").default(""),
+});
