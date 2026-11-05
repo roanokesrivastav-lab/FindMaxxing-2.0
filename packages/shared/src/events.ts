@@ -231,3 +231,93 @@ export interface HostParticipant {
   queuePosition: number | null;
   offerExpiresAt: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// 4.5a Recurring series (4.0 spec §3, §8, §10)
+// ---------------------------------------------------------------------------
+/** D-C: occurrences are generated this many days ahead. */
+export const SERIES_HORIZON_DAYS = 28;
+export type SeriesStatus = "active" | "paused" | "ended" | "removed";
+
+/** Weekly rule: ISO weekdays (1 = Monday … 7 = Sunday), local start "HH:MM", duration, local dates. */
+export interface SeriesRule {
+  weekdays: number[];
+  intervalWeeks: number;
+  startLocal: string;
+  durationMinutes: number;
+  startsOn: string;
+  endsOn: string | null;
+}
+
+export interface SeriesHost { userId: string; displayName: string; username: string; role: "owner" | "backup" }
+
+export interface EventSeries {
+  id: string;
+  ownerId: string;
+  title: string;
+  description: string;
+  categorySlug: string;
+  placeId: string | null;
+  locationName: string;
+  address: string | null;
+  lat: number;
+  lng: number;
+  timeZone: string;
+  rule: SeriesRule;
+  capacity: number | null;
+  minAttendance: number | null;
+  decisionLeadMinutes: number | null;
+  newcomer: EventNewcomer | null;
+  activityDetails: ActivityDetails | null;
+  status: SeriesStatus;
+  ruleVersion: number;
+  tags: string[];
+  hosts: SeriesHost[];
+  viewerFollows: boolean;
+  viewerIsHost: boolean;
+}
+
+export interface NewSeriesInput {
+  title: string;
+  description: string;
+  categorySlug: string;
+  placeId?: string | null;
+  locationName: string;
+  address?: string | null;
+  lat: number;
+  lng: number;
+  timeZone: string;
+  rule: SeriesRule;
+  capacity?: number | null;
+  minAttendance?: number | null;
+  decisionLeadMinutes?: number | null;
+  activityDetails?: ActivityDetails | null;
+  newcomer?: EventNewcomer | null;
+  cardStyle?: CardStyle;
+  tags: string[];
+}
+
+/** Fields "edit this and future" changes (template + schedule). */
+export interface SeriesUpdateInput {
+  title: string;
+  description: string;
+  placeId?: string | null;
+  locationName: string;
+  address?: string | null;
+  lat: number;
+  lng: number;
+  weekdays: number[];
+  intervalWeeks: number;
+  startLocal: string;
+  durationMinutes: number;
+  capacity: number | null;
+}
+
+export const seriesRuleSchema = z.object({
+  weekdays: z.array(z.coerce.number().int().min(1).max(7)).min(1, "Pick at least one day").max(7).transform((w) => [...new Set(w)].sort()),
+  intervalWeeks: z.coerce.number().int().min(1).max(4).default(1),
+  startLocal: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM"),
+  durationMinutes: z.coerce.number().int().min(15, "At least 15 minutes").max(720, "At most 12 hours"),
+  startsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  endsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().default(null),
+}).refine((r) => !r.endsOn || r.endsOn >= r.startsOn, { message: "The end date comes after the start", path: ["endsOn"] });

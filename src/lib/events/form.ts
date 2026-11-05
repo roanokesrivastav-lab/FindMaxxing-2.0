@@ -5,6 +5,7 @@
  */
 import { activityDetailsSchema, eventNewcomerSchema, sessionRulesSchema, type ActivityDetails, type EventNewcomer, type VenueStatus } from "@findmaxxing/shared/events";
 import { normalizeTimeZone } from "@/lib/utils/timezone";
+import { seriesRuleSchema, type SeriesRule } from "@findmaxxing/shared/events";
 
 export interface EventPilotFields {
   newcomer?: EventNewcomer | null;
@@ -85,4 +86,33 @@ export function pilotInput(data: EventPilotFields, startsAt: Date) {
     ...rest,
     ...(decisionLeadMinutes !== undefined ? { decisionDeadline: decisionLeadMinutes ? new Date(startsAt.getTime() - decisionLeadMinutes * 60_000).toISOString() : null } : {}),
   };
+}
+
+/** 4.5a: minutes from start to end, wrapping past midnight; 120 when there is no end time. */
+export function durationMinutes(startTime: string, endTime: string | null | undefined): number {
+  if (!endTime) return 120;
+  const [sh, sm] = startTime.split(":").map(Number);
+  const [eh, em] = endTime.split(":").map(Number);
+  const d = eh * 60 + em - (sh * 60 + sm);
+  return d > 0 ? d : d + 24 * 60;
+}
+
+/** ISO weekday (1 = Monday … 7 = Sunday) of a "YYYY-MM-DD" date. */
+export const isoWeekday = (date: string) => { const d = new Date(`${date}T00:00:00Z`).getUTCDay(); return d === 0 ? 7 : d; };
+
+/** 4.5a: the weekly rule from the form (create), defaulting to the event's own weekday. */
+export function parseRepeatRule(read: (k: string) => string, readAll: (k: string) => string[], when: { date: string; startTime: string; endTime: string | null }): { ok: true; rule: SeriesRule } | { ok: false; errors: Record<string, string> } {
+  const days = readAll("repeatDays").map(Number).filter((d) => d >= 1 && d <= 7);
+  const parsed = seriesRuleSchema.safeParse({
+    weekdays: days.length ? days : [isoWeekday(when.date)],
+    intervalWeeks: read("repeatInterval") || "1",
+    startLocal: when.startTime,
+    durationMinutes: durationMinutes(when.startTime, when.endTime),
+    startsOn: when.date,
+    endsOn: read("repeatUntil") || null,
+  });
+  if (parsed.success) return { ok: true, rule: parsed.data };
+  const errors: Record<string, string> = {};
+  for (const i of parsed.error.issues) errors[i.path[0] === "endsOn" ? "repeatUntil" : i.path[0] === "weekdays" ? "repeatDays" : "endTime"] = i.message;
+  return { ok: false, errors };
 }

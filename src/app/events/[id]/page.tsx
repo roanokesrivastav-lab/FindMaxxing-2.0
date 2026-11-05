@@ -31,6 +31,7 @@ import { ReadinessRow } from "@/components/events/ReadinessRow";
 import { ConfirmSessionButton } from "@/components/events/detail/ConfirmSessionButton";
 import { ParticipationActions } from "@/components/events/detail/ParticipationActions";
 import { HostWaitlist } from "@/components/events/detail/HostWaitlist";
+import { SeriesHostTools } from "@/components/events/detail/SeriesHostTools";
 import { StatusLabel } from "@/components/ui/StatusLabel";
 
 export const dynamic = "force-dynamic";
@@ -77,8 +78,11 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
     // 4.4: the viewer's status, seats held by offers and paid holds count as taken, and the host's waitlist.
     const participation = event.viewerJoined ? "going" as const : (event.viewerParticipant && ["interested", "waitlisted", "offered"].includes(event.viewerParticipant.status) ? event.viewerParticipant.status : null);
     const seatsFull = event.readiness ? event.readiness.spotsOpen === 0 : full;
-    const waitlist = isHost && !cancelled && !ended ? await repo.events.participants(viewer!.id, event.id) : [];
+    const waitlist = viewer && !cancelled && !ended ? await repo.events.participants(viewer.id, event.id) : [];
     const eventZone = event.timeZone ?? time.timeZone;
+    // 4.5a: an occurrence of a series; its hosts (owner and backups) get the series tools.
+    const series = event.seriesId ? await repo.series.get(event.seriesId, viewer?.id ?? null) : null;
+    const seriesHost = !!series?.viewerIsHost;
     return (
       <>
         {viewer && featureEnabled("recommendations") ? <TrackView kind="event" id={event.id} /> : null}
@@ -121,6 +125,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
                 </div>
               ) : null}
               <HostWaitlist eventId={event.id} rows={waitlist} />
+              {series && seriesHost && !cancelled && !ended ? <SeriesHostTools eventId={event.id} seriesId={series.id} canEdit /> : null}
               {payments && isHost && !cancelled && !ended ? (
                 <div className="mt-row">
                   <EventPricing eventId={event.id} priceCents={price} summary={ticketSummary} canSell={canSell} locked={event.attendees.some((a) => a.id !== event.creatorId)} demo={payments === "demo"} />

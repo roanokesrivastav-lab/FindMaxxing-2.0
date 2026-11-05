@@ -161,6 +161,11 @@ export interface Event {
   readiness?: EventReadiness | null;
   /** 4.8: the host's card choice; absent or "readiness" = the Readiness row. */
   cardStyle?: CardStyle;
+  /** 4.5a: the series this occurrence belongs to (null for a one-off) and its local date. */
+  seriesId?: string | null;
+  seriesLocalDate?: string | null;
+  /** 4.5a: template fields edited on this occurrence only. */
+  overridden?: string[];
 }
 
 export interface EventDetail extends Event {

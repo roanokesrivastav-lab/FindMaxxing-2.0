@@ -68,7 +68,7 @@ import type {
   UpdateProfileInput,
   UserActivity,
 } from "./types";
-import type { HostParticipant, JoinOutcome, ViewerParticipation } from "@findmaxxing/shared/events";
+import type { EventSeries, HostParticipant, JoinOutcome, NewSeriesInput, SeriesUpdateInput, ViewerParticipation } from "@findmaxxing/shared/events";
 import type { PlaceTip, TipEvidence, TipInput, TipStatus } from "@/lib/places/tips";
 import type { OccasionInput, OccasionNote } from "@/lib/places/occasions";
 import type { SaveDetails, SaveDetailsInput } from "@/lib/places/saves";
@@ -257,6 +257,33 @@ export interface DataRepository {
     confirmSession(userId: string, eventId: string): Promise<void>;
     /** 4.3 service (cron): sessions past their deadline below minimum become not happening; returns how many. */
     decideSessions(now: string): Promise<number>;
+  };
+  /**
+   * 4.5a recurring series (0055). Occurrences are ordinary events (series_id set). Host tools re-check
+   * hosting on every call; following never RSVPs.
+   */
+  series: {
+    /** Creates the series, the owner host row, and the first 4 weeks of occurrences. */
+    create(input: NewSeriesInput, ownerId: string): Promise<{ seriesId: string; firstEventId: string | null }>;
+    get(seriesId: string, viewerId?: string | null): Promise<EventSeries | null>;
+    /** Occurrences the viewer can see, soonest first (past ones too, newest last). */
+    occurrences(seriesId: string, viewerId?: string | null): Promise<Event[]>;
+    /** Edit this occurrence only (any host); records overridden template fields. */
+    updateOccurrence(hostId: string, eventId: string, input: UpdateEventInput): Promise<void>;
+    /** Edit this and future occurrences (any host). Returns how many occurrences were updated. */
+    updateFrom(hostId: string, eventId: string, input: SeriesUpdateInput): Promise<number>;
+    cancelOccurrence(hostId: string, eventId: string): Promise<void>;
+    /** Ends the series; future occurrences after endsOn are cancelled. Returns how many. */
+    end(hostId: string, seriesId: string, endsOn: string): Promise<number>;
+    /** The owner adds or removes a backup host. */
+    setHost(ownerId: string, seriesId: string, userId: string, on: boolean): Promise<void>;
+    follow(userId: string, seriesId: string, on: boolean): Promise<void>;
+    /** After the occurrence ends, a host records whether someone came. */
+    setAttended(hostId: string, eventId: string, userId: string, attended: boolean): Promise<void>;
+    /** Attendance as recorded, for hosts of the occurrence (null = not recorded). */
+    attendance(hostId: string, eventId: string): Promise<{ userId: string; attended: boolean | null }[]>;
+    /** Service (cron): materializes occurrences within the horizon. Idempotent. */
+    generate(now: string): Promise<number>;
   };
   tags: {
     /** Visible places and upcoming events per interest slug, over the whole data set. */
