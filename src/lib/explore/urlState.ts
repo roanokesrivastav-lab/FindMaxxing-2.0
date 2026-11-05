@@ -6,6 +6,7 @@
 import { CATEGORY_MAP, INTEREST_MAP } from "@/lib/data/taxonomy";
 import type { GeoBounds } from "@/lib/data/types";
 import { MAP_INTEREST_LIMIT } from "@/lib/onboarding/interests";
+import { WHEN_TABS, type WhenTab } from "@/lib/explore/intent";
 
 export interface ExploreCamera {
   lat: number;
@@ -21,6 +22,9 @@ export interface ExploreUrlState {
   kind: "all" | "places" | "events";
   sel: { kind: "place" | "event"; id: string } | null;
   view: "map" | "list";
+  /** Roadmap 2.4a: the When tab, and whether "15 min away" is on (it needs the device location again). */
+  when?: WhenTab;
+  area?: boolean;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -51,6 +55,8 @@ export function parseExploreState(sp: Params): ExploreUrlState {
     kind: kind === "places" || kind === "events" ? kind : "all",
     sel: sel && sel.length === 2 && (sel[0] === "place" || sel[0] === "event") && UUID.test(sel[1]) ? { kind: sel[0], id: sel[1].toLowerCase() } : null,
     view: read(sp, "view") === "list" ? "list" : "map",
+    when: (WHEN_TABS as readonly string[]).includes(read(sp, "when") ?? "") ? (read(sp, "when") as WhenTab) : "any",
+    area: read(sp, "area") === "15",
   };
 }
 
@@ -64,6 +70,8 @@ export function serializeExploreState(s: ExploreUrlState): string {
   if (s.kind !== "all") q.set("kind", s.kind);
   if (s.sel) q.set("sel", `${s.sel.kind}:${s.sel.id}`);
   if (s.view === "list") q.set("view", "list");
+  if (s.when && s.when !== "any") q.set("when", s.when);
+  if (s.area) q.set("area", "15");
   return q.toString();
 }
 

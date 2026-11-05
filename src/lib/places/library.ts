@@ -40,6 +40,18 @@ export function parseLibraryFilters(sp: Params): LibraryFilters {
   };
 }
 
+/** The /saved URL for a set of filters. */
+export function libraryHref(f: LibraryFilters, extra: Record<string, string> = {}): string {
+  const p = new URLSearchParams();
+  if (f.q) p.set("q", f.q);
+  if (f.tag) p.set("tag", f.tag);
+  if (f.status) p.set("status", f.status);
+  if (f.category) p.set("category", f.category);
+  for (const [k, v] of Object.entries(extra)) p.set(k, v);
+  const qs = p.toString();
+  return qs ? `/saved?${qs}` : "/saved";
+}
+
 export const hasFilters = (f: LibraryFilters) => !!(f.q || f.tag || f.status || f.category);
 
 /** Matches text against the place's community fields and the owner's own note, tags and recommender. */

@@ -56,6 +56,8 @@ export interface PlaceDecisionProps {
   mySave?: ReactNode;
   /** Extra rows in the "You" block (2.8: your photo). */
   personalExtra?: ReactNode;
+  /** 2.8: why the viewer cannot make a first rating yet (no personal photo). */
+  ratingLockedReason?: string | null;
 }
 
 /**
@@ -199,6 +201,7 @@ export function PlaceDecisionPage(props: PlaceDecisionProps) {
             viewerRatingNote={place.viewerRatingNote}
             signedIn={signedIn}
             hideAggregate
+            lockedReason={props.ratingLockedReason ?? null}
           />
           {signedIn ? (
             <StatusLabel tone={place.viewerSaved ? "positive" : "neutral"}>{place.viewerSaved ? "In your saves" : "Not saved"}</StatusLabel>
@@ -226,6 +229,18 @@ export function PlaceDecisionPage(props: PlaceDecisionProps) {
                     <StarRating value={r.score} size={12} />
                     <span className="type-body text-ink-2">Read their review</span>
                   </a>
+                  {/* 2.8: the photos this friend chose to post publicly (never anyone's personal photo). */}
+                  {place.photos.some((ph) => ph.uploaderId === r.user?.id) ? (
+                    <div className="flex flex-wrap gap-item pb-item" data-friend-photos={r.user?.id}>
+                      {place.photos
+                        .filter((ph) => ph.uploaderId === r.user?.id)
+                        .slice(0, 3)
+                        .map((ph) => (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img key={ph.id} src={photoSrc(ph.url, "sm")} alt={`Photo posted by ${r.user?.displayName ?? "a friend"}`} className="h-16 w-16 rounded-xl object-cover bg-paper-2" loading="lazy" />
+                        ))}
+                    </div>
+                  ) : null}
                 </li>
               ))}
             </ul>

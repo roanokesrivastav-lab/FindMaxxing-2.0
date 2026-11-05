@@ -48,6 +48,7 @@ import {
   MAX_MAP_MARKERS,
   MAX_PAGE_SIZE,
   UPCOMING_GRACE_MS,
+  eventCutoffMs,
   clampLimit,
   compareTimestamps,
   decodeCursor,
@@ -71,6 +72,7 @@ import { UPLOAD_DIR } from "./uploads";
 import { createDemoTips } from "./tips";
 import { createDemoOccasions } from "./occasions";
 import { createDemoSaves } from "./saves";
+import { createDemoPersonalPhotos, createDemoPublicPhotos } from "./personalPhotos";
 /** Generated upload names (and their .sm/.md size siblings) only; anything else is refused before touching disk. */
 export const DEMO_UPLOAD_NAME = /^(places|avatars)-[0-9a-f]{8}-[0-9a-f-]{36}(\.(sm|md))?\.(jpg|png|webp)$/;
 
@@ -877,7 +879,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         const limit = clampLimit(opts.limit, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
         const after = decodeCursor(opts.cursor);
         const viewerId = opts.viewerId ?? null;
-        const cutoff = opts.includePast ? null : Date.now() - UPCOMING_GRACE_MS;
+        const cutoff = eventCutoffMs(opts.includePast, normalizeTimestamp(opts.endsAfter, "endsAfter"));
         const startsBefore = normalizeTimestamp(opts.startsBefore, "startsBefore");
         const rows = state.events
           .filter((e) => eventMatches(state, e, f, viewerId, cutoff, startsBefore))
@@ -887,15 +889,15 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
       },
       async count(opts = {}) {
         const f = normalizeFilters(opts);
-        const cutoff = opts.includePast ? null : Date.now() - UPCOMING_GRACE_MS;
+        const cutoff = eventCutoffMs(opts.includePast, normalizeTimestamp(opts.endsAfter, "endsAfter"));
         const startsBefore = normalizeTimestamp(opts.startsBefore, "startsBefore");
         return state.events.filter((e) => eventMatches(state, e, f, opts.viewerId ?? null, cutoff, startsBefore)).length;
       },
       async mapMarkers(opts = {}) {
         const f = normalizeFilters(opts);
         const limit = clampLimit(opts.limit, DEFAULT_MAP_MARKERS, MAX_MAP_MARKERS);
-        const cutoff = opts.includePast ? null : Date.now() - UPCOMING_GRACE_MS;
-        const rows = state.events.filter((e) => eventMatches(state, e, f, opts.viewerId ?? null, cutoff)).sort(soonestFirst);
+        const cutoff = eventCutoffMs(opts.includePast, normalizeTimestamp(opts.endsAfter, "endsAfter"));
+        const rows = state.events.filter((e) => eventMatches(state, e, f, opts.viewerId ?? null, cutoff, normalizeTimestamp(opts.startsBefore, "startsBefore"))).sort(soonestFirst);
         return {
           items: rows.slice(0, limit).map((e) => ({ id: e.id, title: e.title, categorySlug: e.categorySlug, lat: e.lat, lng: e.lng, startsAt: e.startsAt })),
           truncated: rows.length > limit,
@@ -1782,6 +1784,8 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
     notifications: createDemoNotifications(state, { persist, summary: (id) => profileOf(state, id) }),
 
     ads: createDemoAds(state, { persist, assertActive, rateLimit, isAdmin }),
+    personalPhotos: createDemoPersonalPhotos(state, { persist, assertActive, rateLimit, canViewPlace: (p, viewerId) => canViewPlace(state, p, viewerId) }),
+    publicPhotos: createDemoPublicPhotos(state, { persist, assertActive, canViewPlace: (p, viewerId) => canViewPlace(state, p, viewerId), summary: (id) => profileOf(state, id) }),
     saves: createDemoSaves(state, { persist, assertActive, canViewPlace: (p, viewerId) => canViewPlace(state, p, viewerId), toPlace: (p) => toPlace(state, p), repo: () => repo }),
     occasions: createDemoOccasions(state, { persist, assertActive, rateLimit, canViewPlace: (p, viewerId) => canViewPlace(state, p, viewerId), summary: (id) => profileOf(state, id) }),
     tips: createDemoTips(state, { persist, assertActive, rateLimit, canViewPlace: (p, viewerId) => canViewPlace(state, p, viewerId), summary: (id) => profileOf(state, id) }),

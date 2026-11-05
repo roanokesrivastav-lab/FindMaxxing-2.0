@@ -277,6 +277,7 @@ export const discoveryQuerySchema = z.object({
   neighborhood: z.string().trim().max(80).optional().transform((v) => v || null),
   createdAfter: timestampParam("createdAfter"),
   startsBefore: timestampParam("startsBefore"),
+  endsAfter: timestampParam("endsAfter"),
   limit: z.coerce.number().int().min(1).max(1000).optional(),
   cursor: z.string().max(512).optional().transform((v) => v || null),
   includePast: z.enum(["0", "1", "true", "false"]).optional().transform((v) => v === "1" || v === "true"),

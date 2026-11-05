@@ -7,6 +7,7 @@ import { Input, Select } from "@/components/ui/Field";
 import { buttonClass } from "@/components/ui/Button";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { LibraryClient } from "./LibraryClient";
+import { PickFromSaves } from "./PickFromSaves";
 
 /**
  * The library (3.2): search, filter by tag / status / category, paginated rows with
@@ -100,7 +101,7 @@ export function LibraryView({
         </div>
       </form>
 
-      {pickSlot ?? null}
+      {pickSlot ?? <PickFromSaves filters={{ q: filters.q, tag: filters.tag, status: filters.status, category: filters.category }} filtered={hasFilters(filters)} />}
 
       {matching.length ? (
         <div className="mt-row">

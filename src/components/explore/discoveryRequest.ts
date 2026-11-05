@@ -16,6 +16,8 @@ export interface DiscoveryRequest {
   kind: DiscoveryKind;
   /** List places nearest this point first (the map pins are unaffected). */
   near?: { lat: number; lng: number } | null;
+  /** Roadmap 2.4a: a When window; events only (the caller sets kind to "events"). */
+  window?: { endsAfter: string; startsBefore: string } | null;
 }
 
 export interface DiscoveryResults {
@@ -36,7 +38,9 @@ function nearParam(near: { lat: number; lng: number } | null | undefined): strin
 }
 
 export function requestKey(r: DiscoveryRequest): string {
-  return JSON.stringify([r.bounds ? bboxParam(r.bounds) : null, r.text.trim(), r.category, [...r.tags].sort(), r.kind, nearParam(r.near)]);
+  const key: unknown[] = [r.bounds ? bboxParam(r.bounds) : null, r.text.trim(), r.category, [...r.tags].sort(), r.kind, nearParam(r.near)];
+  if (r.window) key.push(r.window.endsAfter, r.window.startsBefore);
+  return JSON.stringify(key);
 }
 
 export function discoveryQuery(r: DiscoveryRequest, extra: Record<string, string | number | null | undefined> = {}): string {
@@ -47,6 +51,10 @@ export function discoveryQuery(r: DiscoveryRequest, extra: Record<string, string
   if (r.tags.length) q.set("tags", r.tags.join(","));
   const near = nearParam(r.near);
   if (near) q.set("near", near);
+  if (r.window) {
+    q.set("endsAfter", r.window.endsAfter);
+    q.set("startsBefore", r.window.startsBefore);
+  }
   for (const [k, v] of Object.entries(extra)) if (v !== null && v !== undefined) q.set(k, String(v));
   return q.toString();
 }

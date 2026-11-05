@@ -19,6 +19,8 @@ import type { DataRepository } from "@/lib/data/repository";
 import { MAX_PLACE_PHOTOS, type ComparisonPrompt, type ImageUpload, type StoredImage } from "@/lib/data/types";
 import { imageFailure, preparePlacePhotos } from "@/server/images";
 import { fail, str, strList, succeed, toFailure, type ActionResult } from "./result";
+import { featureEnabled } from "@/lib/config";
+import { PHOTO_REQUIRED_MESSAGE } from "@/lib/places/personalPhotos";
 
 export async function createPlaceAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   const viewer = await getViewer();
@@ -161,6 +163,12 @@ export async function ratePlaceAction(
   if (!parsed.success) return fail("Invalid rating", fieldErrors(parsed.error));
   try {
     const repo = await getRepository();
+    // Roadmap 2.8 (pilotExplore): a first rating or review of a place needs the viewer's
+    // personal photo. Changing an existing rating never does, and nothing else is gated.
+    if (featureEnabled("pilotExplore")) {
+      const [current, photo] = await Promise.all([repo.places.get(parsed.data.placeId, viewer.id), repo.personalPhotos.get(viewer.id, parsed.data.placeId)]);
+      if (current && current.viewerRating === null && !photo) return fail(PHOTO_REQUIRED_MESSAGE, undefined, "photo_required");
+    }
     const agg = await repo.places.rate(viewer.id, parsed.data.placeId, parsed.data.score, parsed.data.note);
     await track("rate_place", { placeId: parsed.data.placeId, score: parsed.data.score });
     revalidatePath(`/places/${parsed.data.placeId}`);

@@ -347,11 +347,13 @@ export interface EventSearchOptions extends DiscoveryFilters, PageRequest {
   includePast?: boolean;
   /** ISO timestamp: only events starting before it (Today, This week). */
   startsBefore?: string | null;
+  /** ISO timestamp: only events not ended before it (a When window's start; roadmap 2.4a). */
+  endsAfter?: string | null;
 }
 
 /** The same filters a list takes, without paging. */
 export type PlaceCountOptions = DiscoveryFilters & { viewerId?: string | null };
-export type EventCountOptions = DiscoveryFilters & { viewerId?: string | null; includePast?: boolean; startsBefore?: string | null };
+export type EventCountOptions = DiscoveryFilters & { viewerId?: string | null; includePast?: boolean; startsBefore?: string | null; endsAfter?: string | null };
 
 /** One neighborhood over the places the viewer can see. */
 export interface NeighborhoodSummary {
@@ -376,6 +378,9 @@ export interface MapQueryOptions extends DiscoveryFilters {
   limit?: number;
   /** Events only. */
   includePast?: boolean;
+  /** Events only: a When window (roadmap 2.4a), same meaning as on EventSearchOptions. */
+  startsBefore?: string | null;
+  endsAfter?: string | null;
 }
 
 /** Just enough to draw and label a pin. Full details load on selection. */
