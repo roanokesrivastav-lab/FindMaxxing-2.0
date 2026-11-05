@@ -206,3 +206,8 @@ export const sessionRulesSchema = z
     venueStatus: z.enum(["confirmed", "unconfirmed"]).optional().default("confirmed"),
   })
   .strict();
+
+// ---------------------------------------------------------------------------
+// 4.8 Party poster (host toggle; default is the Readiness row)
+// ---------------------------------------------------------------------------
+export type CardStyle = "readiness" | "party_poster";

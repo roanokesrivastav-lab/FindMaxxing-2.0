@@ -1,4 +1,4 @@
-import type { ActivityDetails, CancelReason, EventNewcomer, EventReadiness, SessionDecision, VenueStatus } from "./events";
+import type { ActivityDetails, CardStyle, CancelReason, EventNewcomer, EventReadiness, SessionDecision, VenueStatus } from "./events";
 /**
  * Domain types shared by the UI, server actions and both repository
  * implementations (Supabase + demo). All dates are ISO-8601 strings.
@@ -159,6 +159,8 @@ export interface Event {
   cancelReason?: CancelReason | null;
   /** 4.3: the Readiness numbers (public.event_readiness); present only with pilotEvents on. */
   readiness?: EventReadiness | null;
+  /** 4.8: the host's card choice; absent or "readiness" = the Readiness row. */
+  cardStyle?: CardStyle;
 }
 
 export interface EventDetail extends Event {
@@ -227,6 +229,8 @@ export interface NewEventInput {
   minAttendance?: number | null;
   decisionDeadline?: string | null;
   venueStatus?: VenueStatus;
+  /** 4.8 (pilotEvents): undefined leaves it unchanged. */
+  cardStyle?: CardStyle;
 }
 
 export type UpdateEventInput = NewEventInput;

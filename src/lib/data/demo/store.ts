@@ -6,7 +6,7 @@
  * survive dev-server restarts. It exists so the app is fully usable without
  * Supabase credentials; it is not intended for production.
  */
-import type { ActivityDetails, CancelReason, EventNewcomer, SessionDecision, VenueStatus } from "@findmaxxing/shared/events";
+import type { ActivityDetails, CardStyle, CancelReason, EventNewcomer, SessionDecision, VenueStatus } from "@findmaxxing/shared/events";
 import { mkdirSync, readFileSync, writeFileSync, existsSync, copyFileSync } from "node:fs";
 import path from "node:path";
 import { scryptSync, randomBytes, timingSafeEqual } from "node:crypto";
@@ -128,6 +128,8 @@ export interface EventRow {
   venueStatus?: VenueStatus;
   decision?: SessionDecision;
   cancelReason?: CancelReason | null;
+  /** 4.8: mirrors events.card_style (absent = "readiness"). */
+  cardStyle?: CardStyle;
 }
 export interface ReportRow {
   id: string;
@@ -647,6 +649,7 @@ export function buildSeedState(now = new Date()): DemoState {
       ...(ev.newcomer ? { newcomer: ev.newcomer } : {}),
       ...(ev.activityDetails ? { activityDetails: ev.activityDetails } : {}),
       ...(ev.minAttendance ? { minAttendance: ev.minAttendance } : {}),
+      ...(ev.cardStyle ? { cardStyle: ev.cardStyle } : {}),
       ...(ev.minAttendance && ev.decisionLeadMinutes ? { decisionDeadline: new Date(startsAt.getTime() - ev.decisionLeadMinutes * 60_000).toISOString() } : {}),
       status: "published",
       createdAt: daysAgo(14 - (i % 10)),

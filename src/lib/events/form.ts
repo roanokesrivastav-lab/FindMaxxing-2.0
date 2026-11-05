@@ -14,6 +14,7 @@ export interface EventPilotFields {
   /** Minutes before the start; the action turns it into decisionDeadline. null = no deadline. */
   decisionLeadMinutes?: number | null;
   venueStatus?: VenueStatus;
+  cardStyle?: "readiness" | "party_poster";
 }
 
 /** Form input names for each activity-detail field (prefix + field). */
@@ -66,6 +67,8 @@ export function parseEventPilotFields(read: Read): { ok: true; data: EventPilotF
     data.venueStatus = rules.data.venueStatus;
   } else for (const issue of rules.error.issues) errors[issue.path[0] === "decisionLeadMinutes" ? "decisionLead" : String(issue.path[0])] = issue.message;
   if (data.decisionLeadMinutes && !data.minAttendance) errors.decisionLead = "Set a minimum first: the deadline decides whether enough people signed up";
+
+  data.cardStyle = read("partyPoster") === "on" ? "party_poster" : "readiness";
 
   const zone = read("timeZone");
   if (zone) {

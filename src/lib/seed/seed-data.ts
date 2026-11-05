@@ -88,6 +88,8 @@ export interface SeedEvent {
   /** 4.3: minimum attendance and how long before the start the host decides. */
   minAttendance?: number;
   decisionLeadMinutes?: number;
+  /** 4.8: the host turned on the Party poster. */
+  cardStyle?: "party_poster";
 }
 
 export interface SeedRating {
@@ -427,6 +429,7 @@ export const SEED_EVENTS: SeedEvent[] = [
     place: "Fourth Street Basement", locationName: "Fourth Street Basement", address: "45 E 4th Ave", lat: 39.9787, lng: -82.9972,
     startsInDays: 7, startHour: 21, startMinute: 0, durationMinutes: 180, creator: "dev", capacity: 80,
     tags: ["music", "nightlife"], attendees: ["dev", "jules", "lena"],
+    cardStyle: "party_poster",
   },
   {
     id: e("3v3 basketball run"), title: "3v3 basketball run", categorySlug: "pickup-sports",
