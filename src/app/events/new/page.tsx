@@ -5,6 +5,7 @@ import { uuidSchema } from "@/lib/validation/schemas";
 import { toPlaceOption } from "@/components/forms/PlacePicker";
 import { EventForm } from "@/components/forms/EventForm";
 import { FormShell } from "@/components/layout/FormShell";
+import { featureEnabled } from "@/lib/config";
 
 export const metadata: Metadata = { title: "Create an event" };
 export const dynamic = "force-dynamic";
@@ -25,7 +26,7 @@ export default async function NewEventPage({ searchParams }: PageProps<"/events/
       backHref="/events"
       tone="pulse"
     >
-      <EventForm initialPlace={initialPlace} defaultCity={viewer.profile.homeCity ?? ""} />
+      <EventForm initialPlace={initialPlace} defaultCity={viewer.profile.homeCity ?? ""} pilotEvents={featureEnabled("pilotEvents")} />
     </FormShell>
   );
 }

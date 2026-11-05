@@ -5,9 +5,16 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getRepository } from "@/lib/data";
 import { getViewer } from "@/lib/auth/server";
-import { paymentsMode } from "@/lib/config";
+import { featureEnabled, paymentsMode } from "@/lib/config";
+import { parseEventPilotFields, type EventPilotFields } from "@/lib/events/form";
 import { combineDateTime, eventSchema, fieldErrors, uuidSchema } from "@/lib/validation/schemas";
 import { fail, str, strList, succeed, toFailure, type ActionResult } from "./result";
+
+/** Pilot event fields (roadmap M4): read only with pilotEvents on; off, nothing extra is written. */
+function pilotFields(formData: FormData): { ok: true; data: EventPilotFields } | { ok: false; errors: Record<string, string> } {
+  if (!featureEnabled("pilotEvents")) return { ok: true, data: {} };
+  return parseEventPilotFields((key) => str(formData, key));
+}
 
 export async function createEventAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   const viewer = await getViewer();
@@ -30,7 +37,8 @@ export async function createEventAction(_prev: ActionResult | null, formData: Fo
     tags: strList(formData, "tags"),
     tzOffsetMinutes: str(formData, "tzOffsetMinutes") || "0",
   });
-  if (!parsed.success) return fail("Check the highlighted fields", fieldErrors(parsed.error));
+  const pilot = pilotFields(formData);
+  if (!parsed.success || !pilot.ok) return fail("Check the highlighted fields", { ...(parsed.success ? {} : fieldErrors(parsed.error)), ...(pilot.ok ? {} : pilot.errors) });
 
   const v = parsed.data;
   const { startsAt, endsAt } = combineDateTime(v.date, v.startTime, v.endTime, v.tzOffsetMinutes);
@@ -50,6 +58,7 @@ export async function createEventAction(_prev: ActionResult | null, formData: Fo
         categorySlug: v.categorySlug,
         capacity: v.capacity,
         tags: v.tags,
+        ...pilot.data,
       },
       viewer.id,
     );
@@ -74,12 +83,13 @@ export async function updateEventAction(_prev: ActionResult | null, formData: Fo
     date: str(formData, "date"), startTime: str(formData, "startTime"), endTime: str(formData, "endTime"), categorySlug: str(formData, "categorySlug"),
     capacity: str(formData, "capacity"), tags: strList(formData, "tags"), tzOffsetMinutes: str(formData, "tzOffsetMinutes") || "0",
   });
-  if (!parsed.success) return fail("Check the highlighted fields", fieldErrors(parsed.error));
+  const pilot = pilotFields(formData);
+  if (!parsed.success || !pilot.ok) return fail("Check the highlighted fields", { ...(parsed.success ? {} : fieldErrors(parsed.error)), ...(pilot.ok ? {} : pilot.errors) });
   const v = parsed.data;
   const { startsAt, endsAt } = combineDateTime(v.date, v.startTime, v.endTime, v.tzOffsetMinutes);
   try {
     const repo = await getRepository();
-    const event = await repo.events.update(id.data, { title: v.title, description: v.description, placeId: v.placeId, locationName: v.locationName, address: v.address, lat: v.lat, lng: v.lng, startsAt: startsAt.toISOString(), endsAt: endsAt?.toISOString() ?? null, categorySlug: v.categorySlug, capacity: v.capacity, tags: v.tags }, viewer.id);
+    const event = await repo.events.update(id.data, { title: v.title, description: v.description, placeId: v.placeId, locationName: v.locationName, address: v.address, lat: v.lat, lng: v.lng, startsAt: startsAt.toISOString(), endsAt: endsAt?.toISOString() ?? null, categorySlug: v.categorySlug, capacity: v.capacity, tags: v.tags, ...pilot.data }, viewer.id);
     revalidatePath(`/events/${id.data}`); revalidatePath(`/events/${id.data}/edit`); revalidatePath("/"); revalidatePath("/events"); revalidatePath("/profile");
     redirect(`/events/${event.id}`);
   } catch (err) { return toFailure(err); }

@@ -1,9 +1,11 @@
 import type { DataRepository } from "../repository";
+import type { EventNewcomer } from "@findmaxxing/shared/events";
 import {
   DataError,
   MAX_PLACE_PHOTOS,
   type Event,
   type EventDetail,
+  type NewEventInput,
   type Place,
   type PlaceDetail,
   type Profile,
@@ -119,6 +121,26 @@ function toPlace(state: DemoState, row: PlaceRow): Place {
   };
 }
 
+/** Pilot event fields (roadmap M4), mirroring the Supabase column writes: undefined leaves a field as is. */
+function applyEventPilotFields(row: EventRow, input: NewEventInput): void {
+  if (input.newcomer !== undefined) {
+    if (!validNewcomer(input.newcomer)) throw new DataError("Invalid newcomer details", "invalid");
+    row.newcomer = input.newcomer;
+  }
+}
+
+/** Mirrors public.valid_event_newcomer(). */
+function validNewcomer(n: EventNewcomer | null): boolean {
+  if (n === null) return true;
+  if (typeof n !== "object" || Array.isArray(n)) return false;
+  const limits: Record<string, number> = { meetingSpot: 140, welcomer: 80, bring: 200 };
+  for (const [k, v] of Object.entries(n)) {
+    if (k === "soloWelcome") { if (typeof v !== "boolean") return false; continue; }
+    if (!(k in limits) || typeof v !== "string" || v.length > limits[k]) return false;
+  }
+  return true;
+}
+
 function toEvent(state: DemoState, row: EventRow): Event {
   const place = row.placeId ? state.places.find((p) => p.id === row.placeId) : null;
   return {
@@ -142,6 +164,7 @@ function toEvent(state: DemoState, row: EventRow): Event {
     status: row.status,
     createdAt: row.createdAt,
     priceCents: row.priceCents ?? null,
+    newcomer: row.newcomer ?? null,
   };
 }
 
@@ -840,6 +863,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           createdAt: now,
           updatedAt: now,
         };
+        applyEventPilotFields(row, input);
         state.events.push(row);
         for (const t of input.tags) state.eventTags.push({ eventId: row.id, interestSlug: t });
         // Creators attend their own events by default.
@@ -877,6 +901,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           capacity: input.capacity ?? null,
           updatedAt: new Date().toISOString(),
         });
+        applyEventPilotFields(ev, input);
         state.eventTags = state.eventTags.filter((t) => t.eventId !== id);
         for (const tag of input.tags) state.eventTags.push({ eventId: id, interestSlug: tag });
         if (where(ev) !== before) notifyOn.eventChanged(state, id, creatorId);

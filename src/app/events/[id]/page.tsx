@@ -25,6 +25,7 @@ import { shareMetadata } from "@/lib/utils/share-metadata";
 import { DEFAULT_TIME_ZONE } from "@/lib/utils/timezone";
 import { getViewerTime } from "@/lib/time/server";
 import { InterestIcon } from "@/components/ui/TaxonomyIcon";
+import { EditorialEvent } from "@/components/events/detail/EditorialEvent";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +63,46 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
   const [ticketSummary, canSell] = payments && isHost && !cancelled && !ended
     ? await Promise.all([repo.payments.ticketSummary(viewer!.id, event.id), repo.payments.canSell(viewer!.id)])
     : [null, false];
+
+  // Roadmap 4.1 (pilotEvents): the Local editorial page. Off: the page below, unchanged.
+  if (featureEnabled("pilotEvents")) {
+    const place = event.placeId ? await repo.places.get(event.placeId, viewer?.id ?? null) : null;
+    const lead = place?.photos[0];
+    return (
+      <>
+        {viewer && featureEnabled("recommendations") ? <TrackView kind="event" id={event.id} /> : null}
+        <EditorialEvent
+          event={event}
+          time={time}
+          ended={ended}
+          cancelled={cancelled}
+          full={full}
+          isHost={isHost}
+          signedIn={!!viewer}
+          price={price}
+          photo={lead ? { src: lead.url, alt: `${place!.name}` } : null}
+          chatId={chatId}
+          notices={
+            <>
+              {sp.ticket === "success" ? <p role="status" className="surface-inset rounded-xl p-row mt-row type-body font-semibold">Payment received. Your ticket is confirmed{payments === "stripe" ? " as soon as Stripe tells us" : ""}.</p> : null}
+              {sp.ticket === "refunded" ? <p role="status" className="surface-inset rounded-xl p-row mt-row type-body font-semibold">The event filled up while you checked out, so your payment was refunded.</p> : null}
+              {sp.new ? <div className="mt-row"><NewBanner kind="event" /></div> : null}
+            </>
+          }
+          hostTools={payments && isHost && !cancelled && !ended ? (
+            <div className="mt-row">
+              <EventPricing eventId={event.id} priceCents={price} summary={ticketSummary} canSell={canSell} locked={event.attendees.some((a) => a.id !== event.creatorId)} demo={payments === "demo"} />
+            </div>
+          ) : null}
+          action={price && !event.viewerJoined && !isHost && !cancelled && !ended ? (
+            <TicketButton eventId={event.id} priceCents={price} signedIn={!!viewer} disabled={full} />
+          ) : (
+            <JoinButton eventId={event.id} joined={event.viewerJoined} signedIn={!!viewer} full={full} ended={ended} cancelled={cancelled} size="md" />
+          )}
+        />
+      </>
+    );
+  }
 
   return (
     <article className="pb-nav md:pb-10">
@@ -117,7 +158,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
             </p>
             <p className="text-xs text-muted mt-0.5">
               {!cancelled && event.capacity ? `${spotsLeft} spot${spotsLeft === 1 ? "" : "s"} left · ` : ""}
-              {cancelled ? (event.viewerJoined ? "You were on the attendee list." : "This event is no longer accepting attendees.") : event.viewerJoined ? "You're on the list." : full ? "Full for now." : "Free to join. Just show up."}
+              {cancelled ? (event.viewerJoined ? "You were on the attendee list." : "This event is no longer accepting attendees.") : event.viewerJoined ? "You're on the list." : full ? "Full for now." : price ? "Get a ticket to join." : "Free to join. Just show up."}
             </p>
           </div>
           {price && !event.viewerJoined && !isHost && !cancelled && !ended ? (
