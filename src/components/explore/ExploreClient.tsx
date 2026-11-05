@@ -29,7 +29,12 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Sheet } from "@/components/ui/Sheet";
 import { usePersistentJson } from "@/lib/utils/usePersistentJson";
 import { CategoryIcon, InterestIcon } from "@/components/ui/TaxonomyIcon";
+import { ArrivalBar } from "./ArrivalBar";
+import { useInterestPresence } from "./useInterestPresence";
+import { widerBounds, type InterestPresence } from "@/lib/explore/arrival";
+import { MAP_INTEREST_LIMIT, toggleInterest as toggleLimited } from "@/lib/onboarding/interests";
 
+const INITIAL_FALLBACK = { north: DEFAULT_CENTER.lat + 0.07, south: DEFAULT_CENTER.lat - 0.07, east: DEFAULT_CENTER.lng + 0.12, west: DEFAULT_CENTER.lng - 0.12 };
 const FOLD_STORAGE_KEY = "findmaxxing:explore-folds";
 const DEFAULT_FOLDS = { events: true, places: true, panel: true };
 
@@ -53,6 +58,8 @@ export function ExploreClient({
   forYou = null,
   ads = false,
   logImpressions = false,
+  pilotFoundation = false,
+  arrival = null,
 }: {
   initial: DiscoveryResults;
   initialRequest: DiscoveryRequest;
@@ -65,6 +72,10 @@ export function ExploreClient({
   ads?: boolean;
   /** Record which results the viewer saw, with their position (signed in, recommendations on). */
   logImpressions?: boolean;
+  /** Roadmap 1.x pilot: interest filters stop at the map's limit instead of being dropped silently. */
+  pilotFoundation?: boolean;
+  /** Roadmap 1.3: the first visit after onboarding, with the server's per-interest counts. Null otherwise. */
+  arrival?: InterestPresence[] | null;
 }) {
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
@@ -72,6 +83,7 @@ export function ExploreClient({
   const [category, setCategory] = useState<string | null>(null);
   const [interests, setInterests] = useState<string[]>(initialRequest.tags);
   const [showWelcome, setShowWelcome] = useState(welcome);
+  const [arrivalOpen, setArrivalOpen] = useState(!!arrival);
   const [mode, setMode] = useState<"map" | "list">("map");
   const [filtersOpen, setFiltersOpen] = useState(false);
   // Folding the events section hands the whole panel to places. Remembered so
@@ -122,6 +134,8 @@ export function ExploreClient({
     [searching, searchArea, viewport, initialRequest.bounds, text, category, interests, kind, near],
   );
   const discovery = useDiscovery(request, initial, initialRequest);
+  const arrivalShown = arrivalOpen && interests.length > 0;
+  const presence = useInterestPresence(request, arrivalShown && !searching, arrival ?? [], initialRequest);
   const { results } = discovery;
   const { timeZone } = useViewerTime();
   const places = results.places.items;
@@ -185,7 +199,12 @@ export function ExploreClient({
     setKind("all");
   };
 
-  const toggleInterest = (slug: string) => setInterests((s) => (s.includes(slug) ? s.filter((x) => x !== slug) : [...s, slug]));
+  const toggleInterest = (slug: string) =>
+    setInterests((s) => (pilotFoundation ? toggleLimited(s, slug) : s.includes(slug) ? s.filter((x) => x !== slug) : [...s, slug]));
+  const showBiggerArea = () => {
+    const box = widerBounds(viewport ?? initialRequest.bounds ?? INITIAL_FALLBACK);
+    mapRef.current?.fitBounds([[box.west, box.south], [box.east, box.north]], 40, 16);
+  };
 
   const suggestedInterests = viewer?.interests.length ? viewer.interests.slice(0, 5) : ["pickup-sports", "cheap-eats", "studying", "hiking", "new-in-town"];
 
@@ -269,6 +288,18 @@ export function ExploreClient({
               </Chip>
             ))}
           </ChipRow>
+          {arrivalShown && !searching ? (
+            <ArrivalBar
+              interests={interests}
+              presence={presence}
+              onRemove={(slug) => setInterests((s) => s.filter((x) => x !== slug))}
+              onShowEverything={() => {
+                setInterests([]);
+                setArrivalOpen(false);
+              }}
+              onBiggerArea={showBiggerArea}
+            />
+          ) : null}
         </div>
       </div>
 
@@ -304,6 +335,8 @@ export function ExploreClient({
         <div
           className={cn(
             "absolute inset-x-0 top-[10.25rem] md:top-[9rem] z-20 flex justify-center px-4 pointer-events-none",
+            // The first-map arrival bar sits under the chips; status chips go below it.
+            arrivalShown && !searching && "top-[19rem] md:top-[17rem]",
             // Center over the visible map, not behind the desktop list panel.
             panelOpen && "md:left-[400px]",
           )}
@@ -534,7 +567,10 @@ export function ExploreClient({
           </div>
           <div>
             <p className="text-sm font-semibold mb-0.5">Interests</p>
-            <p className="text-xs text-muted mb-2">{viewer?.interests.length ? "Starting with yours" : "Sign in to personalize"}</p>
+            <p className="text-xs text-muted mb-2">
+              {viewer?.interests.length ? "Starting with yours" : "Sign in to personalize"}
+              {pilotFoundation ? ` · up to ${MAP_INTEREST_LIMIT} at once${interests.length >= MAP_INTEREST_LIMIT ? " (that's the most; unpick one to choose another)" : ""}` : ""}
+            </p>
             <div className="flex flex-wrap gap-2">
               {[...suggestedInterests, ...INTERESTS.map((i) => i.slug).filter((s) => !suggestedInterests.includes(s))].map((slug) => {
                 const i = getInterest(slug);
