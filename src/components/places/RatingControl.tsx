@@ -19,6 +19,7 @@ export function RatingControl({
   viewerRating,
   viewerRatingNote,
   signedIn,
+  hideAggregate = false,
 }: {
   placeId: string;
   ratingAvg: number;
@@ -26,6 +27,8 @@ export function RatingControl({
   viewerRating: number | null;
   viewerRatingNote: string | null;
   signedIn: boolean;
+  /** The photo-first place page (2.5) shows the community average in its own block, with its evidence. */
+  hideAggregate?: boolean;
 }) {
   const [agg, setAgg] = useState({ ratingAvg, ratingCount });
   const [mine, setMine] = useState<number | null>(viewerRating);
@@ -99,7 +102,7 @@ export function RatingControl({
   };
 
   // A big average over one or two ratings overstates it; fold it into one line.
-  const few = agg.ratingCount < 3;
+  const few = hideAggregate || agg.ratingCount < 3;
   const label = <p className="text-sm font-semibold">{mine ? "Your rating" : "Rate this place"}</p>;
   const picker = (
     <>
@@ -116,12 +119,12 @@ export function RatingControl({
   );
 
   return (
-    <div className={few ? "card px-4 py-3" : "card p-4"}>
+    <div className={hideAggregate ? undefined : few ? "card px-4 py-3" : "card p-4"}>
       {few ? (
         <div>
           <div className="flex items-baseline justify-between gap-3">
             {label}
-            <p className="text-xs text-muted">
+            {hideAggregate ? null : <p className="text-xs text-muted">
               {agg.ratingCount ? (
                 <>
                   <b className="text-ink">{formatRating(agg.ratingAvg)}</b> from {pluralize(agg.ratingCount, "rating")}
@@ -129,7 +132,7 @@ export function RatingControl({
               ) : (
                 "No ratings yet"
               )}
-            </p>
+            </p>}
           </div>
           {picker}
         </div>
