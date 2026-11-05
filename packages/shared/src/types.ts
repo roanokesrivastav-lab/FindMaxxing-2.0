@@ -1,3 +1,4 @@
+import type { EventNewcomer } from "./events";
 /**
  * Domain types shared by the UI, server actions and both repository
  * implementations (Supabase + demo). All dates are ISO-8601 strings.
@@ -144,6 +145,8 @@ export interface Event {
   createdAt: string;
   /** Ticket price in cents (USD); null or absent for a free event. */
   priceCents?: number | null;
+  /** 4.1: host-entered "Your first time?" block; null or absent when none. */
+  newcomer?: EventNewcomer | null;
 }
 
 export interface EventDetail extends Event {
@@ -202,6 +205,8 @@ export interface NewEventInput {
   categorySlug: string;
   capacity?: number | null;
   tags: string[];
+  /** 4.1 (pilotEvents): undefined leaves the stored value unchanged; null clears it. */
+  newcomer?: EventNewcomer | null;
 }
 
 export type UpdateEventInput = NewEventInput;

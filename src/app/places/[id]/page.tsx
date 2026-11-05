@@ -29,6 +29,9 @@ import { neighborhoodHref } from "@/lib/utils/neighborhoods";
 import { LocalDate } from "@/components/time/LocalDate";
 import { InterestIcon } from "@/components/ui/TaxonomyIcon";
 import { PlaceDecisionPage } from "@/components/places/decision/PlaceDecisionPage";
+import { PlaceTips, RecentObservation } from "@/components/places/decision/PlaceTips";
+import { PlaceOccasions } from "@/components/places/decision/PlaceOccasions";
+import { recentObservation, requestNow } from "@/lib/places/tips";
 
 export const dynamic = "force-dynamic";
 
@@ -62,7 +65,16 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
   const isOwner = !!viewer && viewer.id === place.creatorId;
   if (featureEnabled("pilotExplore")) {
     // Roadmap 2.5: the photo-first place page. Flag off keeps the page below exactly as it was.
-    const following = viewer ? await repo.profiles.listFollowing(viewer.id) : [];
+    const now = requestNow();
+    const [following, tips, occasionNotes] = await Promise.all([
+      viewer ? repo.profiles.listFollowing(viewer.id) : Promise.resolve([]),
+      repo.tips.list(place.id, viewer?.id ?? null, now),
+      repo.occasions.list(place.id, viewer?.id ?? null),
+    ]);
+    // 2.6: each tip's claim opens its evidence (a handful of tips per place).
+    const tipEvidence = (await Promise.all(tips.map((t) => repo.tips.evidence(t.id, viewer?.id ?? null)))).filter((e) => e !== null);
+    const observed = recentObservation(tips, now);
+    const observedEvidence = observed ? tipEvidence.find((e) => e.tip.id === observed.id) : undefined;
     return (
       <>
         {viewer && (featureEnabled("analytics") || featureEnabled("recommendations")) ? <TrackView kind="place" id={place.id} /> : null}
@@ -76,6 +88,9 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
           viewerId={viewer?.id ?? null}
           isNew={!!sp.new}
           extendedTiers={featureEnabled("reputation")}
+          observation={observedEvidence ? <RecentObservation evidence={observedEvidence} now={now} /> : null}
+          occasions={<PlaceOccasions placeId={place.id} notes={occasionNotes} followingIds={following.map((p) => p.id)} viewerId={viewer?.id ?? null} />}
+          tip={<PlaceTips placeId={place.id} tips={tipEvidence} viewerId={viewer?.id ?? null} now={now} legacyTip={place.localTip} />}
         />
       </>
     );
