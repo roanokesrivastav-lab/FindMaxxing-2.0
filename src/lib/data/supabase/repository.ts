@@ -64,6 +64,7 @@ import {
   normalizeTimestamp,
   toPage,
   type NormalizedFilters,
+  eventCutoffMs,
 } from "../discovery";
 import { PLACE_PHOTO_BUCKET, placePhotoReference, placePhotoUrl, sniffImageType } from "../photos";
 import { nextOpponent } from "@/lib/ranking/nextComparison";
@@ -528,6 +529,12 @@ export function upcomingCutoff(includePast: boolean | undefined): string | null 
   return includePast ? null : new Date(Date.now() - UPCOMING_GRACE_MS).toISOString();
 }
 
+/** p_ends_after with a When window (roadmap 2.4a): the later of the upcoming rule and the window start. */
+function eventEndsAfter(includePast: boolean | undefined, endsAfter: string | null | undefined): string | null {
+  const ms = eventCutoffMs(includePast, normalizeTimestamp(endsAfter, "endsAfter"));
+  return ms === null ? null : new Date(ms).toISOString();
+}
+
 type RecRow<K extends string> = { [key in K]: string } & { score: number | string; reason_kind: string; reason_text: string; reason_ref: string | null };
 
 interface QueueRow {
@@ -942,7 +949,7 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
           await supabase
             .rpc("discover_events", {
               ...discoverArgs(filters),
-              p_ends_after: upcomingCutoff(opts.includePast),
+              p_ends_after: eventEndsAfter(opts.includePast, opts.endsAfter),
               p_starts_before: normalizeTimestamp(opts.startsBefore, "startsBefore"),
               p_after_starts_at: after?.key ?? null,
               p_after_id: after?.id ?? null,
@@ -959,7 +966,7 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
           "discover_events",
           {
             ...discoverArgs(normalizeFilters(opts)),
-            p_ends_after: upcomingCutoff(opts.includePast),
+            p_ends_after: eventEndsAfter(opts.includePast, opts.endsAfter),
             p_starts_before: normalizeTimestamp(opts.startsBefore, "startsBefore"),
           },
           { count: "exact", head: true },
@@ -972,7 +979,11 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
         const limit = clampLimit(opts.limit, DEFAULT_MAP_MARKERS, MAX_MAP_MARKERS);
         const rows = unwrap(
           await supabase
-            .rpc("discover_events", { ...discoverArgs(filters), p_ends_after: upcomingCutoff(opts.includePast) })
+            .rpc("discover_events", {
+              ...discoverArgs(filters),
+              p_ends_after: eventEndsAfter(opts.includePast, opts.endsAfter),
+              p_starts_before: normalizeTimestamp(opts.startsBefore, "startsBefore"),
+            })
             .select(EVENT_MAP_SELECT)
             .order("starts_at", { ascending: true })
             .order("id", { ascending: true })
