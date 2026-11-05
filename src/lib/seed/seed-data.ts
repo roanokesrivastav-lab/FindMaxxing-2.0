@@ -21,8 +21,20 @@ export function stableId(label: string): string {
 export const DEMO_PASSWORD = "findmaxxing";
 export const SEED_CITY = "Columbus";
 
+/**
+ * Where a seed record comes from (roadmap 0.3). Everything in this file today is
+ * "fictional": invented demo data. Real pilot data (places and tips collected with
+ * permission, roadmap §8) must be marked "pilot" so it can be kept apart from
+ * fictional data. A record without `origin` is fictional.
+ */
+export type SeedOrigin = "fictional" | "pilot";
+export function seedOrigin(record: { origin?: SeedOrigin }): SeedOrigin {
+  return record.origin ?? "fictional";
+}
+
 export interface SeedUser {
   id: string;
+  origin?: SeedOrigin;
   email: string;
   username: string;
   displayName: string;
@@ -33,6 +45,7 @@ export interface SeedUser {
 
 export interface SeedPlace {
   id: string;
+  origin?: SeedOrigin;
   name: string;
   description: string;
   localTip: string;
@@ -45,11 +58,12 @@ export interface SeedPlace {
   creator: string; // username
   tags: string[];
   /** Defaults to "public". "locals" exercises the trust tier. */
-  visibility?: "public" | "locals";
+  visibility?: "public" | "locals" | "trusted" | "followers";
 }
 
 export interface SeedEvent {
   id: string;
+  origin?: SeedOrigin;
   title: string;
   description: string;
   place: string | null; // seed place name
@@ -129,7 +143,41 @@ export const SEED_USERS: SeedUser[] = [
     bio: "Visiting from Cleveland most weekends. Tell me where to eat.",
     homeCity: "Cleveland", interests: ["food", "coffee", "art", "new-in-town"],
   },
+  // Pilot role accounts (roadmap 0.3): one per role used by multi-user checks
+  // (8.4b) and demos. Fictional. See SEED_ROLE_ACCOUNTS for their credentials.
+  {
+    id: u("hana_host"), origin: "fictional", email: "host@example.com", username: "hana_host", displayName: "Hana Brooks",
+    bio: "Demo host account. Runs the Thursday pickup basketball run.",
+    homeCity: "Columbus", interests: ["pickup-sports", "sports", "fitness"],
+  },
+  {
+    id: u("pat_participant"), origin: "fictional", email: "participant@example.com", username: "pat_participant", displayName: "Pat Ellison",
+    bio: "Demo participant account. Joined Hana's basketball run.",
+    homeCity: "Columbus", interests: ["pickup-sports", "sports", "coffee"],
+  },
+  {
+    id: u("olu_outsider"), origin: "fictional", email: "outsider@example.com", username: "olu_outsider", displayName: "Olu Adeyemi",
+    bio: "Demo outsider account: follows nobody, saved nothing, joined nothing.",
+    homeCity: "Columbus", interests: ["music", "food"],
+  },
+  {
+    id: u("mo_moderator"), origin: "fictional", email: "moderator@example.com", username: "mo_moderator", displayName: "Morgan Reid",
+    bio: "Demo moderator account.",
+    homeCity: "Columbus", interests: ["social", "outdoors"],
+  },
 ];
+
+/**
+ * Demo credentials for the pilot role accounts (roadmap 0.3). Credentials live only
+ * in this seed file; every account uses DEMO_PASSWORD. Demo and local databases only.
+ */
+export const SEED_ROLE_ACCOUNTS = {
+  host: { username: "hana_host", email: "host@example.com", password: DEMO_PASSWORD },
+  participant: { username: "pat_participant", email: "participant@example.com", password: DEMO_PASSWORD },
+  outsider: { username: "olu_outsider", email: "outsider@example.com", password: DEMO_PASSWORD },
+  moderator: { username: "mo_moderator", email: "moderator@example.com", password: DEMO_PASSWORD },
+} as const;
+export type SeedRole = keyof typeof SEED_ROLE_ACCOUNTS;
 
 export const SEED_PLACES: SeedPlace[] = [
   {
@@ -408,6 +456,14 @@ export const SEED_EVENTS: SeedEvent[] = [
     startsInDays: -5, startHour: 12, startMinute: 0, durationMinutes: 240, creator: "theo", capacity: 30,
     tags: ["sports", "ohio-state"], attendees: ["theo", "marcus", "maya_r"],
   },
+  {
+    // Pilot role accounts (roadmap 0.3): hosted by the host account, joined by the participant.
+    id: e("Thursday pickup basketball"), origin: "fictional", title: "Thursday pickup basketball", categorySlug: "pickup-sports",
+    description: "Demo run for the pilot role accounts. Half-court 4v4, all levels, next game on the sideline. Bring water.",
+    place: null, locationName: "Goodale Park courts", address: null, lat: 39.9727, lng: -83.0067,
+    startsInDays: 4, startHour: 18, startMinute: 30, durationMinutes: 90, creator: "hana_host", capacity: 10,
+    tags: ["pickup-sports", "sports"], attendees: ["hana_host", "pat_participant"],
+  },
 ];
 
 export const SEED_RATINGS: SeedRating[] = [
@@ -525,6 +581,20 @@ export const SEED_FOLLOWS: { follower: string; following: string }[] = [
   { follower: "nina", following: "maya_r" },
   { follower: "nina", following: "lena" },
 ];
+
+/**
+ * Seeded moderators. In Supabase the role is granted only from SQL or the
+ * service role (see 0010_moderation.sql); the seed does it from SQL.
+ */
+export const SEED_MODERATORS: string[] = ["sam_k", "mo_moderator"];
+
+/** Seeded admins (Session 10+): granted from SQL, like moderators. */
+export const SEED_ADMINS: string[] = ["dev"];
+
+/** How long ago each seed account was created: old enough to count as a local. */
+export function seedAccountAgeDays(index: number): number {
+  return 90 - index;
+}
 
 export function seedUserByName(username: string): SeedUser {
   const found = SEED_USERS.find((x) => x.username === username);

@@ -7,9 +7,17 @@ import { FormField, Input, Textarea } from "@/components/ui/Field";
 import { TagPicker } from "@/components/shared/TagPicker";
 import { PhotoInput } from "@/components/shared/PhotoInput";
 import type { Profile } from "@/lib/data/types";
+import { HOME_CITY_COOLDOWN_DAYS, LOCAL_MIN_ACCOUNT_AGE_DAYS } from "@/lib/data/types";
+import { nextHomeCityChange } from "@/lib/data/localTier";
+import { formatInZone } from "@/lib/utils/format";
+import { useViewerTime } from "@/components/time/ViewerTime";
 
-export function ProfileForm({ profile }: { profile: Profile }) {
+const DATE: Intl.DateTimeFormatOptions = { month: "long", day: "numeric", year: "numeric" };
+
+export function ProfileForm({ profile, now }: { profile: Profile; now: number }) {
   const [state, action, pending] = useActionState(updateProfileAction, null);
+  const time = useViewerTime();
+  const nextCityChange = nextHomeCityChange(profile.homeCity, profile.homeCityChangedAt, now);
   const errors = state && !state.ok ? (state.fieldErrors ?? {}) : {};
   const { formRef, onSubmit } = useFormSubmit(action, state);
   return (
@@ -34,7 +42,20 @@ export function ProfileForm({ profile }: { profile: Profile }) {
       </FormField>
 
       <FormField label="Home city" htmlFor="homeCity" hint="optional" error={errors.homeCity}>
-        <Input id="homeCity" name="homeCity" defaultValue={profile.homeCity ?? ""} maxLength={80} placeholder="Columbus" />
+        <Input
+          id="homeCity"
+          name="homeCity"
+          defaultValue={profile.homeCity ?? ""}
+          maxLength={80}
+          placeholder="Columbus"
+          readOnly={!!nextCityChange}
+          aria-describedby="homeCity-help"
+        />
+        <p id="homeCity-help" className="mt-1.5 text-xs text-muted">
+          {nextCityChange
+            ? `You can change your home city again on ${formatInZone(nextCityChange, time, DATE)}.`
+            : `It decides where you count as a local, so it can change once every ${HOME_CITY_COOLDOWN_DAYS} days. New accounts count as locals after ${LOCAL_MIN_ACCOUNT_AGE_DAYS} days.`}
+        </p>
       </FormField>
 
       <TagPicker name="interests" label="Interests" hint="pick up to 12" initial={profile.interests} max={12} error={errors.interests} />

@@ -32,6 +32,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+# Dev-only pilot flags (roadmap 0.3); holds no secrets.
+!.env.development
 
 # vercel
 .vercel
@@ -45,3 +48,9 @@ next-env.d.ts
 
 # MapLibre worker (copied from node_modules on install)
 /public/maplibre/
+
+# CI browser-run screenshots
+/artifacts/
+
+# vexp code index: rewritten by the local indexer on every run
+.vexp/manifest.json

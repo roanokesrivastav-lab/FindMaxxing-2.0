@@ -1,5 +1,6 @@
 "use server";
 
+import { track } from "@/server/analytics";
 import { revalidatePath } from "next/cache";
 import { getRepository } from "@/lib/data";
 import { getViewer } from "@/lib/auth/server";
@@ -38,6 +39,7 @@ export async function createListAction(name: string, placeId?: string): Promise<
     if (place?.success) {
       await repo.savedLists.addPlace(viewer.id, list.id, place.data);
       list = { ...list, placeCount: 1 };
+      await track("add_to_list", { placeId: place.data });
     }
   } catch (err) {
     // The list exists either way; report why the place is not in it.
@@ -91,6 +93,7 @@ export async function setListMembershipAction(listId: string, placeId: string, i
     const repo = await getRepository();
     if (inList) await repo.savedLists.addPlace(viewer.id, list.data, place.data);
     else await repo.savedLists.removePlace(viewer.id, list.data, place.data);
+    if (inList) await track("add_to_list", { placeId: place.data });
   } catch (err) {
     return toFailure(err);
   }

@@ -10,7 +10,8 @@ export interface MapMarker {
   lat: number;
   lng: number;
   color: string;
-  emoji: string;
+  /** Picks the pin icon. */
+  categorySlug: string;
   label: string;
 }
 

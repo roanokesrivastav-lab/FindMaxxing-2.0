@@ -1,15 +1,27 @@
 import { NextResponse } from "next/server";
 import { getDataMode } from "@/lib/config";
+import { safeAuthNext } from "@/lib/auth/redirect";
 
 /**
  * Supabase Auth redirect target (email confirmation / magic links).
- * Exchanges the `code` for a session cookie, then continues to `next`.
+ * Exchanges a PKCE `code` for a session cookie, then continues to `next`. That
+ * only works in the browser that started the flow (it holds the verifier
+ * cookie); token-hash links go to /auth/confirm and work anywhere.
  */
 export async function GET(request: Request) {
   const url = new URL(request.url);
+  // Token-hash email links work on any device. Hand them to the confirm page
+  // rather than verifying on GET, so link-scanning mail filters can't spend them.
+  if (url.searchParams.has("token_hash")) {
+    const confirm = new URL("/auth/confirm", url.origin);
+    for (const key of ["token_hash", "type", "next"]) {
+      const value = url.searchParams.get(key);
+      if (value) confirm.searchParams.set(key, value);
+    }
+    return NextResponse.redirect(confirm);
+  }
   const code = url.searchParams.get("code");
-  const nextParam = url.searchParams.get("next") ?? "/";
-  const next = nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "/";
+  const next = safeAuthNext(url.searchParams.get("next"));
 
   if (getDataMode() === "supabase" && code) {
     const { createSupabaseServerClient } = await import("@/lib/supabase/server");

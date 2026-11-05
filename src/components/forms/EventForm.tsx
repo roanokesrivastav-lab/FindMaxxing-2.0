@@ -1,5 +1,5 @@
 "use client";
-import { useActionState, useCallback, useMemo, useState } from "react";
+import { useActionState, useCallback, useState } from "react";
 import { createEventAction, updateEventAction } from "@/server/actions/events";
 import type { Event } from "@/lib/data/types";
 import { Button } from "@/components/ui/Button";
@@ -11,6 +11,8 @@ import { PlacePicker, type PlaceOption } from "@/components/forms/PlacePicker";
 import { LocationPicker } from "@/components/map/LocationPicker";
 import { EVENT_CATEGORIES } from "@/lib/data/taxonomy";
 import { toDateInputValue, toTimeInputValue } from "@/lib/utils/format";
+import { zonedParts, zonedTimeToUtc, zoneOffsetMinutes } from "@/lib/utils/timezone";
+import { useViewerTime } from "@/components/time/ViewerTime";
 import type { LngLat } from "@/lib/map/types";
 import { useFormSubmit } from "@/lib/forms/useFormSubmit";
 
@@ -18,11 +20,16 @@ export function EventForm({ initialPlace, initial, defaultCity = "", edit = fals
   const [state, action, pending] = useActionState(edit ? updateEventAction : createEventAction, null);
   const errors = state && !state.ok ? (state.fieldErrors ?? {}) : {};
 
+  const { timeZone, now } = useViewerTime();
   // Stamped at submit time rather than parked in a hidden input, so there is no
-  // path where a submit is silently interpreted as UTC.
+  // path where a submit is silently interpreted as UTC. The offset is the one in
+  // force on the chosen date, not today's: they differ across a DST change.
   const stampTimezone = useCallback((formData: FormData) => {
-    formData.set("tzOffsetMinutes", String(new Date().getTimezoneOffset()));
-  }, []);
+    const date = String(formData.get("date") ?? "");
+    const startTime = String(formData.get("startTime") ?? "");
+    const at = /^\d{4}-\d{2}-\d{2}$/.test(date) && /^\d{2}:\d{2}$/.test(startTime) ? zonedTimeToUtc(date, startTime, timeZone) : Date.now();
+    formData.set("tzOffsetMinutes", String(zoneOffsetMinutes(at, timeZone)));
+  }, [timeZone]);
   const { formRef, onSubmit } = useFormSubmit(action, state, { onBeforeSubmit: stampTimezone });
   const [linked, setLinked] = useState<PlaceOption | null>(initialPlace ?? null);
   const placeId = linked?.id ?? "";
@@ -51,12 +58,14 @@ export function EventForm({ initialPlace, initial, defaultCity = "", edit = fals
     }
   };
 
-  const defaults = useMemo(() => {
-    const d = initial ? new Date(initial.startsAt) : new Date();
-    if (!initial) { d.setDate(d.getDate() + 1); d.setHours(18, 0, 0, 0); }
-    return { date: toDateInputValue(d), time: toTimeInputValue(d), min: toDateInputValue(new Date()) };
-  }, [initial]);
-  const endDefaults = initial?.endsAt ? { date: toDateInputValue(new Date(initial.endsAt)), time: toTimeInputValue(new Date(initial.endsAt)) } : null;
+  // Computed from the shared clock/zone snapshot so the server and browser render the same values.
+  const tz = { timeZone };
+  const today = toDateInputValue(now, tz);
+  const tomorrow = zonedParts(now, timeZone);
+  const defaults = initial
+    ? { date: toDateInputValue(new Date(initial.startsAt), tz), time: toTimeInputValue(new Date(initial.startsAt), tz), min: today }
+    : { date: new Date(Date.UTC(tomorrow.year, tomorrow.month - 1, tomorrow.day + 1)).toISOString().slice(0, 10), time: "18:00", min: today };
+  const endDefaults = initial?.endsAt ? { date: toDateInputValue(new Date(initial.endsAt), tz), time: toTimeInputValue(new Date(initial.endsAt), tz) } : null;
 
   return (
     <form ref={formRef} onSubmit={onSubmit} className="flex flex-col gap-6">
@@ -70,7 +79,8 @@ export function EventForm({ initialPlace, initial, defaultCity = "", edit = fals
         <Textarea id="description" name="description" defaultValue={initial?.description} required minLength={10} maxLength={1200} placeholder="What to bring, skill level, where exactly to meet." error={errors.description} />
       </FormField>
 
-      <div className="grid grid-cols-3 gap-3">
+      {/* Uncontrolled inputs keep their first defaults; remount them if the viewer's zone replaces the server's. */}
+      <div key={timeZone} className="grid grid-cols-3 gap-3">
         <FormField label="Date" htmlFor="date" error={errors.date}><Input id="date" name="date" type="date" required defaultValue={defaults.date} min={defaults.min} error={errors.date} /></FormField>
         <FormField label="Starts" htmlFor="startTime" error={errors.startTime}><Input id="startTime" name="startTime" type="time" required defaultValue={defaults.time} error={errors.startTime} /></FormField>
         <FormField label="Ends" htmlFor="endTime" hint="optional" error={errors.endTime}><Input id="endTime" name="endTime" type="time" defaultValue={endDefaults?.time} error={errors.endTime} /></FormField>

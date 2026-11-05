@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Sprout } from "lucide-react";
 import { getRepository } from "@/lib/data";
 import { getViewer } from "@/lib/auth/server";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -48,7 +48,7 @@ export default async function NewThisWeekPage() {
 
       {total === 0 ? (
         <EmptyState
-          emoji="🌱"
+          icon={Sprout}
           title="Quiet week so far"
           body={`Nothing new in the last ${NEW_WINDOW_DAYS} days. Know a spot the city should hear about?`}
           action={

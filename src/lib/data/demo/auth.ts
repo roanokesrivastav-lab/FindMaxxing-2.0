@@ -44,6 +44,10 @@ export function demoSignUp(input: {
     avatarUrl: null,
     bio: null,
     homeCity: null,
+    homeCityChangedAt: null,
+    onboardedAt: null,
+    analyticsOptOut: false,
+    reputationLevel: "new",
     createdAt: now,
     updatedAt: now,
   });

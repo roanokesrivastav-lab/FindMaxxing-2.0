@@ -1,4 +1,4 @@
-import { EyeOff, Lock, ShieldCheck } from "lucide-react";
+import { EyeOff, Lock, ShieldCheck, Sparkles, Users } from "lucide-react";
 import type { PlaceStatus, Visibility } from "@/lib/data/types";
 
 /**
@@ -44,6 +44,22 @@ export function VisibilityNotice({
         {isOwner
           ? `Visible to people whose home city is ${city}, and to anyone who has added a place there.`
           : `You're seeing this because you're a local. Keep it good.`}
+      </Notice>
+    );
+  }
+  if (visibility === "trusted") {
+    return (
+      <Notice tone="local" icon={<Sparkles size={17} />} title={`Trusted locals · ${city}`}>
+        {isOwner
+          ? `Visible to locals of ${city} who have reached the Trusted local level.`
+          : "You're seeing this because you're a trusted local. Thanks for what you've added."}
+      </Notice>
+    );
+  }
+  if (visibility === "followers") {
+    return (
+      <Notice tone="plain" icon={<Users size={17} />} title="People they follow back">
+        {isOwner ? "Visible to people who follow you and whom you follow back." : "Shared with people they follow back, which includes you."}
       </Notice>
     );
   }

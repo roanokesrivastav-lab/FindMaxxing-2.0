@@ -23,7 +23,7 @@ export function FormShell({
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           {eyebrow ? (
-            <p className={cn("text-xs font-bold uppercase tracking-[0.12em] mb-1", tone === "pulse" ? "text-pulse" : tone === "ink" ? "text-ink-2" : "text-flare")}>
+            <p className={cn("text-xs font-bold uppercase tracking-[0.12em] mb-1", tone === "pulse" ? "text-pulse" : tone === "ink" ? "text-ink-2" : "text-flare-ink")}>
               {eyebrow}
             </p>
           ) : null}

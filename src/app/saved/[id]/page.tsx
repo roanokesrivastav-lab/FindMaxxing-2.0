@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { BackButton } from "@/components/ui/BackButton";
 import { pluralize } from "@/lib/utils/format";
+import { Bookmark } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 // Lists are private: nothing about one belongs in a title a crawler or a shared tab could show.
@@ -33,7 +34,7 @@ export default async function SavedListPage({ params }: PageProps<"/saved/[id]">
       </div>
       <PageHeader
         eyebrow={
-          <Link href="/saved" className="hover:text-flare-600">
+          <Link href="/saved" className="hover:text-flare-ink">
             Saved · List
           </Link>
         }
@@ -45,7 +46,7 @@ export default async function SavedListPage({ params }: PageProps<"/saved/[id]">
         <SavedClient places={places} listId={list.id} />
       ) : (
         <EmptyState
-          emoji="📌"
+          icon={Bookmark}
           title="Nothing in this list yet"
           body="Open a place and tap its bookmark to add it here. It can be in other lists too."
           action={

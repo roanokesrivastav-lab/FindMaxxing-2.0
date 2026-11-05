@@ -1,4 +1,5 @@
 import { filtersOf, handleDiscovery } from "../request";
+import { track } from "@/server/analytics";
 
 /**
  * GET /api/discover/map?bbox=&q=&category=&tags=&kind=&limit= — compact map
@@ -12,6 +13,8 @@ export function GET(req: Request) {
       query.kind === "events" ? null : repo.places.mapMarkers(opts),
       query.kind === "places" ? null : repo.events.mapMarkers(opts),
     ]);
+    // Explore asks for pins once per search, so this counts each empty search once.
+    if (query.q && !places?.items.length && !events?.items.length) await track("search_no_results", { kind: query.kind });
     return { places, events };
   });
 }

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Search, X } from "lucide-react";
+import { Search, X, Handshake } from "lucide-react";
 import { getRepository } from "@/lib/data";
 import { getViewer } from "@/lib/auth/server";
 import { PersonCard } from "@/components/profile/PersonCard";
@@ -42,7 +42,7 @@ export default async function PeoplePage({ searchParams }: PageProps<"/people">)
             autoComplete="off"
           />
           {q ? (
-            <Link href="/people" aria-label="Clear search" className="text-muted hover:text-ink">
+            <Link href="/people" aria-label="Clear search" className="h-8 w-8 shrink-0 inline-flex items-center justify-center rounded-full text-muted hover:text-ink hover:bg-surface-2">
               <X size={16} />
             </Link>
           ) : null}
@@ -78,7 +78,8 @@ export default async function PeoplePage({ searchParams }: PageProps<"/people">)
             </div>
           ) : (
             <EmptyState
-              emoji="🔍"
+              heading="h3"
+              icon={Search}
               title={`Nobody matches “${q}”`}
               body="Try a shorter name, a username, or a city."
               action={
@@ -94,7 +95,7 @@ export default async function PeoplePage({ searchParams }: PageProps<"/people">)
       {!viewer && !q ? (
         <div className="mb-5">
           <EmptyState
-            emoji="🤝"
+            icon={Handshake}
             title="Find your people"
             body="Add your interests and we'll show you locals who are into the same things."
             action={

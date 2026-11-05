@@ -1,19 +1,23 @@
 "use client";
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, List, Loader2, LocateFixed, Map as MapIcon, PanelLeftClose, PanelLeftOpen, RotateCw, Search, SlidersHorizontal, X } from "lucide-react";
+import { ChevronDown, List, Loader2, LocateFixed, Map as MapIcon, PanelLeftClose, PanelLeftOpen, RotateCw, Search, SlidersHorizontal, X, Compass, Sparkles, CalendarDays, MapPin } from "lucide-react";
 import type { Event, GeoBounds, Place } from "@/lib/data/types";
 import type { MapCanvasHandle } from "@/components/map/MapCanvas";
 import { MapView } from "@/components/map/MapView";
 import { CATEGORIES, INTERESTS, getInterest } from "@/lib/data/taxonomy";
 import { eventMarker, placeMarker } from "@/lib/map/markers";
+import { useViewerTime } from "@/components/time/ViewerTime";
 import type { MapMarker, ViewState } from "@/lib/map/types";
 import { DEFAULT_CENTER, DEFAULT_ZOOM } from "@/lib/config";
 import { useGeolocation } from "@/lib/map/useGeolocation";
 import { Chip, ChipRow } from "@/components/ui/Chip";
 import { PlaceCard } from "@/components/places/PlaceCard";
 import { EventCard } from "@/components/events/EventCard";
+import { SponsoredSlot } from "@/components/ads/SponsoredSlot";
+import { AD_POSITION } from "@/lib/data/ads";
 import { PreviewCard } from "./PreviewCard";
+import { Impression, type ImpressionData } from "@/components/interactions/Impression";
 import { boundsFromPoints, distanceMeters } from "@/lib/utils/geo";
 import { sameBounds } from "@/lib/map/bounds";
 import { useDiscovery } from "./useDiscovery";
@@ -24,6 +28,7 @@ import { Logo } from "@/components/layout/Logo";
 import { Avatar } from "@/components/ui/Avatar";
 import { Sheet } from "@/components/ui/Sheet";
 import { usePersistentJson } from "@/lib/utils/usePersistentJson";
+import { CategoryIcon, InterestIcon } from "@/components/ui/TaxonomyIcon";
 
 const FOLD_STORAGE_KEY = "findmaxxing:explore-folds";
 const DEFAULT_FOLDS = { events: true, places: true, panel: true };
@@ -31,7 +36,8 @@ const DEFAULT_FOLDS = { events: true, places: true, panel: true };
 type Kind = DiscoveryRequest["kind"];
 /** Events shown in the mixed list before handing off to /events. */
 const EVENTS_PREVIEW = 4;
-type Selected = { kind: "place"; item: Place } | { kind: "event"; item: Event } | null;
+/** fromMap: opened by tapping a pin (not by hovering a list card), which counts as a map impression. */
+type Selected = (({ kind: "place"; item: Place } | { kind: "event"; item: Event }) & { fromMap?: boolean }) | null;
 
 export interface ExploreViewer {
   displayName: string;
@@ -43,16 +49,29 @@ export function ExploreClient({
   initial,
   initialRequest,
   viewer,
+  welcome = false,
+  forYou = null,
+  ads = false,
+  logImpressions = false,
 }: {
   initial: DiscoveryResults;
   initialRequest: DiscoveryRequest;
   viewer: ExploreViewer | null;
+  /** Just finished onboarding: nudge toward a first save. */
+  welcome?: boolean;
+  /** Server-rendered "For you" rail, shown while browsing (not during a search). */
+  forYou?: React.ReactNode;
+  /** Sponsored cards (ads flag on, viewer not on Plus): one per list, labeled, never in place of a result. */
+  ads?: boolean;
+  /** Record which results the viewer saw, with their position (signed in, recommendations on). */
+  logImpressions?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const [kind, setKind] = useState<Kind>("all");
   const [category, setCategory] = useState<string | null>(null);
-  const [interests, setInterests] = useState<string[]>([]);
+  const [interests, setInterests] = useState<string[]>(initialRequest.tags);
+  const [showWelcome, setShowWelcome] = useState(welcome);
   const [mode, setMode] = useState<"map" | "list">("map");
   const [filtersOpen, setFiltersOpen] = useState(false);
   // Folding the events section hands the whole panel to places. Remembered so
@@ -72,6 +91,9 @@ export function ExploreClient({
   const mapRef = useRef<MapCanvasHandle>(null);
   const geo = useGeolocation(true);
   const flewToUser = useRef(false);
+  // "Nearest" orders the place list by distance from the viewer, in SQL across every page.
+  const [nearest, setNearest] = useState(false);
+  const near = nearest && geo.location ? geo.location : null;
 
   useEffect(() => {
     if (geo.location && !flewToUser.current) {
@@ -95,23 +117,27 @@ export function ExploreClient({
       category,
       tags: interests,
       kind,
+      near,
     }),
-    [searching, searchArea, viewport, initialRequest.bounds, text, category, interests, kind],
+    [searching, searchArea, viewport, initialRequest.bounds, text, category, interests, kind, near],
   );
   const discovery = useDiscovery(request, initial, initialRequest);
   const { results } = discovery;
+  const { timeZone } = useViewerTime();
   const places = results.places.items;
   const events = results.events.items;
+  const seen = (itemType: "place" | "event", itemId: string, surface: "list" | "search" | "map", position: number | null): ImpressionData | null =>
+    logImpressions ? { itemType, itemId, surface, position } : null;
 
   const markers = useMemo<MapMarker[]>(() => {
-    const list = [...(results.placeMarkers?.items ?? []).map(placeMarker), ...(results.eventMarkers?.items ?? []).map(eventMarker)];
+    const list = [...(results.placeMarkers?.items ?? []).map(placeMarker), ...(results.eventMarkers?.items ?? []).map((e) => eventMarker(e, timeZone))];
     // Keep the selected pin on the map across refreshes, even once it falls
     // outside the new results.
     if (selected && !list.some((m) => m.id === selected.item.id)) {
-      list.push(selected.kind === "place" ? placeMarker(selected.item) : eventMarker(selected.item));
+      list.push(selected.kind === "place" ? placeMarker(selected.item) : eventMarker(selected.item, timeZone));
     }
     return list;
-  }, [results.placeMarkers, results.eventMarkers, selected]);
+  }, [results.placeMarkers, results.eventMarkers, selected, timeZone]);
 
   // A fresh search everywhere: bring its matches into view.
   const fittedFor = useRef<unknown>(null);
@@ -140,14 +166,14 @@ export function ExploreClient({
     mapRef.current?.flyTo({ lat: m.lat, lng: m.lng }, Math.max(view.zoom, 14));
     const loaded = m.kind === "place" ? places.find((p) => p.id === m.id) : events.find((e) => e.id === m.id);
     if (loaded) {
-      setSelected(m.kind === "place" ? { kind: "place", item: loaded as Place } : { kind: "event", item: loaded as Event });
+      setSelected(m.kind === "place" ? { kind: "place", item: loaded as Place, fromMap: true } : { kind: "event", item: loaded as Event, fromMap: true });
       return;
     }
     try {
       const res = await fetch(`/api/discover/item?kind=${m.kind}&id=${m.id}`);
       if (!res.ok || lastClick.current !== m.id) return;
       const item = await res.json();
-      setSelected(m.kind === "place" ? { kind: "place", item: item as Place } : { kind: "event", item: item as Event });
+      setSelected(m.kind === "place" ? { kind: "place", item: item as Place, fromMap: true } : { kind: "event", item: item as Event, fromMap: true });
     } catch {
       // The pin stays highlighted-free; the viewer can tap again.
     }
@@ -165,6 +191,7 @@ export function ExploreClient({
 
   return (
     <div className="relative h-dvh flex flex-col">
+      <h1 className="sr-only">Explore places and events</h1>
       {/* Top bar */}
       <div className="absolute inset-x-0 top-0 z-30 pointer-events-none">
         <div className="pointer-events-auto px-4 pt-3 md:pt-4 max-w-3xl mx-auto flex flex-col gap-2.5">
@@ -172,7 +199,7 @@ export function ExploreClient({
             <Logo size={26} />
             <div className="flex-1" />
             {viewer ? (
-              <Link href="/profile">
+              <Link href="/profile" aria-label="Your profile" className="rounded-full">
                 <Avatar name={viewer.displayName} src={viewer.avatarUrl} size={34} />
               </Link>
             ) : (
@@ -182,7 +209,7 @@ export function ExploreClient({
             )}
           </div>
           <div className="flex items-center gap-2">
-            <label className="flex-1 flex items-center gap-2 h-12 rounded-full bg-surface border border-line shadow-card px-4">
+            <label className="flex-1 flex items-center gap-2 h-12 rounded-full bg-surface border border-line shadow-card px-4 focus-within:border-ink focus-within:ring-[3px] focus-within:ring-ink/10">
               <Search size={18} className="text-muted shrink-0" />
               <input
                 type="search"
@@ -203,7 +230,7 @@ export function ExploreClient({
                     setSearchArea(null);
                   }}
                   aria-label="Clear search"
-                  className="text-muted"
+                  className="h-8 w-8 -mr-2 shrink-0 inline-flex items-center justify-center rounded-full text-muted hover:text-ink hover:bg-surface-2"
                 >
                   <X size={16} />
                 </button>
@@ -220,7 +247,7 @@ export function ExploreClient({
             >
               <SlidersHorizontal size={18} />
               {activeFilterCount ? (
-                <span className="absolute -top-1 -right-1 h-5 min-w-5 px-1 rounded-full bg-flare text-white text-[11px] font-bold inline-flex items-center justify-center">
+                <span className="absolute -top-1 -right-1 h-5 min-w-5 px-1 rounded-full bg-flare-ink text-white text-[11px] font-bold inline-flex items-center justify-center">
                   {activeFilterCount}
                 </span>
               ) : null}
@@ -228,17 +255,17 @@ export function ExploreClient({
           </div>
           <ChipRow>
             <Link href="/new" className="chip shrink-0 snap-start" title="What locals added in the last 7 days">
-              ✨ New
+              <Sparkles size={14} aria-hidden /> New
             </Link>
             <Link href="/neighborhoods" className="chip shrink-0 snap-start md:hidden" title="Browse by neighborhood">
-              🗺️ Areas
+              <MapIcon size={14} aria-hidden /> Areas
             </Link>
             <Chip active={kind === "events"} onClick={() => setKind(kind === "events" ? "all" : "events")} color="#6b4cff">
-              📅 Events
+              <CalendarDays size={14} aria-hidden /> Events
             </Chip>
             {CATEGORIES.filter((c) => c.slug !== "other" && c.slug !== "watch-party").map((c) => (
               <Chip key={c.slug} active={category === c.slug} onClick={() => setCategory(category === c.slug ? null : c.slug)} color={c.color}>
-                <span aria-hidden>{c.emoji}</span> {c.label}
+                <CategoryIcon slug={c.slug} /> {c.label}
               </Chip>
             ))}
           </ChipRow>
@@ -246,7 +273,7 @@ export function ExploreClient({
       </div>
 
       {/* Map */}
-      <div className={cn("flex-1 relative", mode === "list" && "hidden md:block")}>
+      <div className={cn("explore-map flex-1 relative", mode === "list" && "hidden md:block")}>
         <MapView
           ref={mapRef}
           viewState={view}
@@ -288,7 +315,7 @@ export function ExploreClient({
               </span>
             ) : null}
             {discovery.status === "error" ? (
-              <button type="button" onClick={discovery.retry} className="chip bg-surface shadow-card text-flare-600">
+              <button type="button" onClick={discovery.retry} className="chip bg-surface shadow-card text-flare-ink">
                 <RotateCw size={14} /> Couldn&apos;t load results. Retry
               </button>
             ) : null}
@@ -312,7 +339,9 @@ export function ExploreClient({
         {selected ? (
           <div className={cn("absolute inset-x-0 z-30 px-4 md:right-4", panelOpen ? "md:left-[420px]" : "md:left-4")} style={{ bottom: "calc(var(--nav-height) + var(--safe-bottom) + 5.25rem)" }}>
             <div className="max-w-md mx-auto md:mx-0">
-              <PreviewCard selected={selected} onClose={() => setSelected(null)} distanceMeters={geo.location ? distanceMeters(geo.location, selected.item) : null} />
+              <Impression impression={selected.fromMap ? seen(selected.kind, selected.item.id, "map", null) : null}>
+                <PreviewCard selected={selected} onClose={() => setSelected(null)} distanceMeters={geo.location ? distanceMeters(geo.location, selected.item) : null} />
+              </Impression>
             </div>
           </div>
         ) : null}
@@ -343,7 +372,7 @@ export function ExploreClient({
             </div>
             <div className="flex gap-2">
               {activeFilterCount ? (
-                <button type="button" onClick={clearFilters} className="text-sm font-semibold text-flare-600">
+                <button type="button" onClick={clearFilters} className="text-sm font-semibold text-flare-ink">
                   Clear
                 </button>
               ) : null}
@@ -362,12 +391,23 @@ export function ExploreClient({
             </div>
           </div>
           <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-3 pb-nav md:pb-4">
+            {showWelcome ? (
+              <div className="rounded-2xl bg-moss-100 border border-moss/30 px-4 py-3 text-sm flex items-start gap-3" role="status">
+                <span className="flex-1">
+                  <b>You&apos;re in.</b> {interests.length ? "The map is showing your interests. " : ""}Find a place you love and tap the bookmark to save it: that&apos;s your first list started.
+                </span>
+                <button type="button" onClick={() => setShowWelcome(false)} className="font-semibold text-moss shrink-0" aria-label="Dismiss">
+                  Got it
+                </button>
+              </div>
+            ) : null}
+            {!searching ? forYou : null}
             {totalResults === 0 && discovery.status === "loading" ? (
               <p className="text-sm text-muted text-center py-6">Searching…</p>
             ) : null}
             {totalResults === 0 && discovery.status !== "loading" ? (
               <EmptyState
-                emoji="🧭"
+                icon={Compass}
                 title="Nothing here yet"
                 body={
                   searching
@@ -393,8 +433,13 @@ export function ExploreClient({
                 />
                 {eventsOpen ? (
                   <>
-                    {(kind === "events" ? events : events.slice(0, EVENTS_PREVIEW)).map((e) => (
-                      <EventCard key={e.id} event={e} compact onHover={() => setSelected({ kind: "event", item: e })} />
+                    {(kind === "events" ? events : events.slice(0, EVENTS_PREVIEW)).map((e, i, shown) => (
+                      <Fragment key={e.id}>
+                        <Impression impression={seen("event", e.id, searching ? "search" : "list", i)}>
+                          <EventCard event={e} compact onHover={() => setSelected({ kind: "event", item: e })} />
+                        </Impression>
+                        {ads && i === Math.min(AD_POSITION.events, shown.length) - 1 ? <SponsoredSlot slot="events" bounds={request.bounds} category={category} /> : null}
+                      </Fragment>
                     ))}
                     {kind === "all" && eventCount > EVENTS_PREVIEW ? (
                       <Link href="/events" className="text-sm font-semibold text-pulse text-center py-1">
@@ -410,16 +455,36 @@ export function ExploreClient({
             ) : null}
             {places.length ? (
               <section className="flex flex-col gap-2">
-                <FoldHeader
-                  label="Places"
-                  count={placeCount}
-                  open={placesOpen}
-                  onToggle={() => setFold("places", !placesOpen)}
-                />
+                <div className="flex items-center justify-between gap-2">
+                  <FoldHeader
+                    label="Places"
+                    count={placeCount}
+                    open={placesOpen}
+                    onToggle={() => setFold("places", !placesOpen)}
+                  />
+                  {geo.location && placesOpen ? (
+                    <button
+                      type="button"
+                      onClick={() => setNearest((v) => !v)}
+                      aria-pressed={nearest}
+                      className={cn(
+                        "rounded-full px-2.5 h-7 text-xs font-semibold border transition-colors",
+                        nearest ? "bg-ink text-white border-ink" : "bg-surface border-line text-ink-2 hover:bg-surface-2",
+                      )}
+                    >
+                      Nearest first
+                    </button>
+                  ) : null}
+                </div>
                 {placesOpen ? (
                   <>
-                    {places.map((p) => (
-                      <PlaceCard key={p.id} place={p} compact distanceMeters={geo.location ? distanceMeters(geo.location, p) : null} onHover={() => setSelected({ kind: "place", item: p })} />
+                    {places.map((p, i) => (
+                      <Fragment key={p.id}>
+                        <Impression impression={seen("place", p.id, searching ? "search" : "list", i)}>
+                          <PlaceCard place={p} compact distanceMeters={geo.location ? distanceMeters(geo.location, p) : null} onHover={() => setSelected({ kind: "place", item: p })} />
+                        </Impression>
+                        {ads && i === Math.min(AD_POSITION.places, places.length) - 1 ? <SponsoredSlot slot="places" bounds={request.bounds} category={category} /> : null}
+                      </Fragment>
                     ))}
                     {results.places.nextCursor ? (
                       <LoadMore loading={discovery.loadingMore === "places"} onClick={() => discovery.loadMore("places")} label="More places" />
@@ -452,7 +517,7 @@ export function ExploreClient({
             <div className="flex gap-2">
               {(["all", "places", "events"] as Kind[]).map((k) => (
                 <Chip key={k} active={kind === k} onClick={() => setKind(k)}>
-                  {k === "all" ? "Everything" : k === "places" ? "📍 Places" : "📅 Events"}
+                  {k === "all" ? "Everything" : k === "places" ? <><MapPin size={14} aria-hidden /> Places</> : <><CalendarDays size={14} aria-hidden /> Events</>}
                 </Chip>
               ))}
             </div>
@@ -462,7 +527,7 @@ export function ExploreClient({
             <div className="flex flex-wrap gap-2">
               {CATEGORIES.map((c) => (
                 <Chip key={c.slug} active={category === c.slug} onClick={() => setCategory(category === c.slug ? null : c.slug)} color={c.color}>
-                  <span aria-hidden>{c.emoji}</span> {c.label}
+                  <CategoryIcon slug={c.slug} /> {c.label}
                 </Chip>
               ))}
             </div>
@@ -475,7 +540,7 @@ export function ExploreClient({
                 const i = getInterest(slug);
                 return (
                   <Chip key={slug} active={interests.includes(slug)} onClick={() => toggleInterest(slug)}>
-                    <span aria-hidden>{i.emoji}</span> {i.label}
+                    <InterestIcon slug={i.slug} /> {i.label}
                   </Chip>
                 );
               })}
@@ -506,18 +571,22 @@ function FoldHeader({
   open: boolean;
   onToggle: () => void;
 }) {
+  // A heading around the toggle (the accordion pattern): the list keeps its
+  // outline (h1 › h2 section › h3 card) and the button is reachable by heading.
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-expanded={open}
-      className="flex items-center gap-1.5 -mx-1 px-1 py-1 rounded-lg text-xs font-bold uppercase tracking-wider text-muted hover:text-ink transition-colors"
-    >
-      <ChevronDown size={14} className={cn("transition-transform duration-200", open ? "" : "-rotate-90")} />
-      {label}
-      <span className="text-line-2">·</span>
-      <span className="tabular-nums">{count}</span>
-    </button>
+    <h2 className="flex font-sans">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="flex items-center gap-1.5 -mx-1 px-1 py-1 rounded-lg text-xs font-bold uppercase tracking-wider text-muted hover:text-ink transition-colors"
+      >
+        <ChevronDown size={14} className={cn("transition-transform duration-200", open ? "" : "-rotate-90")} />
+        {label}
+        <span className="text-line-2" aria-hidden>·</span>
+        <span className="tabular-nums">{count}</span>
+      </button>
+    </h2>
   );
 }
 
@@ -566,7 +635,7 @@ function ResultsSummary({
           {activeFilters ? (
             <>
               {" · "}
-              <button type="button" onClick={onClear} className="text-flare-600 font-semibold">
+              <button type="button" onClick={onClear} className="text-flare-ink font-semibold">
                 clear filters
               </button>
             </>

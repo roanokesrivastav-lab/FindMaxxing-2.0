@@ -1,5 +1,6 @@
 "use server";
 
+import { track } from "@/server/analytics";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getRepository } from "@/lib/data";
@@ -15,7 +16,7 @@ import {
   uuidSchema,
 } from "@/lib/validation/schemas";
 import type { DataRepository } from "@/lib/data/repository";
-import { MAX_PLACE_PHOTOS, type ImageUpload, type StoredImage } from "@/lib/data/types";
+import { MAX_PLACE_PHOTOS, type ComparisonPrompt, type ImageUpload, type StoredImage } from "@/lib/data/types";
 import { imageFailure, preparePlacePhotos } from "@/server/images";
 import { fail, str, strList, succeed, toFailure, type ActionResult } from "./result";
 
@@ -64,6 +65,7 @@ export async function createPlaceAction(_prev: ActionResult | null, formData: Fo
   }
   revalidatePath("/");
   revalidatePath("/profile");
+  await track("contribute_place", { placeId });
   redirect(`/places/${placeId}?new=1`);
 }
 
@@ -139,6 +141,8 @@ export async function toggleSaveAction(placeId: string, save: boolean): Promise<
     const repo = await getRepository();
     if (save) await repo.places.save(viewer.id, id.data);
     else await repo.places.unsave(viewer.id, id.data);
+    // The interaction log records the save itself (0033_interaction_attribution.sql).
+    if (save) await track("save_place", { placeId: id.data });
     revalidatePath(`/places/${id.data}`);
     // Unsaving also takes the place out of every list page under /saved.
     revalidatePath("/saved", "layout");
@@ -150,7 +154,7 @@ export async function toggleSaveAction(placeId: string, save: boolean): Promise<
 
 export async function ratePlaceAction(
   input: { placeId: string; score: number; note?: string | null },
-): Promise<ActionResult<{ ratingAvg: number; ratingCount: number; score: number }>> {
+): Promise<ActionResult<{ ratingAvg: number; ratingCount: number; score: number; comparison: ComparisonPrompt | null }>> {
   const viewer = await getViewer();
   if (!viewer) return fail("Sign in to rate places", undefined, "unauthenticated");
   const parsed = ratingSchema.safeParse(input);
@@ -158,9 +162,32 @@ export async function ratePlaceAction(
   try {
     const repo = await getRepository();
     const agg = await repo.places.rate(viewer.id, parsed.data.placeId, parsed.data.score, parsed.data.note);
+    await track("rate_place", { placeId: parsed.data.placeId, score: parsed.data.score });
     revalidatePath(`/places/${parsed.data.placeId}`);
     revalidatePath("/");
-    return succeed({ ...agg, score: parsed.data.score });
+    // The follow-up question is a bonus: never let it fail a rating that went through.
+    const comparison = await repo.places.nextComparison(viewer.id, parsed.data.placeId).catch(() => null);
+    return succeed({ ...agg, score: parsed.data.score, comparison });
+  } catch (err) {
+    return toFailure(err);
+  }
+}
+
+/** Records "I preferred this one" and returns the next question, if there is one. */
+export async function compareAction(
+  input: { subjectId: string; winnerId: string; loserId: string },
+): Promise<ActionResult<{ comparison: ComparisonPrompt | null }>> {
+  const viewer = await getViewer();
+  if (!viewer) return fail("Sign in to compare places", undefined, "unauthenticated");
+  const ids = [input.subjectId, input.winnerId, input.loserId].map((id) => uuidSchema.safeParse(id));
+  if (ids.some((id) => !id.success)) return fail("Invalid comparison");
+  const { subjectId, winnerId, loserId } = input;
+  if (subjectId !== winnerId && subjectId !== loserId) return fail("Invalid comparison");
+  try {
+    const repo = await getRepository();
+    await repo.places.compare(viewer.id, winnerId, loserId);
+    const comparison = await repo.places.nextComparison(viewer.id, subjectId).catch(() => null);
+    return succeed({ comparison });
   } catch (err) {
     return toFailure(err);
   }

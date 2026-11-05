@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { featureEnabled } from "@/lib/config";
 import { requireViewer } from "@/lib/auth/server";
 import { PlaceForm } from "@/components/forms/PlaceForm";
 import { FormShell } from "@/components/layout/FormShell";
@@ -16,7 +17,7 @@ export default async function NewPlacePage() {
       eyebrow="Contribute"
       backHref="/"
     >
-      <PlaceForm defaultCity={viewer.profile.homeCity ?? SEED_CITY} />
+      <PlaceForm defaultCity={viewer.profile.homeCity ?? SEED_CITY} extendedTiers={featureEnabled("reputation")} />
     </FormShell>
   );
 }

@@ -1,11 +1,17 @@
 import Link from "next/link";
-import { Flag, MapPin, Pencil } from "lucide-react";
-import type { Profile, ProfileStats, UserActivity } from "@/lib/data/types";
+import { LevelBadge } from "./LevelBadge";
+import { Bell, Flag, Heart, MapPin, Megaphone, MessageCircle, Pencil, Settings, ShieldAlert, ShieldCheck, Ticket } from "lucide-react";
+import type { Profile, ProfileStats, RemovedContent, UserActivity } from "@/lib/data/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { getInterest } from "@/lib/data/taxonomy";
 import { FollowButton } from "./FollowButton";
 import { ActivityTabs } from "./ActivityTabs";
 import { SignOutButton } from "@/components/auth/SignOutButton";
+import { BlockButton, MessageButton } from "@/components/messages/MessageButtons";
+import { LocalDate } from "@/components/time/LocalDate";
+import { InterestIcon } from "@/components/ui/TaxonomyIcon";
+
+const REMOVED_DATE: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric" };
 
 export function ProfileView({
   profile,
@@ -14,6 +20,14 @@ export function ProfileView({
   isSelf,
   viewerSignedIn,
   viewerFollows,
+  removed = [],
+  isModerator = false,
+  showLevel = false,
+  suspended = false,
+  messaging = null,
+  notificationsUnread = null,
+  payments = false,
+  ads = false,
 }: {
   profile: Profile;
   stats: ProfileStats;
@@ -21,6 +35,25 @@ export function ProfileView({
   isSelf: boolean;
   viewerSignedIn: boolean;
   viewerFollows: boolean;
+  /** The viewer's own content that moderators removed (self view only). */
+  removed?: RemovedContent[];
+  isModerator?: boolean;
+  /** Reputation level badge, behind the reputation flag. */
+  showLevel?: boolean;
+  /** The viewer's own account is suspended (self view only). */
+  suspended?: boolean;
+  /**
+   * Behind the messaging flag, for a signed-in viewer: on someone else's
+   * profile whether the rule lets them message and whether they blocked them;
+   * on their own, their unread count.
+   */
+  messaging?: { canMessage: boolean; blocked: boolean; unread?: never } | { unread: number; canMessage?: never; blocked?: never } | null;
+  /** Self view, behind the notifications flag. */
+  notificationsUnread?: number | null;
+  /** Self view: tickets and Plus links (payments flag). */
+  payments?: boolean;
+  /** Self view: the advertiser page (ads flag). */
+  ads?: boolean;
 }) {
   return (
     <div className="max-w-2xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-nav md:pb-10">
@@ -30,6 +63,12 @@ export function ProfileView({
           <div className="flex-1 min-w-0">
             <h1 className="text-2xl font-bold leading-tight break-words">{profile.displayName}</h1>
             <p className="text-sm text-muted">@{profile.username}</p>
+            {showLevel ? <div className="mt-1.5"><LevelBadge level={profile.reputationLevel} /></div> : null}
+            {profile.supporter ? (
+              <p className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-pulse-50 text-pulse px-2 py-0.5 text-xs font-semibold">
+                <Heart size={12} /> Supporter
+              </p>
+            ) : null}
             {profile.homeCity ? (
               <p className="text-sm text-ink-2 mt-1 inline-flex items-center gap-1">
                 <MapPin size={13} /> {profile.homeCity}
@@ -44,6 +83,12 @@ export function ProfileView({
             <FollowButton userId={profile.id} following={viewerFollows} signedIn={viewerSignedIn} size="sm" />
           )}
         </div>
+        {!isSelf && messaging && messaging.canMessage !== undefined ? (
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            {messaging.blocked ? null : <MessageButton userId={profile.id} canMessage={messaging.canMessage} />}
+            <BlockButton userId={profile.id} blocked={messaging.blocked} name={profile.displayName} />
+          </div>
+        ) : null}
         {profile.bio ? <p className="mt-4 text-[15px] leading-relaxed">{profile.bio}</p> : isSelf ? (
           <p className="mt-4 text-sm text-muted">
             Add a bio and interests so people know what you&apos;re into.{" "}
@@ -60,16 +105,16 @@ export function ProfileView({
                 <Link
                   key={slug}
                   href={`/tags/${slug}`}
-                  className="rounded-full bg-surface-2 px-2.5 py-1 text-xs font-semibold text-ink-2 hover:bg-line transition-colors"
+                  className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2.5 py-1 text-xs font-semibold text-ink-2 hover:bg-line transition-colors"
                   title={`Browse ${i.label}`}
                 >
-                  {i.emoji} {i.label}
+                  <InterestIcon slug={i.slug} size={13} /> {i.label}
                 </Link>
               );
             })}
           </div>
         ) : null}
-        <dl className="mt-5 grid grid-cols-4 gap-2 text-center">
+        <ul className="mt-5 grid grid-cols-4 gap-2 text-center list-none p-0 m-0" aria-label="Profile stats">
           {([
             { label: "Places", value: stats.places, href: null },
             { label: "Events", value: stats.events, href: null },
@@ -78,33 +123,94 @@ export function ProfileView({
           ] as const).map(({ label, value, href }) => {
             const body = (
               <>
-                <dt className="text-[11px] font-semibold uppercase tracking-wide text-muted">{label}</dt>
-                <dd className="font-display text-xl font-bold">{value}</dd>
+                <span className="block text-[11px] font-semibold uppercase tracking-wide text-muted">{label}</span>
+                <span className="block font-display text-xl font-bold">{value}</span>
               </>
             );
-            return href ? (
-              <Link key={label} href={href} className="rounded-xl bg-surface-2 py-2 hover:bg-line transition-colors">
-                {body}
-              </Link>
-            ) : (
-              <div key={label} className="rounded-xl bg-surface-2 py-2">
-                {body}
-              </div>
+            return (
+              <li key={label}>
+                {href ? (
+                  <Link href={href} className="block rounded-xl bg-surface-2 py-2 hover:bg-line transition-colors">
+                    {body}
+                  </Link>
+                ) : (
+                  <div className="rounded-xl bg-surface-2 py-2">{body}</div>
+                )}
+              </li>
             );
           })}
-        </dl>
+        </ul>
       </div>
 
+      {isSelf && suspended ? (
+        <p className="mt-5 card p-4 text-sm border-danger/40" role="status">
+          <b>Your account is suspended.</b> You can still browse, but you can&apos;t add or change anything until an admin lifts it.
+        </p>
+      ) : null}
+
+      {isSelf && removed.length ? (
+        <section className="mt-5 card p-5 border-danger/40" aria-labelledby="removed-heading">
+          <h2 id="removed-heading" className="font-bold inline-flex items-center gap-2">
+            <ShieldAlert size={16} className="text-danger" /> Removed by moderators
+          </h2>
+          <p className="text-sm text-muted mt-1">These no longer appear anywhere, for anyone. You can&apos;t edit or republish them.</p>
+          <ul className="mt-3 flex flex-col gap-2 list-none p-0 m-0">
+            {removed.map((r) => (
+              <li key={`${r.targetType}:${r.targetId}`} className="rounded-xl bg-surface-2 px-4 py-3">
+                <p className="text-sm font-semibold break-words">
+                  {r.targetType === "place" ? "Place" : "Event"}: {r.label}
+                </p>
+                <p className="text-sm text-ink-2 mt-0.5 break-words">{r.reason ? `Reason: ${r.reason}` : "No reason was recorded."}</p>
+                {r.removedAt ? <p className="text-xs text-muted mt-1">Removed <LocalDate value={r.removedAt} format={REMOVED_DATE} /></p> : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       <div className="mt-5">
+        {/* Keeps the heading outline whole: the activity cards use h3. */}
+        <h2 className="sr-only">Activity</h2>
         <ActivityTabs activity={activity} isSelf={isSelf} />
       </div>
 
       {isSelf ? (
         <div className="mt-8 flex flex-col items-center gap-3">
-          <Link href="/profile/reports" className="chip">
-            <Flag size={14} />
-            Reports
-          </Link>
+          <div className="flex flex-wrap justify-center gap-2">
+            {payments ? (
+              <>
+                <Link href="/profile/tickets" className="chip"><Ticket size={14} /> Tickets</Link>
+                <Link href="/plus" className="chip"><Heart size={14} /> Plus</Link>
+                {ads ? <Link href="/ads" className="chip"><Megaphone size={14} /> Sponsored cards</Link> : null}
+              </>
+            ) : null}
+            {notificationsUnread !== null ? (
+              <Link href="/notifications" className="chip">
+                <Bell size={14} />
+                Notifications{notificationsUnread ? ` (${notificationsUnread})` : ""}
+              </Link>
+            ) : null}
+            {messaging && messaging.unread !== undefined ? (
+              <Link href="/messages" className="chip">
+                <MessageCircle size={14} />
+                Messages{messaging.unread ? ` (${messaging.unread})` : ""}
+              </Link>
+            ) : null}
+            <Link href="/profile/reports" className="chip">
+              <Flag size={14} />
+              Reports
+            </Link>
+            <Link href="/profile/settings" className="chip">
+              <Settings size={14} />
+              Settings
+            </Link>
+            {isModerator ? (
+              <Link href="/moderation" className="chip">
+                <ShieldCheck size={14} />
+                Moderation queue
+              </Link>
+            ) : null}
+          </div>
           <SignOutButton />
         </div>
       ) : null}

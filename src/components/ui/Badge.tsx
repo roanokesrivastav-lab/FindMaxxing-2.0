@@ -1,6 +1,8 @@
 import { cn } from "@/lib/utils/cn";
 import { getCategory } from "@/lib/data/taxonomy";
+import { readableInk } from "@/lib/utils/contrast";
 import type { ReactNode } from "react";
+import { CategoryIcon } from "@/components/ui/TaxonomyIcon";
 
 export function Badge({ children, className, style }: { children: ReactNode; className?: string; style?: React.CSSProperties }) {
   return (
@@ -15,16 +17,17 @@ export function Badge({ children, className, style }: { children: ReactNode; cla
 
 export function CategoryBadge({ slug, className, tone = "soft" }: { slug: string; className?: string; tone?: "soft" | "solid" }) {
   const c = getCategory(slug);
+  const ink = readableInk(c.color);
   return (
     <Badge
       className={className}
       style={
         tone === "solid"
-          ? { background: c.color, color: "white" }
-          : { background: `${c.color}1a`, color: c.color }
+          ? { background: ink, color: "white" }
+          : { background: `${c.color}1a`, color: ink }
       }
     >
-      <span aria-hidden>{c.emoji}</span>
+      <CategoryIcon slug={c.slug} size={13} />
       {c.label}
     </Badge>
   );
@@ -32,7 +35,7 @@ export function CategoryBadge({ slug, className, tone = "soft" }: { slug: string
 
 export function KindBadge({ kind }: { kind: "place" | "event" }) {
   return (
-    <Badge className={kind === "event" ? "bg-pulse-100 text-pulse" : "bg-flare-100 text-flare-600"}>
+    <Badge className={kind === "event" ? "bg-pulse-100 text-pulse" : "bg-flare-100 text-flare-ink"}>
       {kind === "event" ? "Event" : "Place"}
     </Badge>
   );

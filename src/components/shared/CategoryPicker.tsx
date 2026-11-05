@@ -3,6 +3,8 @@ import { useState } from "react";
 import type { Category } from "@/lib/data/taxonomy";
 import { FieldError, FieldLabel } from "@/components/ui/Field";
 import { cn } from "@/lib/utils/cn";
+import { readableInk } from "@/lib/utils/contrast";
+import { CategoryIcon } from "@/components/ui/TaxonomyIcon";
 
 export function CategoryPicker({
   name,
@@ -36,8 +38,8 @@ export function CategoryPicker({
               )}
               style={active ? { background: c.color } : undefined}
             >
-              <span className="text-xl leading-none" aria-hidden>
-                {c.emoji}
+              <span className="leading-none" style={active ? undefined : { color: readableInk(c.color) }}>
+                <CategoryIcon slug={c.slug} size={20} strokeWidth={1.75} />
               </span>
               <span className="leading-tight text-center">{c.label}</span>
             </button>

@@ -160,10 +160,15 @@ describe("tier 2 — locals tier, photo cap, and report views in SQL", () => {
     expect(row.ok).toBe(true);
   });
 
-  it("does not expose local status as an anonymous RPC", async () => {
+  it("tells an anonymous caller nothing: is_local is always false without a session", async () => {
+    // The places policy calls is_local() as the querying role (0013), so anon
+    // can execute it; with no auth.uid() it can only ever answer false.
     await db.exec("grant usage on schema public to anon; set role anon;");
-    await expect(db.query("select public.is_local('Columbus')")).rejects.toThrow(/permission denied|execute/i);
-    await db.exec("reset role;");
+    try {
+      expect((await db.query<{ ok: boolean }>("select public.is_local('Columbus') as ok")).rows[0].ok).toBe(false);
+    } finally {
+      await db.exec("reset role;");
+    }
   });
 
   it("hides locals-only places from non-locals and anonymous readers", async () => {

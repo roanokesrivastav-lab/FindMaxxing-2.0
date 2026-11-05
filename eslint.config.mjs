@@ -12,9 +12,13 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // The Expo app has its own toolchain (type-checked in CI); these rules are the web's.
+    "apps/**",
     // Vendored MapLibre worker copied from node_modules on install.
     "public/maplibre/**",
     ".data/**",
+    // Agent worktrees are full copies of the repo; lint the real source only.
+    ".claude/**",
   ]),
 ]);
 

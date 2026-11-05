@@ -1,5 +1,5 @@
 "use client";
-import { forwardRef, useImperativeHandle, useRef, type ComponentType, type RefAttributes } from "react";
+import { forwardRef, useImperativeHandle, useRef, useState, type ComponentType, type FocusEvent, type RefAttributes } from "react";
 import type { MapProps, MapRef, MarkerProps, NavigationControlProps } from "react-map-gl/maplibre";
 import type { MapMarker, ViewState, LngLat } from "@/lib/map/types";
 import type { GeoBounds } from "@/lib/data/types";
@@ -82,14 +82,32 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     ? { top: padding.top ?? 0, bottom: padding.bottom ?? 0, left: padding.left ?? 0, right: padding.right ?? 0 }
     : undefined;
 
+  // Map flights jump instead of animating for people who ask for less motion.
+  const duration = () => (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? 0 : 700);
+
+  // A pin reached with Tab can sit under the floating search bar, the list
+  // panel or the results card, or off the map; bring it into the clear part of
+  // the map so the focused pin is visible (WCAG 2.4.11).
+  // Moving the map refreshes the results, which could drop the focused pin and
+  // throw focus back to the page; it stays on the map until focus leaves it.
+  const [focused, setFocused] = useState<MapMarker | null>(null);
+  const shown = focused && !markers.some((m) => m.kind === focused.kind && m.id === focused.id) ? [...markers, focused] : markers;
+  const revealIfHidden = (e: FocusEvent<HTMLElement>, m: MapMarker) => {
+    setFocused(m);
+    const r = (e.target as HTMLElement).getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    if (hit && (e.target as HTMLElement).contains(hit)) return;
+    mapRef.current?.easeTo({ center: [m.lng, m.lat], duration: duration(), padding: paddingOptions });
+  };
+
   useImperativeHandle(ref, () => ({
     flyTo(target, zoom) {
-      mapRef.current?.flyTo({ center: [target.lng, target.lat], zoom: zoom ?? Math.max(viewState.zoom, 14), duration: 700, padding: paddingOptions });
+      mapRef.current?.flyTo({ center: [target.lng, target.lat], zoom: zoom ?? Math.max(viewState.zoom, 14), duration: duration(), padding: paddingOptions });
     },
     fitBounds(bounds, pad = 60, maxZoom = 15) {
       // maxZoom is caller-supplied so a precise street address can settle close
       // while a whole neighborhood stays wide.
-      mapRef.current?.fitBounds(bounds, { padding: pad, duration: 700, maxZoom });
+      mapRef.current?.fitBounds(bounds, { padding: pad, duration: duration(), maxZoom });
     },
   }));
 
@@ -132,23 +150,31 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
         </Marker>
       ) : null}
 
-      {markers.map((m) => (
+      {shown.map((m) => (
         <Marker
           key={`${m.kind}-${m.id}`}
           longitude={m.lng}
           latitude={m.lat}
-          anchor={m.kind === "place" ? "bottom" : "center"}
+          anchor="bottom"
           style={{ zIndex: m.id === activeMarkerId ? 20 : m.kind === "event" ? 5 : 1 }}
           onClick={(e) => {
             e.originalEvent.stopPropagation();
             onMarkerClick?.(m);
           }}
         >
-          {m.kind === "place" ? (
-            <PlacePin color={m.color} emoji={m.emoji} active={m.id === activeMarkerId} label={m.label} />
-          ) : (
-            <EventPin color={m.color} emoji={m.emoji} active={m.id === activeMarkerId} label={m.label} />
-          )}
+          <div
+            className="contents"
+            onFocus={(e) => revealIfHidden(e, m)}
+            onBlur={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused((f) => (f === m ? null : f));
+            }}
+          >
+            {m.kind === "place" ? (
+              <PlacePin color={m.color} categorySlug={m.categorySlug} active={m.id === activeMarkerId} label={m.label} />
+            ) : (
+              <EventPin color={m.color} categorySlug={m.categorySlug} active={m.id === activeMarkerId} label={m.label} />
+            )}
+          </div>
         </Marker>
       ))}
 

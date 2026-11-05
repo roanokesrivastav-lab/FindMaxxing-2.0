@@ -1,7 +1,7 @@
 "use client";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff, Globe, Lock, ShieldCheck } from "lucide-react";
+import { Eye, EyeOff, Globe, Lock, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { setPlaceStatusAction, setPlaceVisibilityAction } from "@/server/actions/places";
 import { useToast } from "@/components/ui/Toast";
 import type { PlaceStatus, Visibility } from "@/lib/data/types";
@@ -10,8 +10,11 @@ import { cn } from "@/lib/utils/cn";
 const TIERS: { value: Visibility; label: string; hint: string; icon: typeof Globe }[] = [
   { value: "public", label: "Everyone", hint: "Anyone browsing the map", icon: Globe },
   { value: "locals", label: "Locals only", hint: "People who live or contribute here", icon: ShieldCheck },
+  { value: "trusted", label: "Trusted locals", hint: "Locals at the Trusted local level", icon: Sparkles },
+  { value: "followers", label: "Follow-backs", hint: "People you follow who follow you", icon: Users },
   { value: "private", label: "Just me", hint: "Hidden from everyone else", icon: Lock },
 ];
+const EXTENDED: Visibility[] = ["trusted", "followers"];
 
 /**
  * Owner-only panel on a place page: who can see it, and whether it's listed.
@@ -21,11 +24,15 @@ export function PlaceOwnerControls({
   placeId,
   status,
   visibility,
+  extendedTiers = false,
 }: {
   placeId: string;
   status: PlaceStatus;
   visibility: Visibility;
+  extendedTiers?: boolean;
 }) {
+  // The reputation tiers show when the flag is on, or when the place already uses one.
+  const tiers = TIERS.filter((t) => extendedTiers || !EXTENDED.includes(t.value) || t.value === visibility);
   const [currentStatus, setCurrentStatus] = useState<PlaceStatus>(status);
   const [currentTier, setCurrentTier] = useState<Visibility>(visibility);
   const [pending, start] = useTransition();
@@ -61,7 +68,7 @@ export function PlaceOwnerControls({
         toast(res.error, "error");
         return;
       }
-      toast(tier === "locals" ? "Now visible to locals only" : tier === "private" ? "Now visible only to you" : "Now visible to everyone", "success");
+      toast(tier === "locals" ? "Now visible to locals only" : tier === "trusted" ? "Now visible to trusted locals only" : tier === "followers" ? "Now visible to people you follow back" : tier === "private" ? "Now visible only to you" : "Now visible to everyone", "success");
       router.refresh();
     });
   };
@@ -73,7 +80,7 @@ export function PlaceOwnerControls({
         <div>
           <p className="text-sm font-semibold mb-2">Who can see it</p>
           <div className="grid grid-cols-3 gap-2">
-            {TIERS.map((t) => {
+            {tiers.map((t) => {
               const Icon = t.icon;
               const active = currentTier === t.value;
               return (

@@ -65,7 +65,7 @@ export function SavedClient({ places, listId }: { places: Place[]; listId?: stri
 
   return (
     <div className="flex flex-col gap-4">
-      <label className="flex items-center gap-2 h-12 rounded-full bg-surface border border-line shadow-card px-4">
+      <label className="flex items-center gap-2 h-12 rounded-full bg-surface border border-line shadow-card px-4 focus-within:border-ink focus-within:ring-[3px] focus-within:ring-ink/10">
         <Search size={18} className="text-muted shrink-0" />
         <input
           type="search"
@@ -76,7 +76,7 @@ export function SavedClient({ places, listId }: { places: Place[]; listId?: stri
           aria-label="Search saved places"
         />
         {query ? (
-          <button type="button" onClick={() => setQuery("")} aria-label="Clear search" className="text-muted">
+          <button type="button" onClick={() => setQuery("")} aria-label="Clear search" className="h-8 w-8 -mr-2 shrink-0 inline-flex items-center justify-center rounded-full text-muted hover:text-ink hover:bg-surface-2">
             <X size={16} />
           </button>
         ) : null}
@@ -112,7 +112,7 @@ export function SavedClient({ places, listId }: { places: Place[]; listId?: stri
         </div>
       ) : (
         <EmptyState
-          emoji="🔍"
+          icon={Search}
           title={`No saved places match “${query}”`}
           body="Try a shorter search, or clear it to see everything you've saved."
           action={

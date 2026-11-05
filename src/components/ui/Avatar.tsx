@@ -1,12 +1,14 @@
 import { cn } from "@/lib/utils/cn";
 import { initials } from "@/lib/utils/format";
+import { readableInk } from "@/lib/utils/contrast";
 
 const PALETTE = ["#ff4d2e", "#6b4cff", "#1f8a5b", "#0e8f8a", "#e0741f", "#c0399b", "#3b6fd6", "#e8a600"];
 
 function colorFor(seed: string) {
   let h = 0;
   for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-  return PALETTE[h % PALETTE.length];
+  // Darkened where needed so the white initials pass AA.
+  return readableInk(PALETTE[h % PALETTE.length]);
 }
 
 export function Avatar({
@@ -29,6 +31,7 @@ export function Avatar({
     <span
       style={{ ...style, background: colorFor(name) }}
       className={cn("rounded-full inline-flex items-center justify-center font-display font-bold text-white shrink-0", className)}
+      role="img"
       aria-label={name}
     >
       {initials(name)}

@@ -8,6 +8,7 @@ import { FollowButton } from "@/components/profile/FollowButton";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { BackButton } from "@/components/ui/BackButton";
+import { Hand, Compass } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +43,7 @@ export default async function ConnectionsPage({ params }: PageProps<"/u/[usernam
       </div>
       <PageHeader
         eyebrow={
-          <Link href={isSelf ? "/profile" : `/u/${profile.username}`} className="hover:text-flare-600">
+          <Link href={isSelf ? "/profile" : `/u/${profile.username}`} className="hover:text-flare-ink">
             @{profile.username}
           </Link>
         }
@@ -82,7 +83,7 @@ export default async function ConnectionsPage({ params }: PageProps<"/u/[usernam
         </div>
       ) : (
         <EmptyState
-          emoji={parsed === "followers" ? "👋" : "🧭"}
+          icon={parsed === "followers" ? Hand : Compass}
           title={
             parsed === "followers"
               ? isSelf

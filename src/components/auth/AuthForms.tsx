@@ -21,6 +21,9 @@ export function SignInForm({ next }: { next: string }) {
       <FormField label="Password" htmlFor="password" error={errors.password}>
         <Input id="password" name="password" type="password" autoComplete="current-password" required error={errors.password} />
       </FormField>
+      <Link href="/auth/forgot" className="-mt-2 self-end text-sm font-semibold text-muted hover:text-ink underline-offset-4 hover:underline">
+        Forgot password?
+      </Link>
       {state && !state.ok && !Object.keys(errors).length ? (
         <p className="text-sm text-danger font-medium" role="alert">
           {state.error}

@@ -1,5 +1,6 @@
 "use server";
 
+import { track } from "@/server/analytics";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getRepository } from "@/lib/data";
@@ -40,6 +41,8 @@ export async function updateProfileAction(_prev: ActionResult | null, formData: 
     await repo.profiles.update(viewer.id, { ...parsed.data, avatarUrl });
   } catch (err) {
     if (err instanceof DataError && err.code === "conflict") return fail(err.message, { username: err.message });
+    if (err instanceof DataError && err.code === "rate_limited" && /home city/i.test(err.message)) return fail(err.message, { homeCity: err.message });
+    if (err instanceof DataError && err.code === "rate_limited") return fail(err.message, { avatar: err.message });
     return toFailure(err);
   }
   revalidatePath("/profile");
@@ -57,6 +60,7 @@ export async function toggleFollowAction(userId: string, follow: boolean): Promi
     const repo = await getRepository();
     if (follow) await repo.profiles.follow(viewer.id, id.data);
     else await repo.profiles.unfollow(viewer.id, id.data);
+    if (follow) await track("follow");
     revalidatePath("/people");
     revalidatePath("/profile");
     return succeed({ following: follow });

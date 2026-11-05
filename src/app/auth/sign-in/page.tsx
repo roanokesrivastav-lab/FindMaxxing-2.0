@@ -5,17 +5,14 @@ import { getDataMode } from "@/lib/config";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { DemoPersonas, SignInForm } from "@/components/auth/AuthForms";
 import { SEED_USERS } from "@/lib/seed/seed-data";
+import { safeAuthNext } from "@/lib/auth/redirect";
 
 export const metadata: Metadata = { title: "Sign in" };
 export const dynamic = "force-dynamic";
 
-function safeNext(v: unknown): string {
-  return typeof v === "string" && v.startsWith("/") && !v.startsWith("//") ? v : "/";
-}
-
 export default async function SignInPage({ searchParams }: PageProps<"/auth/sign-in">) {
   const [sp, viewer] = await Promise.all([searchParams, getViewer()]);
-  const next = safeNext(sp.next);
+  const next = safeAuthNext(sp.next);
   if (viewer) redirect(next);
   const demo = getDataMode() === "demo";
   return (
@@ -37,7 +34,7 @@ export default async function SignInPage({ searchParams }: PageProps<"/auth/sign
         ) : null
       }
     >
-      {sp.error === "callback" ? <p className="mb-3 text-sm text-danger font-medium">That sign-in link didn&apos;t work. Try again.</p> : null}
+      {sp.error === "callback" ? <p className="mb-3 text-sm text-danger font-medium">That link couldn&apos;t sign you in here. If you opened it on another device or browser, your email may already be confirmed: sign in with your password.</p> : null}
       <SignInForm next={next} />
     </AuthShell>
   );

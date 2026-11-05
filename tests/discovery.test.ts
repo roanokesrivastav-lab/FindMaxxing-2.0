@@ -139,7 +139,7 @@ function sqlSide(db: PGlite) {
       const limit = clampLimit(opts.limit, DEFAULT_MAP_MARKERS, MAX_MAP_MARKERS);
       const { from, params } = call("discover_places", discoverArgs(normalizeFilters(opts)));
       const rows = await queryAs<{ id: string }>(db, viewer,
-        `select id from ${from} order by rating_count desc, save_count desc, id limit ${limit + 1}`, params);
+        `select id from ${from} order by rating_count desc, save_count desc, creator_reputation desc, id limit ${limit + 1}`, params);
       return { ids: rows.slice(0, limit).map((r) => r.id), truncated: rows.length > limit };
     },
     async eventMap(viewer: string | null, opts: MapQueryOptions) {
@@ -205,6 +205,8 @@ describe("SQL and demo agree", () => {
     for (const p of state.places) await db.query("update public.places set created_at = $2 where id = $1", [p.id, p.createdAt]);
     for (const e of state.events) await db.query("update public.events set starts_at = $2, ends_at = $3 where id = $1", [e.id, e.startsAt, e.endsAt]);
     await db.exec("alter table public.events enable trigger guard_owner_event_change;");
+    // Reputation depends on how old places are; recompute it from the aligned timestamps.
+    await db.query("select public.refresh_all_reputation()");
   });
 
   const demoPlaces = (viewerId: string | null, opts: PlaceSearchOptions) =>
@@ -422,6 +424,67 @@ describe("no record is silently dropped past the old 500-item limits", () => {
     for (const id of ids) expect(byTag).toContain(id);
     expect(byTag.length).toBe(await repo.places.count({ tags: ["hiking"] }));
     expect(await repo.places.count({ neighborhood: HOOD })).toBe(BULK);
+  });
+});
+
+describe("no event is silently dropped either", () => {
+  const BULK = 560;
+  const HOOD = "Bulk Event Hood";
+
+  it("pages every SQL event of a neighborhood and a tag, and the counts agree", async () => {
+    const [venue] = (await db.query<{ id: string }>(
+      `insert into public.places (name, description, category_slug, lat, lng, city, neighborhood, creator_id)
+       values ('Bulk venue', 'A place that hosts a lot of events.', 'outdoors', 39.96, -83.0, 'Columbus', '  bulk  EVENT hood ', $1) returning id`,
+      [user("maya_r")],
+    )).rows;
+    const before = await sql.tagCounts(null);
+    const inserted = await db.query<{ id: string }>(
+      `insert into public.events (title, description, place_id, location_name, lat, lng, starts_at, creator_id, category_slug)
+       select 'Bulk event ' || g, 'Generated event number ' || g || ' for paging.', $1, 'Bulk venue', 39.96, -83.0,
+              now() + interval '2 days' + ((g / 7) || ' seconds')::interval, $2, 'outdoors'
+       from generate_series(1, $3::int) g returning id`,
+      [venue.id, user("maya_r"), BULK],
+    );
+    await db.query("insert into public.event_tags (event_id, interest_slug) select id, 'board-games' from public.events where title like 'Bulk event %'");
+    const expected = new Set(inserted.rows.map((r) => r.id));
+    expect(expected.size).toBe(BULK);
+
+    // Seven events share each start time: the id tie-break is exercised at page edges.
+    const byHood = await walk((cursor) => sql.eventPage(null, { neighborhood: HOOD, limit: MAX_PAGE_SIZE, cursor }));
+    expect(byHood).toHaveLength(BULK);
+    expect(new Set(byHood)).toEqual(expected);
+    const byTag = await walk((cursor) => sql.eventPage(null, { tags: ["board-games"], limit: MAX_PAGE_SIZE, cursor }));
+    expect(byTag.length).toBe(await sql.eventCount(null, { tags: ["board-games"] }));
+    for (const id of expected) expect(byTag).toContain(id);
+    expect(await sql.eventCount(null, { neighborhood: HOOD })).toBe(BULK);
+    const after = await sql.tagCounts(null);
+    expect(after["board-games"].events - (before["board-games"]?.events ?? 0)).toBe(BULK);
+  }, 60_000);
+
+  it("pages every demo event of a neighborhood and a tag", async () => {
+    const store = createIsolatedStore();
+    const venue = { ...store.state.places[0], id: stableId("bulk-demo-venue"), neighborhood: "  bulk  EVENT hood ", status: "published" as const, visibility: "public" as const };
+    store.state.places.push(venue);
+    const base = store.state.events[0];
+    const start = Date.now() + 2 * 86_400_000;
+    const ids = Array.from({ length: BULK }, (_, i) => stableId(`bulk-demo-event:${i}`));
+    ids.forEach((id, i) => {
+      store.state.events.push({
+        ...base, id, title: `Bulk event ${i}`, placeId: venue.id, status: "published", creatorId: base.creatorId,
+        startsAt: new Date(start + Math.floor(i / 7) * 1000).toISOString(), endsAt: null,
+      });
+      store.state.eventTags.push({ eventId: id, interestSlug: "board-games" });
+    });
+    const repo = createDemoRepository({ state: store.state, persist() {} });
+    const page = (filters: DiscoveryFilters) => (cursor: string | null) =>
+      repo.events.search({ ...filters, limit: MAX_PAGE_SIZE, cursor }).then((p) => ({ items: p.items.map((x) => x.id), nextCursor: p.nextCursor }));
+    const byHood = await walk(page({ neighborhood: HOOD }));
+    expect(byHood).toHaveLength(BULK);
+    expect(new Set(byHood)).toEqual(new Set(ids));
+    const byTag = await walk(page({ tags: ["board-games"] }));
+    for (const id of ids) expect(byTag).toContain(id);
+    expect(byTag.length).toBe(await repo.events.count({ tags: ["board-games"] }));
+    expect(await repo.events.count({ neighborhood: HOOD })).toBe(BULK);
   });
 });
 

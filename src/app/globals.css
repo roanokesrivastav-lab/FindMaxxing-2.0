@@ -15,25 +15,29 @@
   --color-surface-2: #f4f2ec;
   --color-ink: #17181d;
   --color-ink-2: #45464d;
-  --color-muted: #7b7c85;
+  --color-muted: #62636b; /* 4.6:1+ on paper-2; was #7b7c85 (3.7:1) */
   --color-line: #e6e2d9;
   --color-line-2: #d4cfc4;
 
   --color-flare: #ff4d2e;
   --color-flare-600: #e63d1f;
   --color-flare-100: #ffe9e3;
+  /* Flare dark enough for text, and for white text on it (AA). The bright flare stays for fills and icons. */
+  --color-flare-ink: #b8371f;
   --color-flare-50: #fff4f0;
 
   --color-pulse: #6b4cff;
+  /* Pulse for small text on pale pulse tints (AA). */
+  --color-pulse-ink: #5233d6;
   --color-pulse-600: #5a3de6;
   --color-pulse-100: #ebe6ff;
   --color-pulse-50: #f4f1ff;
 
-  --color-moss: #1f8a5b;
+  --color-moss: #1b7a50;
   --color-moss-100: #dff3e8;
   --color-sun: #ffb400;
   --color-sun-100: #fff3d1;
-  --color-danger: #d62e2e;
+  --color-danger: #be2828;
   --color-danger-100: #fde3e3;
 
   --radius-xl: 1.25rem;
@@ -43,6 +47,23 @@
   --shadow-card: 0 1px 2px rgba(23, 24, 29, 0.05), 0 8px 24px -12px rgba(23, 24, 29, 0.18);
   --shadow-float: 0 4px 12px -2px rgba(23, 24, 29, 0.12), 0 20px 40px -16px rgba(23, 24, 29, 0.28);
   --shadow-pin: 0 2px 6px rgba(23, 24, 29, 0.28);
+
+  /* ── Roadmap 1.1: type roles (phone). Three roles only; use them through the
+     .type-* classes below so family, size, leading and weight stay together. ── */
+  --text-page-title: clamp(1.75rem, 1.55rem + 1vw, 2rem);   /* 28–32px, Bricolage */
+  --text-page-title--line-height: 1.15;
+  --text-item-title: clamp(1rem, 0.95rem + 0.25vw, 1.125rem); /* 16–18px, Figtree */
+  --text-item-title--line-height: 1.3;
+  --text-body: clamp(0.875rem, 0.84rem + 0.2vw, 1rem);       /* 14–16px, Figtree */
+  --text-body--line-height: 1.5;
+
+  /* ── Roadmap 1.1: spacing scale. 4/8 within an item, 16 between rows,
+     24–32 between sections, one left edge (the page gutter). ── */
+  --spacing-hair: 0.25rem;                                 /* 4px: within an item */
+  --spacing-item: 0.5rem;                                  /* 8px: within an item */
+  --spacing-row: 1rem;                                     /* 16px: between rows */
+  --spacing-section: clamp(1.5rem, 1.25rem + 1vw, 2rem);   /* 24–32px: between sections */
+  --spacing-edge: 1rem;                                    /* the one left alignment edge */
 
   --animate-rise: rise 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
   --animate-fade: fade 200ms ease-out both;
@@ -82,6 +103,13 @@ html {
   height: 100%;
   -webkit-text-size-adjust: 100%;
 }
+/* Phone: the bottom nav is fixed, so keep anything scrolled into view (a
+   focused link, a form error) above it rather than under it (WCAG 2.4.11). */
+@media (max-width: 767px) {
+  html {
+    scroll-padding-bottom: calc(var(--nav-height) + var(--safe-bottom) + 0.75rem);
+  }
+}
 
 body {
   min-height: 100%;
@@ -108,13 +136,73 @@ body {
   input::placeholder, textarea::placeholder {
     color: var(--color-muted);
   }
+  /* flare-ink, not flare: 3:1+ against paper, paper-2, the pale tints and ink
+     (WCAG 1.4.11); bright flare is 2.8:1 on paper-2. */
   *:focus-visible {
-    outline: 2px solid var(--color-flare);
+    outline: 2px solid var(--color-flare-ink);
     outline-offset: 2px;
   }
 }
 
 @layer components {
+  /* ── Roadmap 1.1: role-based surfaces. Elevation comes from the role, never
+     decoration. New UI uses <Surface> (src/components/ui/Surface.tsx).
+       raised: floats over the map, or is the selected item. The only shadow.
+       flat:   a comparable item in a list. No box: a hairline between rows.
+       inset:  tinted, for a local tip or a note. No border, no shadow. ── */
+  .surface-raised {
+    background: var(--color-surface);
+    border-radius: var(--radius-2xl);
+    box-shadow: var(--shadow-float);
+  }
+  .surface-flat {
+    background: transparent;
+    border-bottom: 1px solid var(--color-line);
+  }
+  .surface-flat:last-child {
+    border-bottom: 0;
+  }
+  .surface-inset {
+    background: var(--color-paper-2);
+    border-radius: var(--radius-xl);
+  }
+
+  /* ── Roadmap 1.1: type roles. ── */
+  .type-page-title {
+    font-family: var(--font-display);
+    font-size: var(--text-page-title);
+    line-height: var(--text-page-title--line-height);
+    font-weight: 700;
+    letter-spacing: -0.015em;
+  }
+  .type-item-title {
+    font-family: var(--font-sans);
+    font-size: var(--text-item-title);
+    line-height: var(--text-item-title--line-height);
+    font-weight: 600;
+    letter-spacing: 0;
+  }
+  .type-body {
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+  }
+
+  /* ── Roadmap 1.1: treatments, each for its own scenario.
+       editorial: event detail and featured content; photo-led, roomy sections.
+       utility:   the Events tab and rows people compare; dense, flat rows. ── */
+  .treatment-editorial {
+    --section-gap: var(--spacing-section);
+    --row-gap: var(--spacing-row);
+  }
+  .treatment-utility {
+    --section-gap: var(--spacing-section);
+    --row-gap: var(--spacing-item);
+  }
+
+  /* Legacy: the old "background + border + radius + shadow on everything" card.
+     Kept only so existing screens don't restyle before their own tickets (1.1:
+     "do not restyle existing screens yet"). New UI must use a role surface. */
   .card {
     background: var(--color-surface);
     border: 1px solid var(--color-line);
@@ -188,8 +276,15 @@ body {
   font-size: 10px !important;
   background: rgba(255,255,255,0.7) !important;
 }
-.maplibregl-ctrl-bottom-right, .mapboxgl-ctrl-bottom-right {
-  bottom: calc(var(--nav-height) + var(--safe-bottom) + 12rem) !important;
+/* Phone explore: lift the attribution above the nav and the results card, and
+   keep it (and its "i" toggle) left of the floating "Use my location" button so
+   neither covers the other (WCAG 2.5.8). Only the full-screen explore map: on a
+   small map, such as a place's, the lift pushed it out of the map entirely. */
+@media (max-width: 767px) {
+  .explore-map .maplibregl-ctrl-bottom-right, .explore-map .mapboxgl-ctrl-bottom-right {
+    bottom: calc(var(--nav-height) + var(--safe-bottom) + 12rem) !important;
+    right: 3.75rem !important;
+  }
 }
 @media (min-width: 768px) {
   .maplibregl-ctrl-bottom-right, .mapboxgl-ctrl-bottom-right {
@@ -202,3 +297,16 @@ body {
   border: 1px solid var(--color-line) !important;
 }
 .maplibregl-marker, .mapboxgl-marker { cursor: pointer; }
+/* A focused pin comes to the front of a dense cluster, so it is not hidden by
+   its neighbours (WCAG 2.4.11). Beats the inline z-index of the active pin. */
+.maplibregl-marker:focus-within, .mapboxgl-marker:focus-within { z-index: 40 !important; }
+
+/* Honor reduced motion: no pulsing pins, no slide-ins, near-instant transitions. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

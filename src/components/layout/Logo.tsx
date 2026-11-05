@@ -5,7 +5,7 @@ export function Logo({ className, size = 28 }: { className?: string; size?: numb
     <span className={cn("inline-flex items-center gap-2 font-display font-extrabold tracking-tight", className)}>
       <LogoMark size={size} />
       <span style={{ fontSize: size * 0.72 }}>
-        Find<span className="text-flare">Maxxing</span>
+        Find<span className="text-flare-ink">Maxxing</span>
       </span>
     </span>
   );

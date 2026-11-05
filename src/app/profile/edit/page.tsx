@@ -9,6 +9,8 @@ export const dynamic = "force-dynamic";
 export default async function EditProfilePage({ searchParams }: PageProps<"/profile/edit">) {
   const [viewer, sp] = await Promise.all([requireViewer("/profile/edit"), searchParams]);
   const welcome = !!sp.welcome;
+  // Read once on the server so the cooldown date renders the same after hydration.
+  const now = new Date().getTime();
   return (
     <FormShell
       title={welcome ? "Welcome to FindMaxxing" : "Edit profile"}
@@ -17,7 +19,7 @@ export default async function EditProfilePage({ searchParams }: PageProps<"/prof
       backHref="/profile"
       tone="ink"
     >
-      <ProfileForm profile={viewer.profile} />
+      <ProfileForm profile={viewer.profile} now={now} />
     </FormShell>
   );
 }

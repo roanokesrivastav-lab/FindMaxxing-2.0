@@ -12,6 +12,7 @@ import { PersonCard } from "@/components/profile/PersonCard";
 import { FollowButton } from "@/components/profile/FollowButton";
 import { pluralize } from "@/lib/utils/format";
 import { shareMetadata } from "@/lib/utils/share-metadata";
+import { InterestIcon, interestIcon } from "@/components/ui/TaxonomyIcon";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,7 @@ export async function generateMetadata({ params }: PageProps<"/tags/[slug]">): P
   const interest = INTEREST_MAP[slug];
   if (!interest) return { title: "Interest" };
   return shareMetadata({
-    title: `${interest.emoji} ${interest.label}`,
+    title: interest.label,
     description: `Places, events and people in the city that are into ${interest.label.toLowerCase()}.`,
     path: `/tags/${interest.slug}`,
   });
@@ -67,11 +68,11 @@ export default async function TagPage({ params }: PageProps<"/tags/[slug]">) {
       </div>
       <PageHeader
         eyebrow={
-          <Link href="/tags" className="hover:text-flare-600">
+          <Link href="/tags" className="hover:text-flare-ink">
             Interests
           </Link>
         }
-        title={`${interest.emoji} ${interest.label}`}
+        title={interest.label}
         subtitle={
           total
             ? [placeCount ? pluralize(placeCount, "place") : null, eventCount ? pluralize(eventCount, "event") : null, people.length ? pluralize(people.length, "person", "people") : null]
@@ -97,7 +98,7 @@ export default async function TagPage({ params }: PageProps<"/tags/[slug]">) {
           const i = INTEREST_MAP[s];
           return (
             <Link key={s} href={`/tags/${s}`} className="chip shrink-0 snap-start">
-              <span aria-hidden>{i.emoji}</span> {i.label}
+              <InterestIcon slug={i.slug} /> {i.label}
             </Link>
           );
         })}
@@ -106,7 +107,7 @@ export default async function TagPage({ params }: PageProps<"/tags/[slug]">) {
 
       {total === 0 ? (
         <EmptyState
-          emoji={interest.emoji}
+          icon={interestIcon(interest.slug)}
           title={`No ${interest.label.toLowerCase()} spots yet`}
           body="Tag a place or event with this interest and it shows up here."
           action={

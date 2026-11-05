@@ -5,6 +5,9 @@
  */
 import { neighborhoodKey } from "@/lib/utils/neighborhoods";
 import { CATEGORIES, INTERESTS } from "./taxonomy";
+import { isValidTimestamp } from "@findmaxxing/shared/timestamps";
+
+export { isValidTimestamp };
 import { DataError, type DiscoveryFilters, type GeoBounds, type Page } from "./types";
 
 export const DEFAULT_PAGE_SIZE = 30;
@@ -26,22 +29,12 @@ export function clampLimit(limit: number | undefined, fallback: number, max: num
 // Date would round away, which would skip or repeat rows at page boundaries.
 // ----------------------------------------------------------------------------
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const TIMESTAMP = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(\.\d{1,6})?(Z|[+-](\d{2})(?::?(\d{2}))?)$/;
 
 /**
  * True for a real instant in the accepted format. The pattern alone admits
  * 2026-99-99 or February 30th, which Postgres rejects as a timestamptz
  * argument; that must surface as an invalid cursor, not a server error.
  */
-export function isValidTimestamp(value: string): boolean {
-  const m = TIMESTAMP.exec(value);
-  if (!m) return false;
-  const [year, month, day, hour, minute, second] = m.slice(1, 7).map(Number);
-  const [offsetHours, offsetMinutes] = [Number(m[9] ?? 0), Number(m[10] ?? 0)];
-  if (year < 1 || hour > 23 || minute > 59 || second > 59 || offsetHours > 15 || offsetMinutes > 59) return false;
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
-}
 
 export interface Cursor {
   key: string;
@@ -67,6 +60,47 @@ export function decodeCursor(token: string | null | undefined): Cursor | null {
     // fall through
   }
   throw new DataError("Invalid page cursor", "invalid");
+}
+
+/** Cursor for the Nearest order: [distance in metres, id]. */
+export function encodeDistanceCursor(distance: number, id: string): string {
+  return encodeCursor({ key: String(distance), id });
+}
+
+export function decodeDistanceCursor(token: string | null | undefined): { distance: number; id: string } | null {
+  if (!token) return null;
+  try {
+    const parsed: unknown = JSON.parse(Buffer.from(token, "base64url").toString("utf8"));
+    if (Array.isArray(parsed) && parsed.length === 2 && typeof parsed[0] === "string" && typeof parsed[1] === "string" && UUID.test(parsed[1])) {
+      const distance = Number(parsed[0]);
+      if (parsed[0].trim() !== "" && Number.isFinite(distance) && distance >= 0) return { distance, id: parsed[1].toLowerCase() };
+    }
+  } catch {
+    // fall through
+  }
+  throw new DataError("Invalid page cursor", "invalid");
+}
+
+/**
+ * Metres from `from` to `point`: the JavaScript twin of public.distance_m()
+ * (0013_discovery_performance.sql), the same equirectangular formula rounded
+ * to the centimetre, so both repositories order Nearest results identically.
+ */
+export function discoveryDistance(point: { lat: number; lng: number }, from: { lat: number; lng: number }): number {
+  const rad = (deg: number) => (deg * Math.PI) / 180;
+  const dLng = point.lng - from.lng;
+  const wrapped = dLng - 360 * Math.round(dLng / 360);
+  const x = Math.cos(rad((point.lat + from.lat) / 2)) * rad(wrapped);
+  const y = rad(point.lat - from.lat);
+  return Math.round(6371008.8 * Math.sqrt(y * y + x * x) * 100) / 100;
+}
+
+export function validateNear(near: { lat: number; lng: number } | null | undefined): { lat: number; lng: number } | null {
+  if (!near) return null;
+  if (!Number.isFinite(near.lat) || !Number.isFinite(near.lng) || Math.abs(near.lat) > 90 || Math.abs(near.lng) > 180) {
+    throw new DataError("Invalid location", "invalid");
+  }
+  return { lat: near.lat, lng: near.lng };
 }
 
 /** Orders two cursor keys by instant, independent of their string format. */

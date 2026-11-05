@@ -14,6 +14,8 @@ export interface DiscoveryRequest {
   category: string | null;
   tags: string[];
   kind: DiscoveryKind;
+  /** List places nearest this point first (the map pins are unaffected). */
+  near?: { lat: number; lng: number } | null;
 }
 
 export interface DiscoveryResults {
@@ -28,8 +30,13 @@ export const DISCOVERY_DEBOUNCE_MS = 250;
 export const PLACE_PAGE = 30;
 export const EVENT_PAGE = 20;
 
+/** lat,lng to four decimals (about 10 m), so GPS jitter does not refetch. */
+function nearParam(near: { lat: number; lng: number } | null | undefined): string | null {
+  return near ? `${near.lat.toFixed(4)},${near.lng.toFixed(4)}` : null;
+}
+
 export function requestKey(r: DiscoveryRequest): string {
-  return JSON.stringify([r.bounds ? bboxParam(r.bounds) : null, r.text.trim(), r.category, [...r.tags].sort(), r.kind]);
+  return JSON.stringify([r.bounds ? bboxParam(r.bounds) : null, r.text.trim(), r.category, [...r.tags].sort(), r.kind, nearParam(r.near)]);
 }
 
 export function discoveryQuery(r: DiscoveryRequest, extra: Record<string, string | number | null | undefined> = {}): string {
@@ -38,6 +45,8 @@ export function discoveryQuery(r: DiscoveryRequest, extra: Record<string, string
   if (r.text.trim()) q.set("q", r.text.trim());
   if (r.category) q.set("category", r.category);
   if (r.tags.length) q.set("tags", r.tags.join(","));
+  const near = nearParam(r.near);
+  if (near) q.set("near", near);
   for (const [k, v] of Object.entries(extra)) if (v !== null && v !== undefined) q.set(k, String(v));
   return q.toString();
 }

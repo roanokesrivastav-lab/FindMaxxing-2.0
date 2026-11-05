@@ -3,6 +3,7 @@ import { Check, Share2 } from "lucide-react";
 import { useState, useTransition } from "react";
 import { useToast } from "@/components/ui/Toast";
 import { cn } from "@/lib/utils/cn";
+import { logItemAction } from "@/server/actions/interactions";
 
 /**
  * Shares the current page. Uses the native share sheet where the browser has
@@ -13,8 +14,11 @@ export function ShareButton({
   text,
   variant = "icon",
   className,
+  item,
 }: {
   title: string;
+  /** The place or event being shared, recorded in the viewer's interaction log. */
+  item?: { kind: "place" | "event"; id: string };
   text?: string;
   variant?: "icon" | "pill";
   className?: string;
@@ -25,6 +29,7 @@ export function ShareButton({
 
   const share = () => {
     const url = window.location.href;
+    if (item) void logItemAction(item.kind, item.id, "share").catch(() => undefined);
 
     if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
       navigator.share({ title, text, url }).catch(() => {

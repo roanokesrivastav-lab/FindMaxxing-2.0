@@ -7,18 +7,23 @@ import { Chip, ChipRow } from "@/components/ui/Chip";
 import { EventCard } from "./EventCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LoadMoreButton, PagedError, usePagedList } from "@/components/shared/PagedList";
-import { eventHasEnded, relativeDayLabel } from "@/lib/utils/format";
+import { eventHasEnded, formatInZone, relativeDayLabel } from "@/lib/utils/format";
+import { startOfNextDay } from "@/lib/utils/timezone";
+import { useViewerTime, type ViewerTime } from "@/components/time/ViewerTime";
+import { Impression } from "@/components/interactions/Impression";
+import { History, Ticket, CalendarDays } from "lucide-react";
+import { CategoryIcon } from "@/components/ui/TaxonomyIcon";
 
 type When = "all" | "today" | "week" | "mine" | "past";
 type Feed = { when: "all" | "today" | "week"; startsBefore: string | null };
 
 const PAGE_SIZE = 30;
 
-/** The upcoming feed's upper bound for a range, in the viewer's local time. */
-function feedFor(when: "all" | "today" | "week"): Feed {
-  const now = new Date();
-  if (when === "today") return { when, startsBefore: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString() };
-  if (when === "week") return { when, startsBefore: new Date(now.getTime() + 7 * 86_400_000).toISOString() };
+/** The upcoming feed's upper bound for a range, in the viewer's time zone. */
+function feedFor(when: "all" | "today" | "week", { timeZone }: ViewerTime): Feed {
+  const now = Date.now();
+  if (when === "today") return { when, startsBefore: startOfNextDay(now, timeZone).toISOString() };
+  if (when === "week") return { when, startsBefore: new Date(now + 7 * 86_400_000).toISOString() };
   return { when, startsBefore: null };
 }
 
@@ -26,13 +31,17 @@ export function EventsClient({
   initial,
   joined,
   signedIn,
+  logImpressions = false,
 }: {
   /** First page of the unfiltered upcoming feed. */
   initial: Page<Event>;
   /** Every event the viewer joined, past and upcoming, by start time. */
   joined: Event[];
   signedIn: boolean;
+  /** Record which feed cards the viewer saw, with their position (signed in, recommendations on). */
+  logImpressions?: boolean;
 }) {
+  const time = useViewerTime();
   const [category, setCategory] = useState<string | null>(null);
   const [when, setWhen] = useState<When>("all");
   // Kept while "Joined" / "Been to" are shown so switching back does not refetch.
@@ -50,35 +59,36 @@ export function EventsClient({
   const own = useMemo(() => {
     if (when !== "mine" && when !== "past") return null;
     // Split on the actual current time: an event that ended minutes ago has been attended.
-    const ended = (e: Event) => eventHasEnded(e.startsAt, e.endsAt);
+    const ended = (e: Event) => eventHasEnded(e.startsAt, e.endsAt, time.now);
     const rows = when === "mine" ? joined.filter((e) => !ended(e)) : joined.filter(ended).reverse();
     return rows.filter((e) => !category || e.categorySlug === category);
-  }, [when, joined, category]);
+  }, [when, joined, category, time.now]);
 
   const shown = own ?? list.items;
 
   function pick(next: When) {
     setWhen(next);
-    if (next === "all" || next === "today" || next === "week") setFeed(feedFor(next));
+    if (next === "all" || next === "today" || next === "week") setFeed(feedFor(next, time));
   }
 
   // Group by day label for scannability.
   const groups = useMemo(() => {
     const map = new Map<string, Event[]>();
     for (const e of shown) {
-      const key = relativeDayLabel(e.startsAt);
+      const key = relativeDayLabel(e.startsAt, time);
       const label =
         when === "past"
-          ? new Date(e.startsAt).toLocaleDateString("en-US", { month: "long", year: "numeric" })
+          ? formatInZone(e.startsAt, time, { month: "long", year: "numeric" })
           : key === "Today" || key === "Tomorrow"
             ? key
-            : new Date(e.startsAt).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+            : formatInZone(e.startsAt, time, { weekday: "long", month: "short", day: "numeric" });
       map.set(label, [...(map.get(label) ?? []), e]);
     }
     return [...map.entries()];
-  }, [shown, when]);
+  }, [shown, when, time]);
 
   const feedShown = own === null;
+  const positions = useMemo(() => new Map(shown.map((e, i) => [e.id, i])), [shown]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -100,7 +110,7 @@ export function EventsClient({
       <ChipRow>
         {EVENT_CATEGORIES.map((c) => (
           <Chip key={c.slug} active={category === c.slug} onClick={() => setCategory(category === c.slug ? null : c.slug)} color={c.color}>
-            <span aria-hidden>{c.emoji}</span> {c.label}
+            <CategoryIcon slug={c.slug} /> {c.label}
           </Chip>
         ))}
       </ChipRow>
@@ -109,7 +119,7 @@ export function EventsClient({
 
       {groups.length === 0 && !(feedShown && list.loading) ? (
         <EmptyState
-          emoji={when === "past" ? "🕰️" : when === "mine" ? "🎟️" : "📅"}
+          icon={when === "past" ? History : when === "mine" ? Ticket : CalendarDays}
           title={
             when === "past"
               ? "Nothing behind you yet"
@@ -137,7 +147,9 @@ export function EventsClient({
               <h2 className="text-xs font-bold uppercase tracking-wider text-muted mb-2">{label}</h2>
               <div className="flex flex-col gap-2">
                 {rows.map((e) => (
-                  <EventCard key={e.id} event={e} />
+                  <Impression key={e.id} impression={logImpressions && feedShown ? { itemType: "event", itemId: e.id, surface: "list", position: positions.get(e.id) ?? null } : null}>
+                    <EventCard event={e} />
+                  </Impression>
                 ))}
               </div>
             </section>

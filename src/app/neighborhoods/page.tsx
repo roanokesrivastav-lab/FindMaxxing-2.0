@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
+import { readableInk } from "@/lib/utils/contrast";
 import Link from "next/link";
-import { MapPin } from "lucide-react";
+import { MapPin, Map as MapIcon } from "lucide-react";
 import { getRepository } from "@/lib/data";
 import { getViewer } from "@/lib/auth/server";
 import { getCategory } from "@/lib/data/taxonomy";
@@ -8,6 +9,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { pluralize } from "@/lib/utils/format";
 import { neighborhoodHref } from "@/lib/utils/neighborhoods";
+import { CategoryIcon } from "@/components/ui/TaxonomyIcon";
 
 export const metadata: Metadata = { title: "Neighborhoods" };
 export const dynamic = "force-dynamic";
@@ -44,8 +46,8 @@ export default async function NeighborhoodsPage() {
                   {g.topCategories.slice(0, 3).map((slug) => {
                     const c = getCategory(slug);
                     return (
-                      <span key={slug} className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-white" style={{ background: c.color }}>
-                        {c.emoji} {c.label}
+                      <span key={slug} className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold text-white" style={{ background: readableInk(c.color) }}>
+                        <CategoryIcon slug={c.slug} size={12} /> {c.label}
                       </span>
                     );
                   })}
@@ -56,7 +58,7 @@ export default async function NeighborhoodsPage() {
         </ul>
       ) : (
         <EmptyState
-          emoji="🗺️"
+          icon={MapIcon}
           title="No neighborhoods yet"
           body="Add a place and fill in its neighborhood to start the first one."
           action={
