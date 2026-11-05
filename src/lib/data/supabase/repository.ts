@@ -65,6 +65,7 @@ import {
 import { PLACE_PHOTO_BUCKET, placePhotoReference, placePhotoUrl, sniffImageType } from "../photos";
 import { nextOpponent } from "@/lib/ranking/nextComparison";
 import { createSupabaseTips } from "./tips";
+import { createSupabaseOccasions } from "./occasions";
 import { photoObjectPaths, photoVariantPath } from "@/lib/images/sizes";
 
 /**
@@ -1603,6 +1604,7 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
     },
 
     tips: createSupabaseTips(supabase, { translate }),
+    occasions: createSupabaseOccasions(supabase, { translate }),
     ads: {
       async create(_advertiserId, input) {
         validateCampaign(input);
