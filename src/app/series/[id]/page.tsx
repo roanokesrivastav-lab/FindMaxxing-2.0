@@ -20,6 +20,7 @@ import { ReadinessRow } from "@/components/events/ReadinessRow";
 import { FollowSeriesButton } from "@/components/series/FollowSeriesButton";
 import { SeriesHostPanel } from "@/components/series/SeriesHostPanel";
 import { AttendanceList } from "@/components/series/AttendanceList";
+import { StartClubForm } from "@/components/clubs/StartClubForm";
 import { CalendarX } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -45,7 +46,7 @@ export default async function SeriesPage({ params }: PageProps<"/series/[id]">) 
   if (!uuidSchema.safeParse(id).success) notFound();
   const series = await repo.series.get(id, viewer?.id ?? null);
   if (!series) notFound();
-  const occurrences = await repo.series.occurrences(id, viewer?.id ?? null);
+  const [occurrences, clubs] = await Promise.all([repo.series.occurrences(id, viewer?.id ?? null), repo.clubs.forSeries(id, viewer?.id ?? null)]);
   const zone = { timeZone: series.timeZone };
   const upcoming = occurrences.filter((e) => e.status === "published" && !eventHasEnded(e.startsAt, e.endsAt, time.now));
   const past = occurrences.filter((e) => eventHasEnded(e.startsAt, e.endsAt, time.now) && e.status !== "cancelled").reverse().slice(0, 8);
@@ -143,6 +144,18 @@ export default async function SeriesPage({ params }: PageProps<"/series/[id]">) 
           </ul>
           {isOwner ? <SeriesHostPanel seriesId={series.id} hosts={series.hosts} /> : null}
         </section>
+
+        {clubs.length || series.viewerIsHost ? (
+          <section aria-labelledby="se-clubs">
+            <SectionHeader id="se-clubs" title="Clubs" />
+            {clubs.length ? (
+              <ul className="flex flex-col gap-hair mb-item">
+                {clubs.map((c) => <li key={c.id}><Link href={`/clubs/${c.id}`} className="type-body font-semibold text-ink underline underline-offset-4">{c.name}</Link></li>)}
+              </ul>
+            ) : null}
+            {series.viewerIsHost ? <StartClubForm seriesId={series.id} /> : null}
+          </section>
+        ) : null}
 
         <section aria-labelledby="se-past">
           <SectionHeader id="se-past" title="Past sessions" />

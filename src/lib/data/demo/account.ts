@@ -82,6 +82,14 @@ export function deleteDemoAccount(handle: StoreHandle, userId: string): DeletedO
   // 4.4: participant rows cascade like event_participants' foreign keys.
   const loose = state as { eventParticipants?: { eventId: string; userId: string }[] };
   if (loose.eventParticipants) loose.eventParticipants = loose.eventParticipants.filter((p) => p.userId !== userId && !ownEvents.has(p.eventId));
+  // R3: club memberships and owned clubs cascade like the foreign keys.
+  const clubs = state as { clubs?: { id: string; ownerId: string }[]; clubMembers?: { clubId: string; userId: string }[]; clubSeries?: { clubId: string }[] };
+  if (clubs.clubs) {
+    const owned = new Set(clubs.clubs.filter((c) => c.ownerId === userId).map((c) => c.id));
+    clubs.clubs = clubs.clubs.filter((c) => !owned.has(c.id));
+    if (clubs.clubMembers) clubs.clubMembers = clubs.clubMembers.filter((m) => m.userId !== userId && !owned.has(m.clubId));
+    if (clubs.clubSeries) clubs.clubSeries = clubs.clubSeries.filter((x) => !owned.has(x.clubId));
+  }
   for (const event of state.events) if (event.placeId && ownPlaces.has(event.placeId)) event.placeId = null;
 
   state.follows = state.follows.filter((f) => f.followerId !== userId && f.followingId !== userId);

@@ -8,6 +8,7 @@ import { getViewer } from "@/lib/auth/server";
 import { featureEnabled, paymentsMode } from "@/lib/config";
 import { durationMinutes, parseEventPilotFields, parseRepeatRule, pilotInput, type EventPilotFields } from "@/lib/events/form";
 import { combineDateTime, eventSchema, fieldErrors, uuidSchema } from "@/lib/validation/schemas";
+import { clubSchema } from "@findmaxxing/shared/events";
 import { fail, str, strList, succeed, toFailure, type ActionResult } from "./result";
 
 /** Pilot event fields (roadmap M4): read only with pilotEvents on; off, nothing extra is written. */
@@ -294,6 +295,41 @@ export async function setAttendedAction(eventId: string, userId: string, attende
   try {
     const repo = await getRepository();
     await repo.series.setAttended(viewer.id, ev.data, who.data, attended);
+    return succeed(undefined);
+  } catch (err) { return toFailure(err); }
+}
+
+/** R3: a series host starts a club around a series they host. */
+export async function createClubAction(seriesId: string, name: string, description: string): Promise<ActionResult<{ id: string }>> {
+  const viewer = await getViewer();
+  if (!viewer) return fail("Sign in first", undefined, "unauthenticated");
+  if (!featureEnabled("pilotEvents")) return fail("Not available", undefined, "not_found");
+  const sid = uuidSchema.safeParse(seriesId);
+  const parsed = clubSchema.safeParse({ name, description });
+  if (!sid.success) return fail("Invalid series");
+  if (!parsed.success) return fail("Check the highlighted fields", fieldErrors(parsed.error));
+  try {
+    const repo = await getRepository();
+    const id = await repo.clubs.create(viewer.id, { ...parsed.data, seriesIds: [sid.data] });
+    revalidatePath(`/series/${sid.data}`);
+    return succeed({ id });
+  } catch (err) { return toFailure(err); }
+}
+
+/** R3: join or leave a club (never an RSVP), or the owner removes a member. */
+export async function clubMemberAction(clubId: string, op: "join" | "leave" | "remove", userId?: string): Promise<ActionResult> {
+  const viewer = await getViewer();
+  if (!viewer) return fail("Sign in to join", undefined, "unauthenticated");
+  const id = uuidSchema.safeParse(clubId);
+  if (!id.success) return fail("Invalid club");
+  try {
+    const repo = await getRepository();
+    if (op === "remove") {
+      const who = uuidSchema.safeParse(userId);
+      if (!who.success) return fail("Invalid member");
+      await repo.clubs.removeMember(viewer.id, id.data, who.data);
+    } else await repo.clubs.join(viewer.id, id.data, op === "join");
+    revalidatePath(`/clubs/${id.data}`);
     return succeed(undefined);
   } catch (err) { return toFailure(err); }
 }

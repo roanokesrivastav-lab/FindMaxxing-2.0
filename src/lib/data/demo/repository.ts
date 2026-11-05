@@ -1,5 +1,5 @@
 import type { DataRepository } from "../repository";
-import { activityDetailsSchema, seriesRuleSchema, type EventNewcomer } from "@findmaxxing/shared/events";
+import { activityDetailsSchema, clubSchema, seriesRuleSchema, type EventNewcomer } from "@findmaxxing/shared/events";
 import { DEFAULT_TIME_ZONE, normalizeTimeZone } from "@/lib/utils/timezone";
 import { computeReadiness } from "@/lib/events/readiness";
 import { featureEnabled } from "@/lib/config";
@@ -449,6 +449,12 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
     recordOwnInteraction(state, userId, { itemType: "event", itemId: eventId, action: "leave" });
     return true;
   };
+  // R3: clubs live in optional collections (no persisted-store version bump).
+  type DemoClub = { id: string; ownerId: string; name: string; description: string; status: "active" | "removed"; createdAt: string };
+  const loose = state as DemoState & { clubs?: DemoClub[]; clubSeries?: { clubId: string; seriesId: string }[]; clubMembers?: { clubId: string; userId: string; role: "owner" | "member"; joinedAt: string }[] };
+  const clubsOf = () => (loose.clubs ??= []);
+  const clubSeriesOf = () => (loose.clubSeries ??= []);
+  const clubMembersOf = () => (loose.clubMembers ??= []);
   /** Mirrors can_view_series(). */
   const demoCanViewSeries = (s: ser.DemoSeries, viewerId: string | null) =>
     s.status !== "removed" && (!s.placeId || ser.isSeriesHost(state, s.id, viewerId) || state.places.some((p) => p.id === s.placeId && canViewPlace(state, p, viewerId)));
@@ -1350,6 +1356,79 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         const n = ser.generate(state, Date.parse(now), newId);
         persist();
         return n;
+      },
+    },
+    clubs: {
+      async create(ownerId, input) {
+        assertActive(ownerId);
+        const parsed = clubSchema.safeParse(input);
+        if (!parsed.success) throw new DataError(parsed.error.issues[0]?.message ?? "Invalid club", "invalid");
+        if (!input.seriesIds.length) throw new DataError("A club gathers at least one series", "invalid");
+        for (const s of input.seriesIds) if (!ser.isSeriesHost(state, s, ownerId)) throw new DataError("You can only add series you host", "forbidden");
+        const counted = rateLimit(ownerId, "events");
+        const id = newId();
+        const now = new Date().toISOString();
+        clubsOf().push({ id, ownerId, name: parsed.data.name, description: parsed.data.description, status: "active", createdAt: now });
+        for (const s of new Set(input.seriesIds)) clubSeriesOf().push({ clubId: id, seriesId: s });
+        clubMembersOf().push({ clubId: id, userId: ownerId, role: "owner", joinedAt: now });
+        counted();
+        persist();
+        return id;
+      },
+      async get(clubId, viewerId = null) {
+        const c = clubsOf().find((x) => x.id === clubId);
+        if (!c || (c.status !== "active" && c.ownerId !== viewerId)) return null;
+        const seriesIds = clubSeriesOf().filter((x) => x.clubId === clubId).map((x) => x.seriesId);
+        const members = clubMembersOf().filter((m) => m.clubId === clubId);
+        const isMember = !!viewerId && members.some((m) => m.userId === viewerId);
+        const isHost = !!viewerId && (c.ownerId === viewerId || seriesIds.some((s) => ser.isSeriesHost(state, s, viewerId)));
+        return {
+          id: c.id, ownerId: c.ownerId, name: c.name, description: c.description, status: c.status, seriesIds, memberCount: members.length,
+          members: isMember || isHost ? members.map((m) => { const p = profileOf(state, m.userId); return { userId: m.userId, role: m.role, displayName: p?.displayName ?? "Someone", username: p?.username ?? "" }; }) : null,
+          viewerIsMember: isMember, viewerIsHost: isHost,
+        };
+      },
+      async forSeries(seriesId) {
+        const ids = new Set(clubSeriesOf().filter((x) => x.seriesId === seriesId).map((x) => x.clubId));
+        return clubsOf().filter((c) => ids.has(c.id) && c.status === "active").map((c) => ({ id: c.id, name: c.name }));
+      },
+      async join(userId, clubId, on) {
+        assertActive(userId);
+        const c = clubsOf().find((x) => x.id === clubId && x.status === "active");
+        if (!c) throw new DataError("Club not found", "not_found");
+        const list = clubMembersOf();
+        const i = list.findIndex((m) => m.clubId === clubId && m.userId === userId);
+        if (on && i < 0) list.push({ clubId, userId, role: "member", joinedAt: new Date().toISOString() });
+        if (!on) {
+          if (c.ownerId === userId) throw new DataError("The owner cannot leave their club", "invalid");
+          if (i >= 0) list.splice(i, 1);
+        }
+        persist();
+      },
+      async removeMember(ownerId, clubId, userId) {
+        assertActive(ownerId);
+        const c = clubsOf().find((x) => x.id === clubId);
+        if (!c || c.ownerId !== ownerId) throw new DataError("Only the club owner removes members", "forbidden");
+        if (userId === ownerId) throw new DataError("The owner cannot remove themselves", "invalid");
+        const list = clubMembersOf();
+        const i = list.findIndex((m) => m.clubId === clubId && m.userId === userId);
+        if (i >= 0) list.splice(i, 1);
+        persist();
+      },
+      async setSeries(ownerId, clubId, seriesId, on) {
+        assertActive(ownerId);
+        const c = clubsOf().find((x) => x.id === clubId && x.status === "active");
+        if (!c || c.ownerId !== ownerId) throw new DataError("Only the club owner changes its series", "forbidden");
+        const list = clubSeriesOf();
+        if (on) {
+          if (!ser.isSeriesHost(state, seriesId, ownerId)) throw new DataError("You can only add series you host", "forbidden");
+          if (!list.some((x) => x.clubId === clubId && x.seriesId === seriesId)) list.push({ clubId, seriesId });
+        } else {
+          if (list.filter((x) => x.clubId === clubId).length <= 1) throw new DataError("A club gathers at least one series", "invalid");
+          const i = list.findIndex((x) => x.clubId === clubId && x.seriesId === seriesId);
+          if (i >= 0) list.splice(i, 1);
+        }
+        persist();
       },
     },
     tags: {

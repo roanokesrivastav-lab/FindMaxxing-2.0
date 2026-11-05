@@ -2,7 +2,7 @@ import type { SupabaseClient, PostgrestError } from "@supabase/supabase-js";
 import type { DataRepository } from "../repository";
 import { DEFAULT_TIME_ZONE } from "@/lib/utils/timezone";
 import { featureEnabled } from "@/lib/config";
-import type { EventSeries, HostParticipant, JoinOutcome, ViewerParticipation } from "@findmaxxing/shared/events";
+import type { Club, EventSeries, HostParticipant, JoinOutcome, ViewerParticipation } from "@findmaxxing/shared/events";
 import {
   DataError,
   MAX_INTERACTION_BATCH,
@@ -1251,6 +1251,44 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
       },
       async generate(now) {
         return Number(unwrap(await supabase.rpc("generate_series_occurrences", { p_series: null, p_now: now })));
+      },
+    },
+
+    clubs: {
+      async create(_ownerId, input) {
+        return unwrap(await supabase.rpc("create_club", { p_name: input.name, p_description: input.description, p_series: input.seriesIds })) as string;
+      },
+      async get(clubId, viewerId = null) {
+        const row = unwrap(await supabase.from("clubs").select("id, owner_id, name, description, status, club_series(series_id)").eq("id", clubId).maybeSingle()) as
+          { id: string; owner_id: string; name: string; description: string; status: Club["status"]; club_series: { series_id: string }[] } | null;
+        if (!row) return null;
+        // RLS returns member rows only to members and hosts (members-only privacy), else just your own (none).
+        const members = unwrap(await supabase.from("club_members").select(`user_id, role, profile:profiles!club_members_user_id_fkey(${PROFILE_SUMMARY})`).eq("club_id", clubId)) as unknown as
+          { user_id: string; role: "owner" | "member"; profile: ProfileSummaryRow | null }[];
+        const count = Number(unwrap(await supabase.rpc("club_member_count", { p_club: clubId })) ?? 0);
+        const canSee = !!viewerId && Boolean(unwrap(await supabase.rpc("viewer_sees_club_members", { p_club: clubId })));
+        const seriesIds = row.club_series.map((c) => c.series_id);
+        const hostRows = viewerId && seriesIds.length ? (unwrap(await supabase.from("event_series_hosts").select("series_id").eq("user_id", viewerId).in("series_id", seriesIds)) as { series_id: string }[]) : [];
+        return {
+          id: row.id, ownerId: row.owner_id, name: row.name, description: row.description, status: row.status,
+          seriesIds: row.club_series.map((c) => c.series_id), memberCount: count,
+          members: canSee ? members.map((m) => ({ userId: m.user_id, role: m.role, displayName: m.profile?.display_name ?? "Someone", username: m.profile?.username ?? "" })) : null,
+          viewerIsMember: !!viewerId && members.some((m) => m.user_id === viewerId),
+          viewerIsHost: !!viewerId && (row.owner_id === viewerId || hostRows.length > 0),
+        };
+      },
+      async forSeries(seriesId) {
+        const rows = unwrap(await supabase.from("club_series").select("club:clubs!club_series_club_id_fkey(id, name, status)").eq("series_id", seriesId)) as unknown as { club: { id: string; name: string; status: string } | null }[];
+        return rows.map((r) => r.club).filter((c): c is { id: string; name: string; status: string } => !!c && c.status === "active").map((c) => ({ id: c.id, name: c.name }));
+      },
+      async join(_userId, clubId, on) {
+        unwrap(await supabase.rpc("join_club", { p_club: clubId, p_on: on }));
+      },
+      async removeMember(_ownerId, clubId, userId) {
+        unwrap(await supabase.rpc("remove_club_member", { p_club: clubId, p_user: userId }));
+      },
+      async setSeries(_ownerId, clubId, seriesId, on) {
+        unwrap(await supabase.rpc("set_club_series", { p_club: clubId, p_series: seriesId, p_on: on }));
       },
     },
 
