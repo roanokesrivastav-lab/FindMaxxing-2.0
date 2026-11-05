@@ -1,5 +1,6 @@
 import type { DataRepository } from "../repository";
-import type { EventNewcomer } from "@findmaxxing/shared/events";
+import { activityDetailsSchema, type EventNewcomer } from "@findmaxxing/shared/events";
+import { DEFAULT_TIME_ZONE, normalizeTimeZone } from "@/lib/utils/timezone";
 import {
   DataError,
   MAX_PLACE_PHOTOS,
@@ -66,6 +67,7 @@ import path from "node:path";
 import { UPLOAD_DIR } from "./uploads";
 import { createDemoTips } from "./tips";
 import { createDemoOccasions } from "./occasions";
+import { createDemoSaves } from "./saves";
 /** Generated upload names (and their .sm/.md size siblings) only; anything else is refused before touching disk. */
 export const DEMO_UPLOAD_NAME = /^(places|avatars)-[0-9a-f]{8}-[0-9a-f-]{36}(\.(sm|md))?\.(jpg|png|webp)$/;
 
@@ -128,6 +130,15 @@ function applyEventPilotFields(row: EventRow, input: NewEventInput): void {
     if (!validNewcomer(input.newcomer)) throw new DataError("Invalid newcomer details", "invalid");
     row.newcomer = input.newcomer;
   }
+  if (input.activityDetails !== undefined) {
+    // Mirrors public.valid_activity_details(): the shared schema is the stricter of the two.
+    if (input.activityDetails !== null && !activityDetailsSchema.safeParse(input.activityDetails).success) throw new DataError("Invalid activity details", "invalid");
+    row.activityDetails = input.activityDetails;
+  }
+  if (input.timeZone !== undefined) {
+    if (!normalizeTimeZone(input.timeZone)) throw new DataError("Unknown time zone", "invalid");
+    row.timeZone = input.timeZone;
+  }
 }
 
 /** Mirrors public.valid_event_newcomer(). */
@@ -166,6 +177,8 @@ function toEvent(state: DemoState, row: EventRow): Event {
     createdAt: row.createdAt,
     priceCents: row.priceCents ?? null,
     newcomer: row.newcomer ?? null,
+    activityDetails: row.activityDetails ?? null,
+    timeZone: row.timeZone ?? DEFAULT_TIME_ZONE,
   };
 }
 
@@ -1610,6 +1623,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
     notifications: createDemoNotifications(state, { persist, summary: (id) => profileOf(state, id) }),
 
     ads: createDemoAds(state, { persist, assertActive, rateLimit, isAdmin }),
+    saves: createDemoSaves(state, { persist, assertActive, canViewPlace: (p, viewerId) => canViewPlace(state, p, viewerId), toPlace: (p) => toPlace(state, p), repo: () => repo }),
     occasions: createDemoOccasions(state, { persist, assertActive, rateLimit, canViewPlace: (p, viewerId) => canViewPlace(state, p, viewerId), summary: (id) => profileOf(state, id) }),
     tips: createDemoTips(state, { persist, assertActive, rateLimit, canViewPlace: (p, viewerId) => canViewPlace(state, p, viewerId), summary: (id) => profileOf(state, id) }),
     interactions: createDemoInteractions(state, {

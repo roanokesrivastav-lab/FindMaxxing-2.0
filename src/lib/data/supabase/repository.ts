@@ -1,5 +1,6 @@
 import type { SupabaseClient, PostgrestError } from "@supabase/supabase-js";
 import type { DataRepository } from "../repository";
+import { DEFAULT_TIME_ZONE } from "@/lib/utils/timezone";
 import {
   DataError,
   MAX_INTERACTION_BATCH,
@@ -67,6 +68,7 @@ import { PLACE_PHOTO_BUCKET, placePhotoReference, placePhotoUrl, sniffImageType 
 import { nextOpponent } from "@/lib/ranking/nextComparison";
 import { createSupabaseTips } from "./tips";
 import { createSupabaseOccasions } from "./occasions";
+import { createSupabaseSaves } from "./saves";
 import { photoObjectPaths, photoVariantPath } from "@/lib/images/sizes";
 
 /**
@@ -95,7 +97,7 @@ interface ProfileRow extends ProfileSummaryRow {
   updated_at: string;
   profile_interests?: { interest_slug: string }[];
 }
-interface PlaceRow {
+export interface PlaceRow {
   id: string;
   name: string;
   description: string;
@@ -134,6 +136,8 @@ interface EventRow {
   capacity: number | null;
   price_cents?: number | null;
   newcomer?: Event["newcomer"];
+  activity_details?: Event["activityDetails"];
+  time_zone?: string;
   status: Event["status"];
   created_at: string;
   creator?: ProfileSummaryRow | null;
@@ -143,7 +147,7 @@ interface EventRow {
 }
 
 const PROFILE_SUMMARY = "id, username, display_name, avatar_url";
-const PLACE_SELECT = `*, creator:profiles!places_creator_id_fkey(${PROFILE_SUMMARY}), place_tags(interest_slug), place_photos(id, url, storage_path, uploader_id, sort_order)`;
+export const PLACE_SELECT = `*, creator:profiles!places_creator_id_fkey(${PROFILE_SUMMARY}), place_tags(interest_slug), place_photos(id, url, storage_path, uploader_id, sort_order)`;
 const EVENT_SELECT = `*, creator:profiles!events_creator_id_fkey(${PROFILE_SUMMARY}), place:places!events_place_id_fkey(name), event_tags(interest_slug), attendee_count:event_attendees(count)`;
 const PROFILE_SELECT = "*, profile_interests(interest_slug)";
 
@@ -164,7 +168,7 @@ function mapProfile(r: ProfileRow): Profile {
     updatedAt: r.updated_at,
   };
 }
-function mapPlace(r: PlaceRow): Place {
+export function mapPlace(r: PlaceRow): Place {
   return {
     id: r.id,
     name: r.name,
@@ -211,6 +215,8 @@ function mapEvent(r: EventRow): Event {
     createdAt: r.created_at,
     priceCents: r.price_cents ?? null,
     newcomer: r.newcomer ?? null,
+    activityDetails: r.activity_details ?? null,
+    timeZone: r.time_zone ?? DEFAULT_TIME_ZONE,
   };
 }
 
@@ -578,6 +584,8 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
   async function writeEventPilotFields(id: string, input: NewEventInput): Promise<void> {
     const patch: Record<string, unknown> = {};
     if (input.newcomer !== undefined) patch.newcomer = input.newcomer;
+    if (input.activityDetails !== undefined) patch.activity_details = input.activityDetails;
+    if (input.timeZone !== undefined) patch.time_zone = input.timeZone;
     if (!Object.keys(patch).length) return;
     unwrap(await supabase.from("events").update(patch).eq("id", id).select("id"));
   }
@@ -1621,6 +1629,7 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
 
     tips: createSupabaseTips(supabase, { translate }),
     occasions: createSupabaseOccasions(supabase, { translate }),
+    saves: createSupabaseSaves(supabase, { translate, repo: () => repo }),
     ads: {
       async create(_advertiserId, input) {
         validateCampaign(input);

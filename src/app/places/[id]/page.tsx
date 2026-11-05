@@ -31,6 +31,8 @@ import { InterestIcon } from "@/components/ui/TaxonomyIcon";
 import { PlaceDecisionPage } from "@/components/places/decision/PlaceDecisionPage";
 import { PlaceTips, RecentObservation } from "@/components/places/decision/PlaceTips";
 import { PlaceOccasions } from "@/components/places/decision/PlaceOccasions";
+import { MySaveSection } from "@/components/saved/MySaveSection";
+import { suggestTags } from "@/lib/places/saves";
 import { recentObservation, requestNow } from "@/lib/places/tips";
 
 export const dynamic = "force-dynamic";
@@ -74,6 +76,9 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
     // 2.6: each tip's claim opens its evidence (a handful of tips per place).
     const tipEvidence = (await Promise.all(tips.map((t) => repo.tips.evidence(t.id, viewer?.id ?? null)))).filter((e) => e !== null);
     const observed = recentObservation(tips, now);
+    // 3.1: why the viewer saved it, owner-only, behind pilotLibrary.
+    const library = featureEnabled("pilotLibrary") && viewer && place.viewerSaved;
+    const [mySave, myTags] = library ? await Promise.all([repo.saves.get(viewer.id, place.id), repo.saves.tags(viewer.id)]) : [null, []];
     const observedEvidence = observed ? tipEvidence.find((e) => e.tip.id === observed.id) : undefined;
     return (
       <>
@@ -89,6 +94,7 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
           isNew={!!sp.new}
           extendedTiers={featureEnabled("reputation")}
           observation={observedEvidence ? <RecentObservation evidence={observedEvidence} now={now} /> : null}
+          mySave={mySave ? <MySaveSection details={mySave} suggestions={suggestTags(myTags, place.tags, mySave.tags)} /> : null}
           occasions={<PlaceOccasions placeId={place.id} notes={occasionNotes} followingIds={following.map((p) => p.id)} viewerId={viewer?.id ?? null} />}
           tip={<PlaceTips placeId={place.id} tips={tipEvidence} viewerId={viewer?.id ?? null} now={now} legacyTip={place.localTip} />}
         />

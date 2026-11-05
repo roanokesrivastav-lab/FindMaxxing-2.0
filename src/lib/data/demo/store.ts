@@ -6,7 +6,7 @@
  * survive dev-server restarts. It exists so the app is fully usable without
  * Supabase credentials; it is not intended for production.
  */
-import type { EventNewcomer } from "@findmaxxing/shared/events";
+import type { ActivityDetails, EventNewcomer } from "@findmaxxing/shared/events";
 import { mkdirSync, readFileSync, writeFileSync, existsSync, copyFileSync } from "node:fs";
 import path from "node:path";
 import { scryptSync, randomBytes, timingSafeEqual } from "node:crypto";
@@ -118,6 +118,10 @@ export interface EventRow {
   priceCents?: number | null;
   /** 4.1: the "Your first time?" block (mirrors events.newcomer). */
   newcomer?: EventNewcomer | null;
+  /** 4.2: mirrors events.activity_details. */
+  activityDetails?: ActivityDetails | null;
+  /** 4.2: mirrors events.time_zone (absent = America/New_York, the backfill). */
+  timeZone?: string;
 }
 export interface ReportRow {
   id: string;
@@ -634,6 +638,8 @@ export function buildSeedState(now = new Date()): DemoState {
       creatorId: seedUserByName(ev.creator).id,
       categorySlug: ev.categorySlug,
       capacity: ev.capacity,
+      ...(ev.newcomer ? { newcomer: ev.newcomer } : {}),
+      ...(ev.activityDetails ? { activityDetails: ev.activityDetails } : {}),
       status: "published",
       createdAt: daysAgo(14 - (i % 10)),
       updatedAt: daysAgo(14 - (i % 10)),
