@@ -50,3 +50,125 @@ export const eventNewcomerSchema = z
 export function hasNewcomerInfo(n: EventNewcomer | null | undefined): n is EventNewcomer {
   return !!n && !!(n.meetingSpot || n.welcomer || n.bring || n.soloWelcome);
 }
+
+// ---------------------------------------------------------------------------
+// 4.2 Structured activity details, per kind. Skill is a plain description, never a number.
+// ---------------------------------------------------------------------------
+export const ACTIVITY_KINDS = ["run", "volleyball", "basketball", "pickleball", "walk"] as const;
+export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
+export const ACTIVITY_KIND_LABELS: Record<ActivityKind, string> = {
+  run: "Run",
+  volleyball: "Volleyball",
+  basketball: "Basketball",
+  pickleball: "Pickleball",
+  walk: "Walk",
+};
+
+/** Plain skill descriptions (no numeric rating). */
+export const SKILL_LEVELS = ["new", "casual", "regular", "competitive"] as const;
+export type SkillLevel = (typeof SKILL_LEVELS)[number];
+export const SKILL_LABELS: Record<SkillLevel, string> = {
+  new: "New to it: we'll show you the basics",
+  casual: "Casual: you know the rules",
+  regular: "Regular: you play most weeks",
+  competitive: "Competitive: games are intense",
+};
+
+export type DistanceUnit = "km" | "mi";
+
+export type ActivityDetails =
+  | {
+      kind: "run";
+      distance?: number | null;
+      unit?: DistanceUnit;
+      /** Pace range per unit, "m:ss" (e.g. 9:00 to 10:30 min/mi). */
+      paceFrom?: string | null;
+      paceTo?: string | null;
+      /** Where or when the group waits, e.g. "At every mile marker". */
+      regroup?: string | null;
+      noDrop?: boolean;
+      /** How no-drop works here, in the host's words. */
+      noDropNote?: string | null;
+    }
+  | {
+      kind: "volleyball" | "basketball";
+      /** e.g. "4v4", "Half-court 3s". */
+      format?: string | null;
+      playerLimit?: number | null;
+      beginnersWelcome?: boolean;
+    }
+  | {
+      kind: "pickleball";
+      level?: SkillLevel | null;
+      play?: "singles" | "doubles" | "either" | null;
+      paddlesAvailable?: boolean;
+    }
+  | { kind: "walk"; note?: string | null };
+
+const PACE = /^\d{1,2}:[0-5]\d$/;
+const paceSeconds = (p: string) => { const [m, s] = p.split(":").map(Number); return m * 60 + s; };
+const optShort = (max: number) => optText(max);
+const optPace = z.string().trim().optional().nullable().transform((v) => (v ? v : null)).refine((v) => v === null || PACE.test(v), "Use minutes:seconds, e.g. 9:30");
+
+export const activityDetailsSchema = z
+  .discriminatedUnion("kind", [
+    z.object({
+      kind: z.literal("run"),
+      distance: z.coerce.number().min(0.5, "At least 0.5").max(100, "At most 100").optional().nullable(),
+      unit: z.enum(["km", "mi"]).optional().default("mi"),
+      paceFrom: optPace,
+      paceTo: optPace,
+      regroup: optShort(120),
+      noDrop: z.boolean().optional().default(false),
+      noDropNote: optShort(160),
+    }).strict().refine((v) => !v.paceFrom || !v.paceTo || paceSeconds(v.paceFrom) <= paceSeconds(v.paceTo), { message: "The faster pace comes first", path: ["paceTo"] }),
+    z.object({
+      kind: z.enum(["volleyball", "basketball"]),
+      format: optShort(40),
+      playerLimit: z.coerce.number().int().min(2, "At least 2").max(200, "At most 200").optional().nullable(),
+      beginnersWelcome: z.boolean().optional().default(false),
+    }).strict(),
+    z.object({
+      kind: z.literal("pickleball"),
+      level: z.enum(SKILL_LEVELS).optional().nullable(),
+      play: z.enum(["singles", "doubles", "either"]).optional().nullable(),
+      paddlesAvailable: z.boolean().optional().default(false),
+    }).strict(),
+    z.object({ kind: z.literal("walk"), note: optShort(160) }).strict(),
+  ])
+  .transform((v) => Object.fromEntries(Object.entries(v).filter(([, x]) => x !== null && x !== undefined && x !== false)) as ActivityDetails);
+
+/**
+ * Activity details as plain-language lines for the event page and rows. Never invents a value: only
+ * fields the host filled in appear.
+ */
+export function describeActivity(d: ActivityDetails | null | undefined): string[] {
+  if (!d) return [];
+  const lines: string[] = [];
+  switch (d.kind) {
+    case "run": {
+      const unit = d.unit ?? "mi";
+      if (d.distance) lines.push(`${d.distance} ${unit} run`);
+      if (d.paceFrom && d.paceTo) lines.push(`Pace ${d.paceFrom} to ${d.paceTo} per ${unit}`);
+      else if (d.paceFrom || d.paceTo) lines.push(`Pace about ${d.paceFrom ?? d.paceTo} per ${unit}`);
+      if (d.regroup) lines.push(`Regroup: ${d.regroup}`);
+      if (d.noDrop) lines.push(d.noDropNote ? `No-drop: ${d.noDropNote}` : "No-drop: nobody gets left behind");
+      break;
+    }
+    case "volleyball":
+    case "basketball":
+      if (d.format) lines.push(`Format: ${d.format}`);
+      if (d.playerLimit) lines.push(`Up to ${d.playerLimit} players`);
+      if (d.beginnersWelcome) lines.push("Beginners welcome");
+      break;
+    case "pickleball":
+      if (d.level) lines.push(`Level: ${SKILL_LABELS[d.level]}`);
+      if (d.play) lines.push(d.play === "either" ? "Singles or doubles" : d.play === "singles" ? "Singles" : "Doubles");
+      if (d.paddlesAvailable) lines.push("Paddles available to borrow");
+      break;
+    case "walk":
+      if (d.note) lines.push(d.note);
+      break;
+  }
+  return lines;
+}

@@ -4,7 +4,8 @@ import type { MapProps, MapRef, MarkerProps, NavigationControlProps } from "reac
 import type { MapMarker, ViewState, LngLat } from "@/lib/map/types";
 import type { GeoBounds } from "@/lib/data/types";
 import { normalizeViewportBounds } from "@/lib/map/bounds";
-import { PlacePin, EventPin, UserDot, DraftPin } from "./Pin";
+import { PlacePin, EventPin, UserDot, DraftPin, ClusterPin, StackPin } from "./Pin";
+import { clusterLabel, clusterMarkers, type ClusterItem, type MarkerBounds } from "@/lib/map/cluster";
 
 /**
  * Provider-agnostic map. react-map-gl exposes identical component APIs for
@@ -43,6 +44,13 @@ export interface MapCanvasProps {
   showControls?: boolean;
   interactive?: boolean;
   padding?: { top?: number; bottom?: number; left?: number; right?: number };
+  /**
+   * Roadmap 2.1 (pilotExplore): cluster pins at wide zooms. `partial` marks counts as partial when the
+   * marker query was capped. Absent: every marker draws on its own, as before.
+   */
+  clustering?: { partial: boolean } | null;
+  /** Several records at exactly one spot were tapped; defaults to zooming like a cluster. */
+  onStackClick?: (markers: MapMarker[]) => void;
 }
 
 export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function MapCanvas(
@@ -66,6 +74,8 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     showControls = true,
     interactive = true,
     padding,
+    clustering = null,
+    onStackClick,
   },
   ref,
 ) {
@@ -98,6 +108,19 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
     if (hit && (e.target as HTMLElement).contains(hit)) return;
     mapRef.current?.easeTo({ center: [m.lng, m.lat], duration: duration(), padding: paddingOptions });
+  };
+
+  const items: ClusterItem[] = clustering
+    ? clusterMarkers(shown, viewState.zoom, [activeMarkerId, focused?.id])
+    : shown.map((marker) => ({ type: "marker", marker }));
+  // Tapping a cluster zooms to its members; at the closest zoom nothing clusters, so this always ends.
+  const zoomTo = (b: MarkerBounds) =>
+    mapRef.current?.fitBounds([[b.west, b.south], [b.east, b.north]], { padding: 80, duration: duration(), maxZoom: 18 });
+  const revealGroup = (e: FocusEvent<HTMLElement>, lat: number, lng: number) => {
+    const r = (e.target as HTMLElement).getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    if (hit && (e.target as HTMLElement).contains(hit)) return;
+    mapRef.current?.easeTo({ center: [lng, lat], duration: duration(), padding: paddingOptions });
   };
 
   useImperativeHandle(ref, () => ({
@@ -150,33 +173,63 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
         </Marker>
       ) : null}
 
-      {shown.map((m) => (
-        <Marker
-          key={`${m.kind}-${m.id}`}
-          longitude={m.lng}
-          latitude={m.lat}
-          anchor="bottom"
-          style={{ zIndex: m.id === activeMarkerId ? 20 : m.kind === "event" ? 5 : 1 }}
-          onClick={(e) => {
-            e.originalEvent.stopPropagation();
-            onMarkerClick?.(m);
-          }}
-        >
-          <div
-            className="contents"
-            onFocus={(e) => revealIfHidden(e, m)}
-            onBlur={(e) => {
-              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused((f) => (f === m ? null : f));
+      {items.map((item) => {
+        if (item.type !== "marker") {
+          const { count, label } = clusterLabel(item, !!clustering?.partial);
+          const first = item.markers[0];
+          const active = item.markers.some((m) => m.id === activeMarkerId);
+          return (
+            <Marker
+              key={item.id}
+              longitude={item.lng}
+              latitude={item.lat}
+              anchor={item.type === "cluster" ? "center" : "bottom"}
+              style={{ zIndex: active ? 20 : 10 }}
+              onClick={(e) => {
+                e.originalEvent.stopPropagation();
+                if (item.type === "stack" && onStackClick) onStackClick(item.markers);
+                else zoomTo(item.type === "cluster" ? item.bounds : { west: item.lng, east: item.lng, south: item.lat, north: item.lat });
+              }}
+            >
+              <div className="contents" onFocus={(e) => revealGroup(e, item.lat, item.lng)}>
+                {item.type === "cluster" ? (
+                  <ClusterPin count={count} label={label} />
+                ) : (
+                  <StackPin color={first.color} categorySlug={first.categorySlug} count={count} label={label} active={active} />
+                )}
+              </div>
+            </Marker>
+          );
+        }
+        const m = item.marker;
+        return (
+          <Marker
+            key={`${m.kind}-${m.id}`}
+            longitude={m.lng}
+            latitude={m.lat}
+            anchor="bottom"
+            style={{ zIndex: m.id === activeMarkerId ? 20 : m.kind === "event" ? 5 : 1 }}
+            onClick={(e) => {
+              e.originalEvent.stopPropagation();
+              onMarkerClick?.(m);
             }}
           >
-            {m.kind === "place" ? (
-              <PlacePin color={m.color} categorySlug={m.categorySlug} active={m.id === activeMarkerId} label={m.label} />
-            ) : (
-              <EventPin color={m.color} categorySlug={m.categorySlug} active={m.id === activeMarkerId} label={m.label} />
-            )}
-          </div>
-        </Marker>
-      ))}
+            <div
+              className="contents"
+              onFocus={(e) => revealIfHidden(e, m)}
+              onBlur={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused((f) => (f === m ? null : f));
+              }}
+            >
+              {m.kind === "place" ? (
+                <PlacePin color={m.color} categorySlug={m.categorySlug} active={m.id === activeMarkerId} label={m.label} />
+              ) : (
+                <EventPin color={m.color} categorySlug={m.categorySlug} active={m.id === activeMarkerId} label={m.label} />
+              )}
+            </div>
+          </Marker>
+        );
+      })}
 
       {draftLocation ? (
         <Marker

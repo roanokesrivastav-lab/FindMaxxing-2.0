@@ -1,4 +1,4 @@
-import type { EventNewcomer } from "./events";
+import type { ActivityDetails, EventNewcomer } from "./events";
 /**
  * Domain types shared by the UI, server actions and both repository
  * implementations (Supabase + demo). All dates are ISO-8601 strings.
@@ -147,6 +147,10 @@ export interface Event {
   priceCents?: number | null;
   /** 4.1: host-entered "Your first time?" block; null or absent when none. */
   newcomer?: EventNewcomer | null;
+  /** 4.2: structured activity details; null or absent when none. */
+  activityDetails?: ActivityDetails | null;
+  /** 4.2: the event's IANA time zone (backfilled to America/New_York). */
+  timeZone?: string;
 }
 
 export interface EventDetail extends Event {
@@ -207,6 +211,10 @@ export interface NewEventInput {
   tags: string[];
   /** 4.1 (pilotEvents): undefined leaves the stored value unchanged; null clears it. */
   newcomer?: EventNewcomer | null;
+  /** 4.2 (pilotEvents): undefined leaves it unchanged; null clears it. */
+  activityDetails?: ActivityDetails | null;
+  /** 4.2 (pilotEvents): the host's IANA zone; undefined leaves it unchanged. */
+  timeZone?: string;
 }
 
 export type UpdateEventInput = NewEventInput;
