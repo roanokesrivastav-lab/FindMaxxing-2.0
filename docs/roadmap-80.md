@@ -575,6 +575,30 @@ remember", keep sessions short. Declining never blocks saving or planning.
 **7.4 Contributor feedback** · S · Lane Place — "Your tip helped 4 people this week". No cash, no public volume
 leaderboard.
 
+### R — Additions after the owner answers (stubs)
+
+These are stubs: each needs a short spec (contract, acceptance, tests) before building. None is in the
+scoreboard yet.
+
+**R1 Pick from my saves** · = ticket **3.6** (already specified above; not duplicated). Lane Place.
+
+**R2 Opt-in need-players alerts** · stub · Lane Events · Needs: 4.3, 4.6 · migration (Events block)
+People opt in, per activity and area, to hear when a nearby session still needs players ("2 more needed",
+from 4.3 minimum attendance). Off by default; respects quiet hours, blocks, the daily push cap and mutes (4.6
+pipeline); deduped per session. Never RSVPs on anyone's behalf. Spec must define radius, frequency cap and
+what "nearby" means without exposing anyone's location.
+
+**R3 Lightweight clubs** · stub · Lane Events · Needs: 4.5a, 4.5b · migration (Events block)
+A named group around one or more recurring series (4.5): members, hosts, a shared page and the existing group
+chat. Joining a club never RSVPs to a session (same rule as following a series). Spec must define membership,
+privacy (who sees members), moderation, and how it differs from following a series.
+
+**R4 Weekly outing memories** · stub · Lane Outings · Needs: 5.3, 2.8 · migration (Outings block)
+A weekly recap of outings and sessions a person actually went to, built from what they chose to share: their
+own posted photos and reviews. Private photos (2.8) are never included, nothing is shared with others unless
+each person chose to post it, and no summaries of friends' opinions. Spec must define opt-in, retention and
+the privacy promise tests.
+
 ### M8 — Native parity and release
 
 Native work continues the existing blockers (Lane C in astra-prompts.md) alongside. Each ticket's acceptance is
@@ -614,9 +638,9 @@ Lanes own files so Astra and Sol can work at once in separate worktrees:
 | --- | --- | --- |
 | Core | security limiter callers, globals.css, components/ui, config.ts flags, seed, test harness, e2e, gate | 0.1, 0.3, 1.1, 4.pre, 8.2, 8.3, 8.4a |
 | Map | ExploreClient, MapCanvas, onboarding | 1.2–1.4, 2.1, 2.2, 2.4a, 2.4b, 4.7, 7.2 (2.3 dropped) |
-| Place | places/[id], saved/, import, tips | 2.5–2.8, 3.1–3.6, 7.1, 7.3, 7.4 |
-| Events | events/, EventForm, event types, attendee write paths | 1.5, 4.0–4.6, 4.8 |
-| Outings | new outings area | 5.0–5.5 (after M4) |
+| Place | places/[id], saved/, import, tips | 2.5–2.8, 3.1–3.6 (= R1), 7.1, 7.3, 7.4 |
+| Events | events/, EventForm, event types, attendee write paths | 1.5, 4.0–4.6, 4.8, R2, R3 |
+| Outings | new outings area | 5.0–5.5 (after M4), R4 |
 | Trips | src/server/trips, components/trips, plan/ | 6.0–6.4 |
 | Native | apps/mobile | 8.1a–8.1e |
 
