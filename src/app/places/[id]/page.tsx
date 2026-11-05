@@ -28,6 +28,7 @@ import { shareMetadata } from "@/lib/utils/share-metadata";
 import { neighborhoodHref } from "@/lib/utils/neighborhoods";
 import { LocalDate } from "@/components/time/LocalDate";
 import { InterestIcon } from "@/components/ui/TaxonomyIcon";
+import { PlaceDecisionPage } from "@/components/places/decision/PlaceDecisionPage";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +60,26 @@ export default async function PlacePage({ params, searchParams }: PageProps<"/pl
     viewer ? repo.savedLists.memberships(viewer.id, place.id) : Promise.resolve([]),
   ]);
   const isOwner = !!viewer && viewer.id === place.creatorId;
+  if (featureEnabled("pilotExplore")) {
+    // Roadmap 2.5: the photo-first place page. Flag off keeps the page below exactly as it was.
+    const following = viewer ? await repo.profiles.listFollowing(viewer.id) : [];
+    return (
+      <>
+        {viewer && (featureEnabled("analytics") || featureEnabled("recommendations")) ? <TrackView kind="place" id={place.id} /> : null}
+        <PlaceDecisionPage
+          place={place}
+          ratings={ratings}
+          followingIds={following.map((p) => p.id)}
+          events={events}
+          lists={lists}
+          memberIds={memberIds}
+          viewerId={viewer?.id ?? null}
+          isNew={!!sp.new}
+          extendedTiers={featureEnabled("reputation")}
+        />
+      </>
+    );
+  }
   const category = getCategory(place.categorySlug);
   const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lng}`;
 
