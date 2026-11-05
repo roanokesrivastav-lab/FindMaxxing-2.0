@@ -211,3 +211,23 @@ export const sessionRulesSchema = z
 // 4.8 Party poster (host toggle; default is the Readiness row)
 // ---------------------------------------------------------------------------
 export type CardStyle = "readiness" | "party_poster";
+
+// ---------------------------------------------------------------------------
+// 4.4 Participation (4.0 spec §6). "going" is an event_attendees row; the rest are event_participants.
+// ---------------------------------------------------------------------------
+export type ParticipantStatus = "interested" | "waitlisted" | "offered" | "declined" | "left";
+export type ViewerParticipation = "going" | ParticipantStatus | null;
+export type JoinOutcome = "going" | "waitlisted";
+/** D-D: an offer holds a seat for 2 hours, never closer than 30 minutes to the start. */
+export const OFFER_WINDOW_MINUTES = 120;
+export const OFFER_CUTOFF_MINUTES = 30;
+
+/** A waitlist row as the host sees it (D-K: names to hosts only). */
+export interface HostParticipant {
+  userId: string;
+  displayName: string;
+  username: string;
+  status: ParticipantStatus;
+  queuePosition: number | null;
+  offerExpiresAt: string | null;
+}

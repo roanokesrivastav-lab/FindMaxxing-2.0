@@ -129,20 +129,20 @@ export async function deleteEventAction(eventId: string): Promise<ActionResult> 
   } catch (err) { return toFailure(err); }
 }
 
-export async function toggleAttendanceAction(eventId: string, join: boolean): Promise<ActionResult<{ joined: boolean }>> {
+export async function toggleAttendanceAction(eventId: string, join: boolean): Promise<ActionResult<{ joined: boolean; status?: "going" | "waitlisted" | "left" }>> {
   const viewer = await getViewer();
   if (!viewer) return fail("Sign in to join events", undefined, "unauthenticated");
   const id = uuidSchema.safeParse(eventId);
   if (!id.success) return fail("Invalid event");
   try {
     const repo = await getRepository();
-    if (join) await repo.events.join(viewer.id, id.data);
-    else await repo.events.leave(viewer.id, id.data);
-    if (join) await track("join_event", { eventId: id.data });
+    // 4.4: a full free event puts the viewer on the waitlist instead of refusing.
+    const outcome = join ? await repo.events.join(viewer.id, id.data) : (await repo.events.leave(viewer.id, id.data), "left" as const);
+    if (outcome === "going") await track("join_event", { eventId: id.data });
     revalidatePath(`/events/${id.data}`);
     revalidatePath("/events");
     revalidatePath("/profile");
-    return succeed({ joined: join });
+    return succeed({ joined: outcome === "going", status: outcome });
   } catch (err) {
     return toFailure(err);
   }
@@ -159,6 +159,41 @@ export async function confirmSessionAction(eventId: string): Promise<ActionResul
     const repo = await getRepository();
     await repo.events.confirmSession(viewer.id, id.data);
     revalidatePath(`/events/${id.data}`); revalidatePath("/events");
+    return succeed(undefined);
+  } catch (err) { return toFailure(err); }
+}
+
+export type ParticipationOp = "interest-on" | "interest-off" | "accept" | "decline" | "leave";
+
+/** 4.4 (pilotEvents): interested, accept or decline an offer, leave the waitlist. All through the RPCs. */
+export async function participationAction(eventId: string, op: ParticipationOp): Promise<ActionResult<{ status: string }>> {
+  const viewer = await getViewer();
+  if (!viewer) return fail("Sign in first", undefined, "unauthenticated");
+  const id = uuidSchema.safeParse(eventId);
+  if (!id.success) return fail("Invalid event");
+  try {
+    const repo = await getRepository();
+    let status: string;
+    if (op === "interest-on" || op === "interest-off") status = await repo.events.setInterest(viewer.id, id.data, op === "interest-on") ?? "none";
+    else if (op === "accept") status = await repo.events.acceptOffer(viewer.id, id.data);
+    else if (op === "decline") { await repo.events.declineOffer(viewer.id, id.data); status = "declined"; }
+    else { await repo.events.leave(viewer.id, id.data); status = "left"; }
+    revalidatePath(`/events/${id.data}`); revalidatePath("/events");
+    return succeed({ status });
+  } catch (err) { return toFailure(err); }
+}
+
+/** 4.4: the host removes someone from their event or its waitlist. */
+export async function hostRemoveParticipantAction(eventId: string, userId: string): Promise<ActionResult> {
+  const viewer = await getViewer();
+  if (!viewer) return fail("Sign in first", undefined, "unauthenticated");
+  const id = uuidSchema.safeParse(eventId);
+  const who = uuidSchema.safeParse(userId);
+  if (!id.success || !who.success) return fail("Invalid request");
+  try {
+    const repo = await getRepository();
+    await repo.events.hostRemoveParticipant(viewer.id, id.data, who.data);
+    revalidatePath(`/events/${id.data}`);
     return succeed(undefined);
   } catch (err) { return toFailure(err); }
 }

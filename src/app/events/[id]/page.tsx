@@ -29,6 +29,9 @@ import { EditorialEvent } from "@/components/events/detail/EditorialEvent";
 import { describeActivity } from "@findmaxxing/shared/events";
 import { ReadinessRow } from "@/components/events/ReadinessRow";
 import { ConfirmSessionButton } from "@/components/events/detail/ConfirmSessionButton";
+import { ParticipationActions } from "@/components/events/detail/ParticipationActions";
+import { HostWaitlist } from "@/components/events/detail/HostWaitlist";
+import { StatusLabel } from "@/components/ui/StatusLabel";
 
 export const dynamic = "force-dynamic";
 
@@ -71,6 +74,11 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
   if (featureEnabled("pilotEvents")) {
     const place = event.placeId ? await repo.places.get(event.placeId, viewer?.id ?? null) : null;
     const lead = place?.photos[0];
+    // 4.4: the viewer's status, seats held by offers and paid holds count as taken, and the host's waitlist.
+    const participation = event.viewerJoined ? "going" as const : (event.viewerParticipant && ["interested", "waitlisted", "offered"].includes(event.viewerParticipant.status) ? event.viewerParticipant.status : null);
+    const seatsFull = event.readiness ? event.readiness.spotsOpen === 0 : full;
+    const waitlist = isHost && !cancelled && !ended ? await repo.events.participants(viewer!.id, event.id) : [];
+    const eventZone = event.timeZone ?? time.timeZone;
     return (
       <>
         {viewer && featureEnabled("recommendations") ? <TrackView kind="event" id={event.id} /> : null}
@@ -80,8 +88,11 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
           time={{ timeZone: event.timeZone ?? time.timeZone, now: time.now }}
           ended={ended}
           cancelled={cancelled}
-          full={full}
+          full={seatsFull}
           isHost={isHost}
+          status={participation === "waitlisted" ? <StatusLabel tone="pending">Waitlisted{event.readiness?.waitlist ? ` (${event.readiness.waitlist} waiting)` : ""}</StatusLabel>
+            : participation === "offered" ? <StatusLabel tone="positive">A spot is yours: accept it</StatusLabel>
+            : participation === "interested" ? <StatusLabel tone="neutral">Interested</StatusLabel> : undefined}
           signedIn={!!viewer}
           price={price}
           photo={lead ? { src: lead.url, alt: `${place!.name}` } : null}
@@ -109,6 +120,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
                   <span className="type-body text-muted">Confirming stops the automatic cancel at the deadline.</span>
                 </div>
               ) : null}
+              <HostWaitlist eventId={event.id} rows={waitlist} />
               {payments && isHost && !cancelled && !ended ? (
                 <div className="mt-row">
                   <EventPricing eventId={event.id} priceCents={price} summary={ticketSummary} canSell={canSell} locked={event.attendees.some((a) => a.id !== event.creatorId)} demo={payments === "demo"} />
@@ -117,9 +129,12 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
             </>
           }
           action={price && !event.viewerJoined && !isHost && !cancelled && !ended ? (
-            <TicketButton eventId={event.id} priceCents={price} signedIn={!!viewer} disabled={full} />
+            <TicketButton eventId={event.id} priceCents={price} signedIn={!!viewer} disabled={seatsFull} />
+          ) : event.priceCents && !event.viewerJoined ? (
+            // Paid events keep today's flow (no waitlist, D-L): full means full.
+            <JoinButton eventId={event.id} joined={event.viewerJoined} signedIn={!!viewer} full={seatsFull} ended={ended} cancelled={cancelled} size="md" />
           ) : (
-            <JoinButton eventId={event.id} joined={event.viewerJoined} signedIn={!!viewer} full={full} ended={ended} cancelled={cancelled} size="md" />
+            <ParticipationActions eventId={event.id} status={participation} offerExpiresAt={event.viewerParticipant?.offerExpiresAt ?? null} full={seatsFull} ended={ended} cancelled={cancelled} signedIn={!!viewer} timeZone={eventZone} now={time.now} />
           )}
         />
       </>

@@ -40,6 +40,8 @@ export function JoinButton({
       setOptimistic(next);
       const res = await toggleAttendanceAction(eventId, next);
       if (!res.ok) toast(res.error, "error");
+      // 4.4: if it filled up in the meantime, the join puts you on the waitlist instead.
+      else if (res.data.status === "waitlisted") { toast("It just filled up: you're on the waitlist", "info"); router.refresh(); }
       else toast(next ? "You're in! See you there." : "You left this event", next ? "success" : "info");
     });
   };

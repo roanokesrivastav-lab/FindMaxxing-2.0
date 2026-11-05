@@ -68,6 +68,7 @@ import type {
   UpdateProfileInput,
   UserActivity,
 } from "./types";
+import type { HostParticipant, JoinOutcome, ViewerParticipation } from "@findmaxxing/shared/events";
 import type { PlaceTip, TipEvidence, TipInput, TipStatus } from "@/lib/places/tips";
 import type { OccasionInput, OccasionNote } from "@/lib/places/occasions";
 import type { SaveDetails, SaveDetailsInput } from "@/lib/places/saves";
@@ -215,11 +216,24 @@ export interface DataRepository {
     update(id: string, input: UpdateEventInput, creatorId: string): Promise<Event>;
     cancel(id: string, creatorId: string): Promise<void>;
     delete(id: string, creatorId: string): Promise<void>;
-    join(userId: string, eventId: string): Promise<void>;
+    /** 4.4: going when a seat is free (or the viewer holds a live offer), else waitlisted. Free events only wait. */
+    join(userId: string, eventId: string): Promise<JoinOutcome>;
+    /** 4.4: leaving frees the seat, which is offered to the next person waiting. */
     leave(userId: string, eventId: string): Promise<void>;
     listByCreator(userId: string, viewerId?: string | null): Promise<Event[]>;
     listJoined(userId: string, viewerId?: string | null): Promise<Event[]>;
     listForPlace(placeId: string): Promise<Event[]>;
+    /** 4.4: interested on/off; never touches going, the waitlist or seats. */
+    setInterest(userId: string, eventId: string, on: boolean): Promise<ViewerParticipation | "none">;
+    /** 4.4: converts the viewer's live offer to going; past its expiry, "offer_expired". */
+    acceptOffer(userId: string, eventId: string): Promise<"going" | "offer_expired">;
+    declineOffer(userId: string, eventId: string): Promise<void>;
+    /** 4.4: the creator removes someone going, waitlisted or offered. */
+    hostRemoveParticipant(hostId: string, eventId: string, userId: string): Promise<void>;
+    /** 4.4: the waitlist with names, for the event's creator only (empty for anyone else). */
+    participants(hostId: string, eventId: string): Promise<HostParticipant[]>;
+    /** 4.4 service (cron): offers past expiry are declined and passed on; returns how many. */
+    expireOffers(now: string): Promise<number>;
     /** 4.3: the creator confirms the session is happening (before its deadline). */
     confirmSession(userId: string, eventId: string): Promise<void>;
     /** 4.3 service (cron): sessions past their deadline below minimum become not happening; returns how many. */

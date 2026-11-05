@@ -96,6 +96,14 @@ const groups = [
     reason: "Roadmap 4.3 (0052): the caller confirms only an event they created (creator_id = auth.uid(), under the event row lock), before its deadline.",
     signatures: ["confirm_session(uuid)"],
   },
+  {
+    anon: false,
+    reason: "Roadmap 4.4 (0054): the caller's own participation only (auth.uid(), active account), under the event row lock; seats via seats_taken; priced events refused. host_remove_participant requires creator_id = auth.uid().",
+    signatures: [
+      "join_event(uuid)", "leave_event(uuid)", "set_interest(uuid,boolean)", "accept_offer(uuid)", "decline_offer(uuid)",
+      "host_remove_participant(uuid,uuid)",
+    ],
+  },
 ];
 
 export const FUNCTION_GRANT_ALLOWLIST = groups.flatMap(({ anon, reason, signatures }) =>

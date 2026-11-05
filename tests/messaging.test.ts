@@ -54,10 +54,10 @@ describe("messaging in the database", () => {
     const eventId = eventForNina(createIsolatedStore().state);
     const chat = (await db.query<{ id: string }>("select id from public.conversations where event_id = $1", [eventId])).rows[0].id;
     expect(await as(nina, "select id from public.conversations where id = $1", [chat])).toEqual([]);
-    await as(nina, "insert into public.event_attendees (event_id, user_id) values ($1, auth.uid())", [eventId]);
+    await as(nina, "select public.join_event($1)" /* 4.4: RPC, direct writes refused (D-I) */, [eventId]);
     expect(await as(nina, "select id from public.conversations where id = $1", [chat])).toHaveLength(1);
     await send(nina, chat, "Hi all");
-    await as(nina, "delete from public.event_attendees where event_id = $1 and user_id = auth.uid()", [eventId]);
+    await as(nina, "select public.leave_event($1)" /* 4.4: RPC */, [eventId]);
     expect(await as(nina, "select id from public.conversations where id = $1", [chat])).toEqual([]);
     await expect(sendQuietly(nina, chat, "Still here?")).rejects.toThrow(/row-level security/);
   });
@@ -80,10 +80,10 @@ describe("messaging in the database", () => {
     expect(await start(theo, maya)).toBe(conv); // one conversation per pair
     // Sharing an event is enough.
     const eventId = eventForNina(createIsolatedStore().state);
-    await as(nina, "insert into public.event_attendees (event_id, user_id) values ($1, auth.uid())", [eventId]);
+    await as(nina, "select public.join_event($1)" /* 4.4: RPC, direct writes refused (D-I) */, [eventId]);
     const withNina = await start(nina, maya);
     await send(nina, withNina, "See you there");
-    await as(nina, "delete from public.event_attendees where event_id = $1 and user_id = auth.uid()", [eventId]);
+    await as(nina, "select public.leave_event($1)" /* 4.4: RPC */, [eventId]);
     // The existing conversation stays; a new one could not be started now.
     expect(await bodies(maya, withNina)).toEqual(["See you there"]);
   });
@@ -254,7 +254,7 @@ describe("messaging parity", () => {
       send: async (me, conv, body) => { await sleep(3); await queryAs(db, me, "insert into public.messages (conversation_id, sender_id, body) values ($1, auth.uid(), $2)", [conv, body]); },
       read: async (me, conv) => { await sleep(3); await queryAs(db, me, "select public.mark_read($1)", [conv]); },
       block: async (me, other) => void (await queryAs(db, me, "insert into public.blocks (blocker_id, blocked_id) values (auth.uid(), $1)", [other])),
-      join: async (me, ev) => void (await queryAs(db, me, "insert into public.event_attendees (event_id, user_id) values ($1, auth.uid())", [ev])),
+      join: async (me, ev) => void (await queryAs(db, me, "select public.join_event($1)" /* 4.4: RPC, direct writes refused (D-I) */, [ev])),
       view: async (me) => (await queryAs<Row>(db, me, "select * from public.my_conversations()")).map((r) =>
         norm({ kind: r.kind, eventId: r.event_id, eventTitle: r.event_title, other: r.other_username, lastBody: r.last_body, lastSender: r.last_sender_id, unread: r.unread })),
       canMessage: async (me, other) => (await queryAs<{ ok: boolean }>(db, me, "select public.can_message($1) as ok", [other]))[0].ok,
@@ -265,7 +265,7 @@ describe("messaging parity", () => {
       send: async (me, conv, body) => { await sleep(3); await repo.messaging.send(me, conv, body); },
       read: async (me, conv) => { await sleep(3); await repo.messaging.markRead(me, conv); },
       block: (me, other) => repo.messaging.block(me, other),
-      join: (me, ev) => repo.events.join(me, ev),
+      join: async (me, ev) => { await repo.events.join(me, ev); },
       view: async (me) => (await repo.messaging.conversations(me)).map((c) =>
         norm({ kind: c.kind, eventId: c.eventId, eventTitle: c.eventTitle, other: c.other?.username ?? null, lastBody: c.lastBody, lastSender: c.lastSenderId, unread: c.unread })),
       canMessage: (me, other) => repo.messaging.canMessage(me, other),

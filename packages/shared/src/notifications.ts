@@ -22,6 +22,8 @@ export const NOTIFICATION_TYPES: { type: NotificationType; label: string }[] = [
   { type: "report_resolved", label: "Your reports are reviewed" },
   { type: "content_moderated", label: "Moderators act on your content" },
   { type: "trip_plan_ready", label: "A trip plan is ready" },
+  { type: "event_offer", label: "A spot opens up for you on a waitlist" },
+  { type: "event_offer_expired", label: "A spot offer runs out" },
 ];
 export const ALL_NOTIFICATION_TYPES = NOTIFICATION_TYPES.map((t) => t.type);
 
@@ -72,6 +74,10 @@ export function notificationText(n: Describable): string {
         : `Moderators removed ${label || (n.subjectType === "message" ? "one of your messages" : "your content")}`;
     case "trip_plan_ready":
       return `Your plan "${label || "Plan my day"}" is ready`;
+    case "event_offer":
+      return `A spot opened up at ${label || "an event you're waiting for"}. Accept it before it runs out`;
+    case "event_offer_expired":
+      return `Your spot offer for ${label || "an event"} ran out`;
   }
 }
 

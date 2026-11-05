@@ -79,7 +79,9 @@ describe("demo repository", () => {
     const small = createDemoRepository(store);
     const evRow = store.state.events.find((e) => e.id === ev)!;
     evRow.capacity = 3;
-    await expect(small.events.join(maya.id, ev)).rejects.toThrow(/full/);
+    // 4.4: a full free event now waitlists instead of refusing (behaviour changed on purpose, see docs/features/4.4.md).
+    expect(await small.events.join(maya.id, ev)).toBe("waitlisted");
+    expect((await small.events.get(ev, maya.id))?.attendeeCount).toBe(3);
 
     await repo.events.leave(maya.id, ev);
     detail = await repo.events.get(ev, maya.id);
