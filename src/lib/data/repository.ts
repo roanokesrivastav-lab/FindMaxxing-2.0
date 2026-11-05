@@ -71,6 +71,7 @@ import type {
 import type { PlaceTip, TipEvidence, TipInput, TipStatus } from "@/lib/places/tips";
 import type { OccasionInput, OccasionNote } from "@/lib/places/occasions";
 import type { SaveDetails, SaveDetailsInput } from "@/lib/places/saves";
+import type { BulkOp, LibraryItem, SaveSnapshot } from "@/lib/places/library";
 
 /**
  * The single data-access contract used by pages and server actions.
@@ -191,6 +192,16 @@ export interface DataRepository {
     update(ownerId: string, placeId: string, input: SaveDetailsInput): Promise<SaveDetails>;
     /** The owner's personal tags with how many saves carry each, most used first. */
     tags(ownerId: string): Promise<{ tag: string; count: number }[]>;
+    /**
+     * Every save the owner can still open (3.2), newest first, each as the place
+     * (community) plus the owner's details and list ids. Callers filter and page with
+     * src/lib/places/library.ts, so both repositories agree.
+     */
+    library(ownerId: string): Promise<LibraryItem[]>;
+    /** Applies one action to the owner's saves among placeIds; returns their prior state for undo. */
+    bulk(ownerId: string, placeIds: string[], op: BulkOp): Promise<SaveSnapshot[]>;
+    /** Puts saves back as snapshots describe (undo). Only ever the owner's own saves and lists. */
+    restore(ownerId: string, snapshots: SaveSnapshot[]): Promise<void>;
   };
   events: {
     /** Discovery list: visible published events, soonest first (starts_at, id), in cursor pages. */

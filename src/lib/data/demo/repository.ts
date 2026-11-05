@@ -1623,7 +1623,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
     notifications: createDemoNotifications(state, { persist, summary: (id) => profileOf(state, id) }),
 
     ads: createDemoAds(state, { persist, assertActive, rateLimit, isAdmin }),
-    saves: createDemoSaves(state, { persist, assertActive }),
+    saves: createDemoSaves(state, { persist, assertActive, canViewPlace: (p, viewerId) => canViewPlace(state, p, viewerId), toPlace: (p) => toPlace(state, p), repo: () => repo }),
     occasions: createDemoOccasions(state, { persist, assertActive, rateLimit, canViewPlace: (p, viewerId) => canViewPlace(state, p, viewerId), summary: (id) => profileOf(state, id) }),
     tips: createDemoTips(state, { persist, assertActive, rateLimit, canViewPlace: (p, viewerId) => canViewPlace(state, p, viewerId), summary: (id) => profileOf(state, id) }),
     interactions: createDemoInteractions(state, {

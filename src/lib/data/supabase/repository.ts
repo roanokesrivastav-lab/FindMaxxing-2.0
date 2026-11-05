@@ -97,7 +97,7 @@ interface ProfileRow extends ProfileSummaryRow {
   updated_at: string;
   profile_interests?: { interest_slug: string }[];
 }
-interface PlaceRow {
+export interface PlaceRow {
   id: string;
   name: string;
   description: string;
@@ -147,7 +147,7 @@ interface EventRow {
 }
 
 const PROFILE_SUMMARY = "id, username, display_name, avatar_url";
-const PLACE_SELECT = `*, creator:profiles!places_creator_id_fkey(${PROFILE_SUMMARY}), place_tags(interest_slug), place_photos(id, url, storage_path, uploader_id, sort_order)`;
+export const PLACE_SELECT = `*, creator:profiles!places_creator_id_fkey(${PROFILE_SUMMARY}), place_tags(interest_slug), place_photos(id, url, storage_path, uploader_id, sort_order)`;
 const EVENT_SELECT = `*, creator:profiles!events_creator_id_fkey(${PROFILE_SUMMARY}), place:places!events_place_id_fkey(name), event_tags(interest_slug), attendee_count:event_attendees(count)`;
 const PROFILE_SELECT = "*, profile_interests(interest_slug)";
 
@@ -168,7 +168,7 @@ function mapProfile(r: ProfileRow): Profile {
     updatedAt: r.updated_at,
   };
 }
-function mapPlace(r: PlaceRow): Place {
+export function mapPlace(r: PlaceRow): Place {
   return {
     id: r.id,
     name: r.name,
@@ -1629,7 +1629,7 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
 
     tips: createSupabaseTips(supabase, { translate }),
     occasions: createSupabaseOccasions(supabase, { translate }),
-    saves: createSupabaseSaves(supabase, { translate }),
+    saves: createSupabaseSaves(supabase, { translate, repo: () => repo }),
     ads: {
       async create(_advertiserId, input) {
         validateCampaign(input);
