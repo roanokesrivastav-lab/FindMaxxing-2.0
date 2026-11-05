@@ -464,6 +464,15 @@ export const SEED_EVENTS: SeedEvent[] = [
     startsInDays: 4, startHour: 18, startMinute: 30, durationMinutes: 90, creator: "hana_host", capacity: 10,
     tags: ["pickup-sports", "sports"], attendees: ["hana_host", "pat_participant"],
   },
+  {
+    // Roadmap 1.5: a past run so "events you usually go to" has history in demo (lena and dev went;
+    // the upcoming "3v3 basketball run" at the same courts, same host, then shows as a usual event).
+    id: e("Last week's 3v3 basketball run"), title: "Last week's 3v3 basketball run", categorySlug: "pickup-sports",
+    description: "Half-court 3s, games to 15, winners stay. (This one already happened.)",
+    place: "Thurman Hollow Courts", locationName: "Thurman Hollow Courts", address: null, lat: 40.0161, lng: -83.0072,
+    startsInDays: -6, startHour: 18, startMinute: 0, durationMinutes: 120, creator: "marcus", capacity: 12,
+    tags: ["pickup-sports", "sports"], attendees: ["marcus", "lena", "dev"],
+  },
 ];
 
 export const SEED_RATINGS: SeedRating[] = [
