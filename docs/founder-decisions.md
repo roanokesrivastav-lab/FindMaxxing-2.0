@@ -1,8 +1,8 @@
 # Founder decisions
 
-Decisions from the founder session, recorded 2026-11-02. These override `docs/roadmap-80.md` wherever the two
-disagree. The roadmap tickets have not been rewritten yet. The session isn't finished: the references after Yelp and
-The Infatuation, and the feature pass, are still to come.
+Decisions from the founder session recorded 2026-11-02, plus the owner's answers to the open questions
+recorded 2026-11-05. These override `docs/roadmap-80.md` wherever the two disagree. The roadmap tickets
+were rewritten to match on 2026-11-04 and unblocked on 2026-11-05.
 
 ## Decided
 
@@ -22,28 +22,40 @@ The Infatuation, and the feature pass, are still to come.
 | Yelp | Implement: rating next to its count, relevant recent observation, separate personal fit, friends and community, claims open their evidence, sponsored kept separate. | 2.5, 2.6 |
 | Friends' reviews | No summaries of friends' reviews. Show the actual reviews when you open a place, the way Beli does. | 2.5, 2.7 |
 
-## New idea: public and private place photos
+### Owner answers, 2026-11-05 (formerly open questions)
 
-- Every place has a **public photo** pulled from online.
-- The first time you go to a place (or a friend has gone), you must take one photo. It becomes your **private photo**,
-  and you always see it unless you choose to change it.
+| Topic | Decision | Roadmap tickets affected |
+| --- | --- | --- |
+| Competitor research "For us" notes | All accepted for now, to be judged once implemented. Where one conflicts with an earlier decision, the earlier decision wins: **no list or bottom panel on the map tab (selected-pin preview only), no summaries of friends' opinions, no friend match scores.** The research document itself is not in this repository, so individual notes are applied as their tickets are built. | All; 2.1, 2.2 (map tab) |
+| Onboarding interest picker (was Q1) | Thumbnail rows, six interests, "More interests", Skip. | 1.2, 1.3 |
+| Group outing scope (was Q2) | "Push off" means **order**: all of M5 stays and is built after M4. The walking plan and the milestone journey stay. | M5, 6.3, 6.4, 8.1c–e, 8.2, 8.3, milestone journey, checkpoint 2, scoreboard |
+| Photo source (was Q3) | Public photos for the pilot are uploaded by the team or with permission. The provider is decided after the 3.3 spec. | 2.8, 3.3 |
+| Photo requirement (was Q4) | A private photo is required only for a user's **first rating or review** of a place. It never blocks saving, planning, joining, or bulk marking Visited. Self-declared: no proof of attendance. Library photos are allowed. | 2.8 |
+| Friend-triggered photos (was Q5) | If only a friend went: show the public photo plus the friend's own review and the photos they chose to post. Private photos are never shared. | 2.8 |
+| Best for / less suited (was Q6) | Stays, written and attributed by contributors. | 2.7, 2.5 |
+| Yelp vs no-summaries (was Q7) | No summaries of friends' opinions (confirmed by the conflict rule above). | 2.5 |
+| Friends' reviews order (was Q8, in part) | Friends' actual reviews appear **first** on a place, then others. The owner still has to check Beli's page; this does not block building. | 2.5 |
+| Social context line | Stays on hold. | 1.4 |
+| 4.0 spec | All recommendations D-A to D-M in `docs/features/4.0.md` are accepted. | 4.0, 4.2–4.6, 4.8, 8.1b |
+| Routing provider | Tentatively Mapbox walking, behind the adapter. Not live until keys are added. | 6.0, 6.1 |
 
-## Open questions
+## Public and private place photos (decided 2026-11-05)
 
-1. **Onboarding interest picker:** not decided in this pass.
-2. **Group outing scope:** does "push off" cover only the vote (5.3), or all of M5? Itinerary 6.3 depends on 5.3 and
-   5.5, so the walking plan moves too unless it gets a new entry point. The milestone journey and the 12 outing points
-   need rewriting either way.
-3. **Photo source:** where do public photos come from, and do its terms let us store and display them?
-4. **Photo requirement:** what does "required" block, and how do we know someone went? An RSVP or directions tap
-   doesn't prove attendance.
-5. **Friend-triggered photos:** when a friend went but you didn't, whose photo do you see, and did the friend agree to
-   share it?
-6. **Best for / less suited (2.7):** keep it as contributor-written advice, or drop it along with friend summaries?
-7. **Yelp conflict:** the research example "Two friends recommend it for quiet conversation" is a summary of friends'
-   opinions. The no-summaries decision is treated as winning.
-8. **Beli reference:** the research didn't document Beli's place page. Check the app before writing the ticket.
+- Every place has a **public photo**. For the pilot it is uploaded by the team or with permission; an
+  online provider is chosen after the 3.3 spec.
+- A user's **first rating or review** of a place requires one photo. It becomes their **private photo**,
+  and they always see it unless they choose to change it. It is self-declared (no proof of attendance),
+  and a photo from the library is allowed. It never blocks saving, planning, joining, or bulk marking
+  Visited.
+- If only a friend went, you see the public photo plus that friend's own review and the photos they
+  chose to post. Private photos are never shared.
+- Naming note: "private place photos" already exists in the code with a different meaning (uploads
+  whose visibility follows the place; see `docs/feature-status.md`). Ticket 2.8 must not reuse that name.
 
-## Still to review
+## Still open
 
-Atlas Obscura onward in the reference list, and the full feature pass.
+- **Beli reference:** the owner still has to check Beli's place page. Building proceeds on "friends'
+  actual reviews first, then others".
+- **Public photo provider:** decided after the 3.3 spec.
+- **Feature pass:** the "For us" answer covers the competitor references. A separate full feature
+  pass was not addressed in the 2026-11-05 answers.
