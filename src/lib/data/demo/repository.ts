@@ -147,6 +147,10 @@ function applyEventPilotFields(row: EventRow, input: NewEventInput): void {
     if (input.venueStatus !== "confirmed" && input.venueStatus !== "unconfirmed") throw new DataError("Invalid venue status", "invalid");
     row.venueStatus = input.venueStatus;
   }
+  if (input.cardStyle !== undefined) {
+    if (input.cardStyle !== "readiness" && input.cardStyle !== "party_poster") throw new DataError("Invalid card style", "invalid");
+    row.cardStyle = input.cardStyle;
+  }
   checkSessionRules(row);
 }
 
@@ -214,6 +218,7 @@ function toEvent(state: DemoState, row: EventRow): Event {
     venueStatus: row.venueStatus ?? "confirmed",
     decision: row.decision ?? "open",
     cancelReason: row.cancelReason ?? null,
+    cardStyle: row.cardStyle ?? "readiness",
     // 4.3: mirrors the computed column the Supabase repository selects only with pilotEvents on.
     ...(featureEnabled("pilotEvents") ? { readiness: demoReadiness(state, row) } : {}),
   };

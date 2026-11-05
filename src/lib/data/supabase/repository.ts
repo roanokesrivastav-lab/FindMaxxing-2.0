@@ -145,6 +145,7 @@ interface EventRow {
   decision?: Event["decision"];
   cancel_reason?: Event["cancelReason"];
   readiness?: Event["readiness"];
+  card_style?: Event["cardStyle"];
   status: Event["status"];
   created_at: string;
   creator?: ProfileSummaryRow | null;
@@ -234,6 +235,7 @@ function mapEvent(r: EventRow): Event {
     decision: r.decision ?? "open",
     cancelReason: r.cancel_reason ?? null,
     ...(r.readiness !== undefined ? { readiness: r.readiness } : {}),
+    cardStyle: r.card_style ?? "readiness",
   };
 }
 
@@ -606,6 +608,7 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
     if (input.minAttendance !== undefined) patch.min_attendance = input.minAttendance;
     if (input.decisionDeadline !== undefined) patch.decision_deadline = input.decisionDeadline;
     if (input.venueStatus !== undefined) patch.venue_status = input.venueStatus;
+    if (input.cardStyle !== undefined) patch.card_style = input.cardStyle;
     if (!Object.keys(patch).length) return;
     unwrap(await supabase.from("events").update(patch).eq("id", id).select("id"));
   }

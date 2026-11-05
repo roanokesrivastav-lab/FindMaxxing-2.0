@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { readableInk } from "@/lib/utils/contrast";
-import { Users, MapPin } from "lucide-react";
+import { Users, MapPin, Ban, TriangleAlert } from "lucide-react";
 import type { Event } from "@/lib/data/types";
 import { getCategory } from "@/lib/data/taxonomy";
 import { eventHasEnded, formatEventDate, formatInZone, formatTimeRange, relativeDayLabel } from "@/lib/utils/format";
@@ -30,6 +30,8 @@ export function EventCard({
   const c = getCategory(event.categorySlug);
   const time = useViewerTime();
   // 4.3 (pilotEvents): events carry Readiness numbers, and the card is the Readiness row. No date block.
+  // 4.8: the host's Party poster (still pilotEvents-only: readiness is present only then).
+  if (event.readiness && event.cardStyle === "party_poster") return <PartyPosterCard event={event} className={className} onHover={onHover} />;
   if (event.readiness) return <ReadinessCard event={event} compact={compact} className={className} onHover={onHover} />;
   const isPast = eventHasEnded(event.startsAt, event.endsAt, time.now);
   const cancelled = event.status === "cancelled";
@@ -109,6 +111,38 @@ function ReadinessCard({ event, compact, className, onHover }: { event: Event; c
           {formatEventDate(event.startsAt, zone)} · {formatTimeRange(event.startsAt, event.endsAt, zone)} · {event.locationName}
         </span>
         {event.readiness ? <ReadinessRow readiness={event.readiness} timeZone={zone.timeZone} now={time.now} cancelled={cancelled} /> : null}
+      </span>
+    </Link>
+  );
+}
+
+/**
+ * Roadmap 4.8: the Party poster, turned on by the host. A typographic poster on the ink surface: the
+ * title set large in the display face, then when and where, then price, Full or Cancelled (always
+ * visible), and the going count. Complete with no photo; long titles wrap (clamped at four lines).
+ */
+function PartyPosterCard({ event, className, onHover }: { event: Event; className?: string; onHover?: () => void }) {
+  const time = useViewerTime();
+  const c = getCategory(event.categorySlug);
+  const zone = { timeZone: event.timeZone ?? time.timeZone };
+  const cancelled = event.status === "cancelled";
+  const isPast = eventHasEnded(event.startsAt, event.endsAt, time.now);
+  const r = event.readiness;
+  const full = !!r && r.spotsOpen === 0;
+  return (
+    <Link href={`/events/${event.id}`} onMouseEnter={onHover} data-card="party-poster" className={cn("block rounded-2xl bg-ink text-paper p-row hover:bg-ink-2", (cancelled || isPast) && "opacity-80", className)}>
+      <span className="type-body flex flex-wrap items-center gap-x-item gap-y-hair text-paper/80">
+        <CategoryIcon slug={c.slug} size={16} /> <span className="font-semibold">{c.label}</span>
+      </span>
+      <span className="type-page-title mt-item block break-words line-clamp-4">{event.title}</span>
+      <span className="type-item-title mt-item block">{formatEventDate(event.startsAt, zone)} · {formatTimeRange(event.startsAt, event.endsAt, zone)}</span>
+      <span className="type-body mt-hair block break-words text-paper/80">{event.locationName}</span>
+      <span className="type-body mt-item flex flex-wrap items-center gap-x-row gap-y-hair font-semibold">
+        {cancelled ? <span data-status="negative" className="inline-flex items-center gap-hair"><Ban size="1.1em" aria-hidden /> Cancelled</span>
+          : isPast ? <span>Ended</span>
+          : full ? <span data-status="warning" className="inline-flex items-center gap-hair"><TriangleAlert size="1.1em" aria-hidden /> Full</span> : null}
+        {event.priceCents ? <span>{formatPrice(event.priceCents)}</span> : <span>Free</span>}
+        {r ? <span className="font-normal text-paper/80">{r.going} going</span> : null}
       </span>
     </Link>
   );

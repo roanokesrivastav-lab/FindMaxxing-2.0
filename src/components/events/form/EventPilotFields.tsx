@@ -15,6 +15,11 @@ export function EventPilotFields({ initial, errors }: { initial?: Event; errors:
       <ActivityFields initial={initial?.activityDetails ?? null} errors={errors} />
       <SessionRuleFields initial={initial} errors={errors} />
       <NewcomerFields n={n} errors={errors} />
+      <fieldset className="flex flex-col gap-2">
+        <legend className="type-item-title text-ink">Event card</legend>
+        <Check name="partyPoster" label="Show it as a party poster" defaultChecked={initial?.cardStyle === "party_poster"} />
+        <p className="type-body text-ink-2">For parties, shows and socials. Off, the card shows who&apos;s going and how many spots are open.</p>
+      </fieldset>
     </>
   );
 }
