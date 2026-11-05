@@ -70,6 +70,7 @@ import type {
 } from "./types";
 import type { PlaceTip, TipEvidence, TipInput, TipStatus } from "@/lib/places/tips";
 import type { OccasionInput, OccasionNote } from "@/lib/places/occasions";
+import type { SaveDetails, SaveDetailsInput } from "@/lib/places/saves";
 
 /**
  * The single data-access contract used by pages and server actions.
@@ -177,6 +178,19 @@ export interface DataRepository {
     remove(userId: string, noteId: string): Promise<void>;
     /** Moderators only. */
     setStatus(moderatorId: string, noteId: string, status: OccasionNote["status"]): Promise<void>;
+  };
+  /**
+   * Why the owner saved a place (roadmap 3.1, 0062_save_details.sql): private note,
+   * personal tags, source URL, who recommended it, want-to-go / visited. Owner-only:
+   * every method reads and writes the caller's own saves and nobody else's.
+   */
+  saves: {
+    /** The owner's save of the place with its details; null when not saved. */
+    get(ownerId: string, placeId: string): Promise<SaveDetails | null>;
+    /** Updates only the fields given; not_found when the place is not saved. */
+    update(ownerId: string, placeId: string, input: SaveDetailsInput): Promise<SaveDetails>;
+    /** The owner's personal tags with how many saves carry each, most used first. */
+    tags(ownerId: string): Promise<{ tag: string; count: number }[]>;
   };
   events: {
     /** Discovery list: visible published events, soonest first (starts_at, id), in cursor pages. */
