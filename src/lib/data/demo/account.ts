@@ -8,6 +8,7 @@
  * log goes, and so does everyone's history of the places and events they made
  * (0031_user_interactions.sql).
  */
+import { forgetPlaceExtras } from "./placeExtras";
 import { recomputeRating, type StoreHandle } from "./store";
 import { deleteMessagingFor, dropEventChats } from "./messaging";
 import { forgetItemInteractions } from "./interactions";
@@ -92,6 +93,7 @@ export function deleteDemoAccount(handle: StoreHandle, userId: string): DeletedO
   state.userInteractions = state.userInteractions.filter((i) => i.userId !== userId);
   state.placeComparisons = state.placeComparisons.filter((c) => c.userId !== userId && !ownPlaces.has(c.winnerId) && !ownPlaces.has(c.loserId));
   forgetItemInteractions(state, "place", ownPlaces);
+  forgetPlaceExtras(state, userId, ownPlaces);
   forgetItemInteractions(state, "event", ownEvents);
 
   state.profileInterests = state.profileInterests.filter((i) => i.profileId !== userId);

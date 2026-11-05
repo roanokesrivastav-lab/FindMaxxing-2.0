@@ -10,7 +10,7 @@ const groups = [
     anon: true,
     reason: "Viewer-bound visibility and text search; returns only visible IDs or eligibility for the current caller.",
     signatures: [
-      "can_view_event(uuid)", "can_view_place(uuid)", "can_view_place_photo_object(text)",
+      "can_view_event(uuid)", "can_view_place(uuid)", "can_view_place_photo_object(text)", "can_view_place_tip(uuid)",
       "discover_event_text_ids(text,text[],text[])", "discover_place_text_ids(text,text[],text[])",
       "is_local(text)", "is_mutual_follow(uuid)", "is_trusted_local(text)",
     ],
