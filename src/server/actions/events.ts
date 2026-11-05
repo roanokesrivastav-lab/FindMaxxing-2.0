@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { getRepository } from "@/lib/data";
 import { getViewer } from "@/lib/auth/server";
 import { featureEnabled, paymentsMode } from "@/lib/config";
-import { parseEventPilotFields, pilotInput, type EventPilotFields } from "@/lib/events/form";
+import { durationMinutes, parseEventPilotFields, parseRepeatRule, pilotInput, type EventPilotFields } from "@/lib/events/form";
 import { combineDateTime, eventSchema, fieldErrors, uuidSchema } from "@/lib/validation/schemas";
 import { fail, str, strList, succeed, toFailure, type ActionResult } from "./result";
 
@@ -47,6 +47,26 @@ export async function createEventAction(_prev: ActionResult | null, formData: Fo
 
   const v = parsed.data;
   const { startsAt, endsAt } = combineDateTime(v.date, v.startTime, v.endTime, v.tzOffsetMinutes);
+  // 4.5a (pilotEvents): "Repeats every week" creates a series and its next 4 weeks of occurrences.
+  if (featureEnabled("pilotEvents") && str(formData, "repeats") === "on") {
+    const repeat = parseRepeatRule((k) => str(formData, k), (k) => strList(formData, k), { date: v.date, startTime: v.startTime, endTime: v.endTime ?? null });
+    if (!repeat.ok) return fail("Check the highlighted fields", repeat.errors);
+    const p = pilotInput(pilot.data, startsAt);
+    try {
+      const repo = await getRepository();
+      const { seriesId, firstEventId } = await repo.series.create({
+        title: v.title, description: v.description, categorySlug: v.categorySlug, placeId: v.placeId, locationName: v.locationName, address: v.address,
+        lat: v.lat, lng: v.lng, timeZone: p.timeZone ?? "America/New_York", rule: repeat.rule, capacity: v.capacity, minAttendance: p.minAttendance ?? null,
+        decisionLeadMinutes: pilot.data.decisionLeadMinutes ?? null, activityDetails: p.activityDetails ?? null, newcomer: p.newcomer ?? null,
+        cardStyle: p.cardStyle, tags: v.tags,
+      }, viewer.id);
+      revalidatePath("/"); revalidatePath("/events"); revalidatePath("/profile");
+      await track("create_event", { eventId: firstEventId ?? seriesId });
+      redirect(firstEventId ? `/events/${firstEventId}?new=1` : "/events");
+    } catch (err) {
+      return toFailure(err);
+    }
+  }
   try {
     const repo = await getRepository();
     const event = await repo.events.create(
@@ -92,6 +112,25 @@ export async function updateEventAction(_prev: ActionResult | null, formData: Fo
   if (!parsed.success || !pilot.ok) return fail("Check the highlighted fields", { ...(parsed.success ? {} : fieldErrors(parsed.error)), ...(pilot.ok ? {} : pilot.errors) });
   const v = parsed.data;
   const { startsAt, endsAt } = combineDateTime(v.date, v.startTime, v.endTime, v.tzOffsetMinutes);
+  // 4.5a (pilotEvents): an occurrence of a series is edited as "this one" or "this and future".
+  const scope = featureEnabled("pilotEvents") ? str(formData, "editScope") : "";
+  if (scope === "this" || scope === "future") {
+    try {
+      const repo = await getRepository();
+      const current = await repo.events.get(id.data, viewer.id);
+      if (current?.seriesId) {
+        if (scope === "this") {
+          await repo.series.updateOccurrence(viewer.id, id.data, { title: v.title, description: v.description, placeId: v.placeId, locationName: v.locationName, address: v.address, lat: v.lat, lng: v.lng, startsAt: startsAt.toISOString(), endsAt: endsAt?.toISOString() ?? null, categorySlug: v.categorySlug, capacity: v.capacity, tags: v.tags });
+        } else {
+          const days = strList(formData, "repeatDays").map(Number).filter((d) => d >= 1 && d <= 7);
+          if (!days.length) return fail("Check the highlighted fields", { repeatDays: "Pick at least one day" });
+          await repo.series.updateFrom(viewer.id, id.data, { title: v.title, description: v.description, placeId: v.placeId, locationName: v.locationName, address: v.address, lat: v.lat, lng: v.lng, weekdays: days, intervalWeeks: Number(str(formData, "repeatInterval")) || 1, startLocal: v.startTime, durationMinutes: durationMinutes(v.startTime, v.endTime ?? null), capacity: v.capacity });
+        }
+        revalidatePath(`/events/${id.data}`); revalidatePath("/events");
+        redirect(`/events/${id.data}`);
+      }
+    } catch (err) { return toFailure(err); }
+  }
   try {
     const repo = await getRepository();
     const event = await repo.events.update(id.data, { title: v.title, description: v.description, placeId: v.placeId, locationName: v.locationName, address: v.address, lat: v.lat, lng: v.lng, startsAt: startsAt.toISOString(), endsAt: endsAt?.toISOString() ?? null, categorySlug: v.categorySlug, capacity: v.capacity, tags: v.tags, ...pilotInput(pilot.data, startsAt) }, viewer.id);
@@ -194,6 +233,22 @@ export async function hostRemoveParticipantAction(eventId: string, userId: strin
     const repo = await getRepository();
     await repo.events.hostRemoveParticipant(viewer.id, id.data, who.data);
     revalidatePath(`/events/${id.data}`);
+    return succeed(undefined);
+  } catch (err) { return toFailure(err); }
+}
+
+/** 4.5a: a series host cancels one occurrence, or ends the series. */
+export async function seriesHostAction(op: "cancel-occurrence" | "end-series", id: string): Promise<ActionResult> {
+  const viewer = await getViewer();
+  if (!viewer) return fail("Sign in first", undefined, "unauthenticated");
+  if (!featureEnabled("pilotEvents")) return fail("Not available", undefined, "not_found");
+  const parsed = uuidSchema.safeParse(id);
+  if (!parsed.success) return fail("Invalid request");
+  try {
+    const repo = await getRepository();
+    if (op === "cancel-occurrence") await repo.series.cancelOccurrence(viewer.id, parsed.data);
+    else await repo.series.end(viewer.id, parsed.data, new Date().toISOString().slice(0, 10));
+    revalidatePath("/events");
     return succeed(undefined);
   } catch (err) { return toFailure(err); }
 }

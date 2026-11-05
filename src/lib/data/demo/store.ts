@@ -130,6 +130,10 @@ export interface EventRow {
   cancelReason?: CancelReason | null;
   /** 4.8: mirrors events.card_style (absent = "readiness"). */
   cardStyle?: CardStyle;
+  /** 4.5a: series occurrence fields (absent = a one-off event). */
+  seriesId?: string | null;
+  seriesLocalDate?: string | null;
+  overridden?: string[];
 }
 export interface ReportRow {
   id: string;

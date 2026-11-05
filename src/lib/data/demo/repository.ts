@@ -1,5 +1,5 @@
 import type { DataRepository } from "../repository";
-import { activityDetailsSchema, type EventNewcomer } from "@findmaxxing/shared/events";
+import { activityDetailsSchema, seriesRuleSchema, type EventNewcomer } from "@findmaxxing/shared/events";
 import { DEFAULT_TIME_ZONE, normalizeTimeZone } from "@/lib/utils/timezone";
 import { computeReadiness } from "@/lib/events/readiness";
 import { featureEnabled } from "@/lib/config";
@@ -33,6 +33,7 @@ import { demoTaste, recommendDemoEvents, recommendDemoPlaces } from "./recommend
 import { createDemoMessaging, dropEventChats, joinEventChat, leaveEventChat } from "./messaging";
 import { createDemoNotifications, notifyDemo, notifyOn } from "./notifications";
 import * as part from "./participation";
+import * as ser from "./series";
 import { createDemoAds } from "./ads";
 import { fitScores } from "@/lib/ranking/bradleyTerry";
 import { nextOpponent } from "@/lib/ranking/nextComparison";
@@ -223,6 +224,9 @@ function toEvent(state: DemoState, row: EventRow): Event {
     decision: row.decision ?? "open",
     cancelReason: row.cancelReason ?? null,
     cardStyle: row.cardStyle ?? "readiness",
+    seriesId: row.seriesId ?? null,
+    seriesLocalDate: row.seriesLocalDate ?? null,
+    overridden: row.overridden ?? [],
     // 4.3: mirrors the computed column the Supabase repository selects only with pilotEvents on.
     ...(featureEnabled("pilotEvents") ? { readiness: demoReadiness(state, row) } : {}),
   };
@@ -445,6 +449,9 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
     recordOwnInteraction(state, userId, { itemType: "event", itemId: eventId, action: "leave" });
     return true;
   };
+  /** Mirrors can_view_series(). */
+  const demoCanViewSeries = (s: ser.DemoSeries, viewerId: string | null) =>
+    s.status !== "removed" && (!s.placeId || ser.isSeriesHost(state, s.id, viewerId) || state.places.some((p) => p.id === s.placeId && canViewPlace(state, p, viewerId)));
   const viewerCan = (ev: EventRow | undefined) => (userId: string) => !!ev && canViewEvent(state, ev, userId);
   const joinHooks = (ev: EventRow): part.JoinHooks => ({ canView: viewerCan(ev), addAttendee: (userId) => addAttendee(ev, userId) });
   const requireAdmin = (adminId: string, reason: string) => {
@@ -1083,7 +1090,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
       async hostRemoveParticipant(hostId, eventId, userId) {
         assertActive(hostId);
         const ev = state.events.find((e) => e.id === eventId);
-        if (!ev || ev.creatorId !== hostId) throw new DataError("You do not host this event", "forbidden");
+        if (!ev || !ser.isEventHost(state, ev, hostId)) throw new DataError("You do not host this event", "forbidden");
         if (userId === ev.creatorId) throw new DataError("The host cannot remove themselves", "invalid");
         if (removeAttendee(eventId, userId)) part.offerNext(state, ev, Date.now(), viewerCan(ev));
         else part.hostRemoveWaiting(state, ev, userId, Date.now(), viewerCan(ev));
@@ -1091,7 +1098,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
       },
       async participants(hostId, eventId) {
         const ev = state.events.find((e) => e.id === eventId);
-        if (!ev || ev.creatorId !== hostId) return [];
+        if (!ev || !ser.isEventHost(state, ev, hostId)) return [];
         return part.participants(state)
           .filter((p) => p.eventId === eventId && (p.status === "waitlisted" || p.status === "offered"))
           .sort((a, b) => (a.queuePosition ?? 0) - (b.queuePosition ?? 0))
@@ -1125,7 +1132,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
       async confirmSession(userId, eventId) {
         assertActive(userId);
         const ev = state.events.find((e) => e.id === eventId);
-        if (!ev || ev.creatorId !== userId) throw new DataError("You do not own this event", "forbidden");
+        if (!ev || !ser.isEventHost(state, ev, userId)) throw new DataError("You do not own this event", "forbidden");
         if (ev.status !== "published" || eventEndOrStart(ev) <= Date.now()) throw new DataError("Only future published events can be confirmed", "invalid");
         if (ev.decision === "happening") return;
         if (ev.decisionDeadline && Date.parse(ev.decisionDeadline) <= Date.now()) throw new DataError("The decision deadline has passed", "invalid");
@@ -1162,6 +1169,186 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
       },
     },
 
+    series: {
+      async create(input, ownerId) {
+        assertActive(ownerId);
+        requireProfile(ownerId);
+        if (input.placeId && !state.places.some((p) => p.id === input.placeId && canViewPlace(state, p, ownerId))) throw new DataError("Linked place not found", "not_found");
+        if (!normalizeTimeZone(input.timeZone)) throw new DataError("Unknown time zone", "invalid");
+        const rule = seriesRuleSchema.safeParse(input.rule);
+        if (!rule.success) throw new DataError(rule.error.issues[0]?.message ?? "Invalid schedule", "invalid");
+        if (input.minAttendance != null && (input.minAttendance < 2 || (input.capacity != null && input.minAttendance > input.capacity))) throw new DataError("Minimum must be at least 2 and no more than capacity", "invalid");
+        const counted = rateLimit(ownerId, "events");
+        const id = newId();
+        const now = Date.now();
+        ser.seriesList(state).push({
+          id, ownerId, createdAt: new Date(now).toISOString(), title: input.title, description: input.description, categorySlug: input.categorySlug,
+          placeId: input.placeId ?? null, locationName: input.locationName, address: input.address ?? null, lat: input.lat, lng: input.lng,
+          timeZone: input.timeZone, rule: rule.data, capacity: input.capacity ?? null, minAttendance: input.minAttendance ?? null,
+          decisionLeadMinutes: input.decisionLeadMinutes ?? null, activityDetails: input.activityDetails ?? null, newcomer: input.newcomer ?? null,
+          cardStyle: input.cardStyle ?? "readiness", status: "active", ruleVersion: 1, tags: [...new Set(input.tags)],
+        });
+        ser.seriesHosts(state).push({ seriesId: id, userId: ownerId, role: "owner", addedAt: new Date(now).toISOString() });
+        ser.generate(state, now, newId, id);
+        counted();
+        persist();
+        const first = state.events.filter((e) => e.seriesId === id).sort(byStart)[0];
+        return { seriesId: id, firstEventId: first?.id ?? null };
+      },
+      async get(seriesId, viewerId = null) {
+        const s = ser.seriesList(state).find((x) => x.id === seriesId);
+        if (!s || !demoCanViewSeries(s, viewerId)) return null;
+        const hosts = ser.seriesHosts(state).filter((h) => h.seriesId === seriesId).map((h) => {
+          const p = profileOf(state, h.userId);
+          return { userId: h.userId, role: h.role, displayName: p?.displayName ?? "Someone", username: p?.username ?? "" };
+        }).sort((a, b) => (a.role === b.role ? a.displayName.localeCompare(b.displayName) : a.role === "owner" ? -1 : 1));
+        return {
+          id: s.id, ownerId: s.ownerId, title: s.title, description: s.description, categorySlug: s.categorySlug, placeId: s.placeId,
+          locationName: s.locationName, address: s.address, lat: s.lat, lng: s.lng, timeZone: s.timeZone, rule: s.rule, capacity: s.capacity,
+          minAttendance: s.minAttendance, decisionLeadMinutes: s.decisionLeadMinutes, newcomer: s.newcomer, activityDetails: s.activityDetails,
+          status: s.status, ruleVersion: s.ruleVersion, tags: s.tags, hosts,
+          viewerFollows: !!viewerId && ser.seriesFollowers(state).some((f) => f.seriesId === seriesId && f.userId === viewerId),
+          viewerIsHost: !!viewerId && hosts.some((h) => h.userId === viewerId),
+        };
+      },
+      async occurrences(seriesId, viewerId = null) {
+        return state.events.filter((e) => e.seriesId === seriesId && e.status !== "removed" && canViewEvent(state, e, viewerId)).sort(byStart).map((e) => toEvent(state, e));
+      },
+      async updateOccurrence(hostId, eventId, input) {
+        assertActive(hostId);
+        const ev = state.events.find((e) => e.id === eventId);
+        if (!ev || !ser.isEventHost(state, ev, hostId)) throw new DataError("You do not host this event", "forbidden");
+        if (ev.status !== "published" || eventEndOrStart(ev) <= Date.now()) throw new DataError("Only future published events can be edited", "invalid");
+        if (input.capacity != null && input.capacity < state.eventAttendees.filter((a) => a.eventId === eventId).length + part.liveOffers(state, eventId, Date.now())) throw new DataError("Capacity cannot be below the people going plus open offers", "invalid");
+        const over = new Set(ev.overridden ?? []);
+        if (input.title !== ev.title) over.add("title");
+        if (input.description !== ev.description) over.add("description");
+        if (JSON.stringify([input.placeId ?? null, input.locationName, input.address ?? null, input.lat, input.lng]) !== JSON.stringify([ev.placeId, ev.locationName, ev.address, ev.lat, ev.lng])) over.add("venue");
+        if (Date.parse(input.startsAt) !== Date.parse(ev.startsAt) || (input.endsAt ? Date.parse(input.endsAt) : null) !== (ev.endsAt ? Date.parse(ev.endsAt) : null)) over.add("time");
+        if ((input.capacity ?? null) !== ev.capacity) over.add("capacity");
+        const moved = over.has("time") || over.has("venue");
+        const oldCapacity = ev.capacity;
+        Object.assign(ev, { title: input.title, description: input.description, placeId: input.placeId ?? null, locationName: input.locationName, address: input.address ?? null, lat: input.lat, lng: input.lng, startsAt: input.startsAt, endsAt: input.endsAt ?? null, capacity: input.capacity ?? null, updatedAt: new Date().toISOString(), overridden: ev.seriesId ? [...over].sort() : [] });
+        if (oldCapacity !== null && (ev.capacity === null || ev.capacity > oldCapacity)) part.offerNext(state, ev, Date.now(), viewerCan(ev));
+        if (moved) notifyOn.eventChanged(state, ev.id, hostId);
+        persist();
+      },
+      async updateFrom(hostId, eventId, input) {
+        assertActive(hostId);
+        const ev = state.events.find((e) => e.id === eventId);
+        if (!ev || !ev.seriesId) throw new DataError("Not a series occurrence", "not_found");
+        if (!ser.isSeriesHost(state, ev.seriesId, hostId)) throw new DataError("You do not host this series", "forbidden");
+        const s = ser.seriesList(state).find((x) => x.id === ev.seriesId)!;
+        if (s.status !== "active" && s.status !== "paused") throw new DataError("This series has ended", "invalid");
+        const weekdays = [...new Set(input.weekdays)].sort();
+        const schedule = JSON.stringify(weekdays) !== JSON.stringify(s.rule.weekdays) || input.intervalWeeks !== s.rule.intervalWeeks || input.startLocal !== s.rule.startLocal || input.durationMinutes !== s.rule.durationMinutes;
+        Object.assign(s, { title: input.title, description: input.description, placeId: input.placeId ?? null, locationName: input.locationName, address: input.address ?? null, lat: input.lat, lng: input.lng, capacity: input.capacity, ruleVersion: s.ruleVersion + (schedule ? 1 : 0) });
+        s.rule = { ...s.rule, weekdays, intervalWeeks: input.intervalWeeks, startLocal: input.startLocal, durationMinutes: input.durationMinutes };
+        const now = Date.now();
+        let n = 0;
+        const future = state.events.filter((o) => o.seriesId === s.id && (o.seriesLocalDate ?? "") >= (ev.seriesLocalDate ?? "") && o.status === "published" && Date.parse(o.startsAt) > now).sort(byStart);
+        for (const o of future) {
+          const involved = state.eventAttendees.some((a) => a.eventId === o.id) || part.participants(state).some((p) => p.eventId === o.id && (p.status === "waitlisted" || p.status === "offered"))
+            || state.tickets.some((t) => t.eventId === o.id) || state.conversations.some((c) => c.eventId === o.id && state.messages.some((m) => m.conversationId === c.id));
+          if (schedule && !involved) {
+            state.events = state.events.filter((x) => x.id !== o.id);
+            state.eventTags = state.eventTags.filter((t) => t.eventId !== o.id);
+            continue;
+          }
+          const over = new Set(o.overridden ?? []);
+          const before = JSON.stringify([Date.parse(o.startsAt), o.locationName, o.lat, o.lng]);
+          const start = schedule && !over.has("time") ? ser.localToInstant(o.seriesLocalDate!, s.rule.startLocal, s.timeZone).getTime() : Date.parse(o.startsAt);
+          if (!over.has("title")) o.title = s.title;
+          if (!over.has("description")) o.description = s.description;
+          if (!over.has("venue")) Object.assign(o, { placeId: s.placeId, locationName: s.locationName, address: s.address, lat: s.lat, lng: s.lng });
+          if (!over.has("capacity")) o.capacity = s.capacity === null ? null : Math.max(s.capacity, state.eventAttendees.filter((a) => a.eventId === o.id).length);
+          if (!over.has("time")) {
+            o.startsAt = new Date(start).toISOString();
+            o.endsAt = new Date(start + s.rule.durationMinutes * 60_000).toISOString();
+            if (o.decisionDeadline && s.decisionLeadMinutes !== null) o.decisionDeadline = new Date(start - s.decisionLeadMinutes * 60_000).toISOString();
+          }
+          o.updatedAt = new Date(now).toISOString();
+          if (JSON.stringify([Date.parse(o.startsAt), o.locationName, o.lat, o.lng]) !== before) notifyOn.eventChanged(state, o.id, hostId);
+          n++;
+        }
+        ser.generate(state, now, newId, s.id);
+        persist();
+        return n;
+      },
+      async cancelOccurrence(hostId, eventId) {
+        assertActive(hostId);
+        const ev = state.events.find((e) => e.id === eventId);
+        if (!ev || !ser.isEventHost(state, ev, hostId)) throw new DataError("You do not host this event", "forbidden");
+        if (ev.status !== "published" || eventEndOrStart(ev) <= Date.now()) throw new DataError("Only future published events can be cancelled", "invalid");
+        ev.status = "cancelled";
+        ev.cancelReason = "host";
+        ev.updatedAt = new Date().toISOString();
+        part.onEventUnpublished(state, ev.id, Date.now());
+        refundOnCancel(state, ev.id);
+        notifyOn.eventCancelled(state, ev.id, hostId);
+        persist();
+      },
+      async end(hostId, seriesId, endsOn) {
+        assertActive(hostId);
+        const s = ser.seriesList(state).find((x) => x.id === seriesId);
+        if (!s || !ser.isSeriesHost(state, seriesId, hostId)) throw new DataError("You do not host this series", "forbidden");
+        s.status = "ended";
+        s.rule = { ...s.rule, endsOn: endsOn < s.rule.startsOn ? s.rule.startsOn : endsOn };
+        let n = 0;
+        for (const o of state.events) {
+          if (o.seriesId !== seriesId || o.status !== "published" || (o.seriesLocalDate ?? "") <= (s.rule.endsOn ?? "") || Date.parse(o.startsAt) <= Date.now()) continue;
+          o.status = "cancelled";
+          o.cancelReason = "series_ended";
+          part.onEventUnpublished(state, o.id, Date.now());
+          refundOnCancel(state, o.id);
+          n++;
+        }
+        persist();
+        return n;
+      },
+      async setHost(ownerId, seriesId, userId, on) {
+        assertActive(ownerId);
+        if (!ser.seriesHosts(state).some((h) => h.seriesId === seriesId && h.userId === ownerId && h.role === "owner")) throw new DataError("Only the series owner manages hosts", "forbidden");
+        if (userId === ownerId) throw new DataError("The owner is always a host", "invalid");
+        const list = ser.seriesHosts(state);
+        const i = list.findIndex((h) => h.seriesId === seriesId && h.userId === userId && h.role === "backup");
+        if (on) {
+          if (!profileOf(state, userId)) throw new DataError("No such person", "not_found");
+          if (i < 0) list.push({ seriesId, userId, role: "backup", addedAt: new Date().toISOString() });
+        } else if (i >= 0) list.splice(i, 1);
+        persist();
+      },
+      async follow(userId, seriesId, on) {
+        assertActive(userId);
+        const s = ser.seriesList(state).find((x) => x.id === seriesId);
+        if (!s || !demoCanViewSeries(s, userId)) throw new DataError("Series not found", "not_found");
+        const list = ser.seriesFollowers(state);
+        const i = list.findIndex((f) => f.seriesId === seriesId && f.userId === userId);
+        if (on && i < 0) list.push({ seriesId, userId, createdAt: new Date().toISOString() });
+        if (!on && i >= 0) list.splice(i, 1);
+        persist();
+      },
+      async setAttended(hostId, eventId, userId, attended) {
+        assertActive(hostId);
+        const ev = state.events.find((e) => e.id === eventId);
+        if (!ev || !ser.isEventHost(state, ev, hostId)) throw new DataError("You do not host this event", "forbidden");
+        if (eventEndOrStart(ev) > Date.now()) throw new DataError("Attendance is recorded after the event", "invalid");
+        if (!state.eventAttendees.some((a) => a.eventId === eventId && a.userId === userId)) throw new DataError("That person was not going", "not_found");
+        ser.attendanceMap(state)[`${eventId}:${userId}`] = attended;
+        persist();
+      },
+      async attendance(hostId, eventId) {
+        const ev = state.events.find((e) => e.id === eventId);
+        if (!ev || !canViewEvent(state, ev, hostId)) return [];
+        const map = ser.attendanceMap(state);
+        return state.eventAttendees.filter((a) => a.eventId === eventId).map((a) => ({ userId: a.userId, attended: map[`${eventId}:${a.userId}`] ?? null }));
+      },
+      async generate(now) {
+        const n = ser.generate(state, Date.parse(now), newId);
+        persist();
+        return n;
+      },
+    },
     tags: {
       async counts(opts = {}) {
         const viewerId = opts.viewerId ?? null;

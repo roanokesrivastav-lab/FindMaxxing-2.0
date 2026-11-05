@@ -104,6 +104,22 @@ const groups = [
       "host_remove_participant(uuid,uuid)",
     ],
   },
+  {
+    anon: true,
+    reason: "Roadmap 4.5a (0055): series visibility, and whether the current caller hosts an event (false without a subject); booleans for the caller only.",
+    signatures: ["can_view_series(uuid)", "viewer_hosts_event(uuid)"],
+  },
+  {
+    anon: false,
+    reason: "Roadmap 4.5a (0055): host tools re-check is_series_host/is_event_host (or owner for hosts, moderator for moderate_series) for auth.uid() on every call, so a revoked host loses access at once; follow writes only the caller's own row.",
+    signatures: [
+      "create_series(text,text,text,uuid,text,text,double precision,double precision,text,integer[],integer,time without time zone,integer,date,date,integer,integer,integer,jsonb,jsonb,text,text[])",
+      "update_occurrence(uuid,text,text,uuid,text,text,double precision,double precision,timestamp with time zone,timestamp with time zone,integer)",
+      "update_series_from(uuid,text,text,uuid,text,text,double precision,double precision,integer[],integer,time without time zone,integer,integer)",
+      "cancel_occurrence(uuid)", "end_series(uuid,date)", "set_series_host(uuid,uuid,boolean)", "follow_series(uuid,boolean)",
+      "set_attended(uuid,uuid,boolean)", "moderate_series(uuid,boolean)",
+    ],
+  },
 ];
 
 export const FUNCTION_GRANT_ALLOWLIST = groups.flatMap(({ anon, reason, signatures }) =>

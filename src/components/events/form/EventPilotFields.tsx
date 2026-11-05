@@ -8,10 +8,16 @@ import { ACTIVITY_KINDS, ACTIVITY_KIND_LABELS, DECISION_LEADS_MINUTES, NEWCOMER_
  * Pilot event form sections (roadmap M4), shown only with pilotEvents on. 4.1: the "Your first
  * time?" block. Every field is optional; the event page shows the block only when one is filled in.
  */
-export function EventPilotFields({ initial, errors }: { initial?: Event; errors: Record<string, string | undefined> }) {
+export function EventPilotFields({ initial, errors, series }: {
+  initial?: Event;
+  errors: Record<string, string | undefined>;
+  /** 4.5a: "create" offers Repeats weekly; "edit" on a series occurrence offers this vs this-and-future. */
+  series?: { mode: "create" } | { mode: "edit"; weekdays: number[]; intervalWeeks: number };
+}) {
   const n = initial?.newcomer ?? null;
   return (
     <>
+      {series ? <RepeatFields series={series} errors={errors} /> : null}
       <ActivityFields initial={initial?.activityDetails ?? null} errors={errors} />
       <SessionRuleFields initial={initial} errors={errors} />
       <NewcomerFields n={n} errors={errors} />
@@ -108,6 +114,55 @@ function ActivityFields({ initial, errors }: { initial: ActivityDetails | null; 
         <FormField label="Anything to know" htmlFor="walkNote" hint="optional" error={errors.walkNote}>
           <Input id="walkNote" name="walkNote" maxLength={160} placeholder="e.g. Stroller friendly, flat route" defaultValue={v("note")} error={errors.walkNote} />
         </FormField>
+      ) : null}
+    </fieldset>
+  );
+}
+
+const WEEKDAYS: [number, string][] = [[1, "Mon"], [2, "Tue"], [3, "Wed"], [4, "Thu"], [5, "Fri"], [6, "Sat"], [7, "Sun"]];
+
+/** 4.5a: a weekly series (create), or which occurrences an edit applies to (edit on a series). */
+function RepeatFields({ series, errors }: { series: { mode: "create" } | { mode: "edit"; weekdays: number[]; intervalWeeks: number }; errors: Record<string, string | undefined> }) {
+  const [repeats, setRepeats] = useState(false);
+  const [scope, setScope] = useState<"this" | "future">("this");
+  const showDays = series.mode === "create" ? repeats : scope === "future";
+  const days = series.mode === "edit" ? series.weekdays : [];
+  return (
+    <fieldset className="flex flex-col gap-4">
+      <legend className="type-item-title text-ink">{series.mode === "create" ? "Repeats" : "Apply changes to"}</legend>
+      {series.mode === "create" ? (
+        <label className="type-body text-ink flex items-center gap-item">
+          <input type="checkbox" name="repeats" checked={repeats} onChange={(e) => setRepeats(e.target.checked)} className="h-5 w-5 accent-ink" />
+          Repeats every week (we add the next 4 weeks; it keeps going)
+        </label>
+      ) : (
+        <div className="flex flex-col gap-item" role="radiogroup" aria-label="Apply changes to">
+          <label className="type-body text-ink flex items-center gap-item"><input type="radio" name="editScope" value="this" checked={scope === "this"} onChange={() => setScope("this")} className="h-5 w-5 accent-ink" /> This event only</label>
+          <label className="type-body text-ink flex items-center gap-item"><input type="radio" name="editScope" value="future" checked={scope === "future"} onChange={() => setScope("future")} className="h-5 w-5 accent-ink" /> This and future events in the series</label>
+        </div>
+      )}
+      {showDays ? (
+        <>
+          <div role="group" aria-label="On these days" className="flex flex-wrap gap-item">
+            {WEEKDAYS.map(([d, label]) => (
+              <label key={d} className="type-body text-ink inline-flex items-center gap-hair">
+                <input type="checkbox" name="repeatDays" value={d} defaultChecked={days.includes(d)} className="h-5 w-5 accent-ink" /> {label}
+              </label>
+            ))}
+          </div>
+          {errors.repeatDays ? <p className="type-body text-danger" role="alert">{errors.repeatDays}</p> : null}
+          <p className="type-body text-ink-2 -mt-2">{series.mode === "create" ? "Leave the days empty to repeat on the event's own weekday." : "Changing days or times moves future events that have people and replaces the empty ones."}</p>
+          <FormField label="Every" htmlFor="repeatInterval">
+            <Select id="repeatInterval" name="repeatInterval" defaultValue={String(series.mode === "edit" ? series.intervalWeeks : 1)}>
+              <option value="1">week</option><option value="2">2 weeks</option><option value="3">3 weeks</option><option value="4">4 weeks</option>
+            </Select>
+          </FormField>
+          {series.mode === "create" ? (
+            <FormField label="Until" htmlFor="repeatUntil" hint="optional" error={errors.repeatUntil}>
+              <Input id="repeatUntil" name="repeatUntil" type="date" error={errors.repeatUntil} />
+            </FormField>
+          ) : null}
+        </>
       ) : null}
     </fieldset>
   );

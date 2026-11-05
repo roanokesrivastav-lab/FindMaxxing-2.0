@@ -15,11 +15,13 @@ export const dynamic = "force-dynamic";
 export default async function EditEventPage({ params }: PageProps<"/events/[id]/edit">) {
   const [{ id }, viewer, repo, { now }] = await Promise.all([params, requireViewer("/events"), getRepository(), getViewerTime()]);
   const event = await repo.events.get(id, viewer.id);
-  if (!event || event.creatorId !== viewer.id || event.status !== "published" || eventHasEnded(event.startsAt, event.endsAt, now)) notFound();
+  // 4.5a (pilotEvents): any host of the event's series may edit it (this one, or this and future).
+  const series = featureEnabled("pilotEvents") && event?.seriesId ? await repo.series.get(event.seriesId, viewer.id) : null;
+  if (!event || !(event.creatorId === viewer.id || series?.viewerIsHost) || event.status !== "published" || eventHasEnded(event.startsAt, event.endsAt, now)) notFound();
   const linked = event.placeId ? await repo.places.get(event.placeId, viewer.id) : null;
   return (
     <FormShell title="Edit event" subtitle="Existing attendees stay joined when details change." eyebrow="Owner controls" backHref={`/events/${id}`} tone="pulse">
-      <EventForm initialPlace={linked ? toPlaceOption(linked) : null} initial={event} defaultCity={viewer.profile.homeCity ?? ""} edit pilotEvents={featureEnabled("pilotEvents")} />
+      <EventForm initialPlace={linked ? toPlaceOption(linked) : null} initial={event} defaultCity={viewer.profile.homeCity ?? ""} edit pilotEvents={featureEnabled("pilotEvents")} series={series ? { weekdays: series.rule.weekdays, intervalWeeks: series.rule.intervalWeeks } : null} />
     </FormShell>
   );
 }
