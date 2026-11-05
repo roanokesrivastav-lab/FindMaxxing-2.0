@@ -1024,9 +1024,9 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         if (ev.status !== "published" || eventEndOrStart(ev) <= Date.now()) throw new DataError("Only future published events can be cancelled", "invalid");
         ev.status = "cancelled";
         ev.updatedAt = new Date().toISOString();
+        notifyOn.eventCancelled(state, id, creatorId); // before offers end, like the SQL trigger order
         part.onEventUnpublished(state, id, Date.now());
         refundOnCancel(state, id);
-        notifyOn.eventCancelled(state, id, creatorId);
         persist();
       },
       async delete(id, creatorId) {
@@ -1153,7 +1153,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           if (Date.parse(ev.decisionDeadline) > at || eventEndOrStart(ev) <= at) continue;
           const going = state.eventAttendees.filter((a) => a.eventId === ev.id);
           if (ev.minAttendance != null && going.length < ev.minAttendance) {
-            for (const a of going) notifyDemo(state, a.userId, { type: "event_cancelled", actorId: null, subjectType: "event", subjectId: ev.id, label: ev.title, dedupeKey: `event_not_happening:${ev.id}`, detail: "Not enough people signed up" });
+            notifyOn.eventCancelled(state, ev.id, null, "event_not_happening");
             ev.status = "cancelled";
             ev.cancelReason = "below_minimum";
             ev.decision = "not_happening";
@@ -1277,6 +1277,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           if (JSON.stringify([Date.parse(o.startsAt), o.locationName, o.lat, o.lng]) !== before) notifyOn.eventChanged(state, o.id, hostId);
           n++;
         }
+        if (schedule) notifyOn.seriesFollowers(state, s.id, hostId, `series_update:${s.id}:v${s.ruleVersion}`, "The schedule changed");
         ser.generate(state, now, newId, s.id);
         persist();
         return n;
@@ -1289,9 +1290,9 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         ev.status = "cancelled";
         ev.cancelReason = "host";
         ev.updatedAt = new Date().toISOString();
+        notifyOn.eventCancelled(state, ev.id, hostId);
         part.onEventUnpublished(state, ev.id, Date.now());
         refundOnCancel(state, ev.id);
-        notifyOn.eventCancelled(state, ev.id, hostId);
         persist();
       },
       async end(hostId, seriesId, endsOn) {
@@ -1305,10 +1306,15 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           if (o.seriesId !== seriesId || o.status !== "published" || (o.seriesLocalDate ?? "") <= (s.rule.endsOn ?? "") || Date.parse(o.startsAt) <= Date.now()) continue;
           o.status = "cancelled";
           o.cancelReason = "series_ended";
+          // People going etc. hear about their date; followers hear once that the series ended (below).
+          for (const userId of new Set([...state.eventAttendees.filter((a) => a.eventId === o.id).map((a) => a.userId), ...part.participants(state).filter((p) => p.eventId === o.id && ["offered", "waitlisted", "interested"].includes(p.status)).map((p) => p.userId)])) {
+            notifyDemo(state, userId, { type: "event_cancelled", actorId: hostId, subjectType: "event", subjectId: o.id, label: o.title, dedupeKey: `event_cancelled:${o.id}` });
+          }
           part.onEventUnpublished(state, o.id, Date.now());
           refundOnCancel(state, o.id);
           n++;
         }
+        notifyOn.seriesFollowers(state, seriesId, hostId, `series_update:${seriesId}:ended`, "The series has ended");
         persist();
         return n;
       },

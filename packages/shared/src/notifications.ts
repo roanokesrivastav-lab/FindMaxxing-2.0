@@ -24,6 +24,8 @@ export const NOTIFICATION_TYPES: { type: NotificationType; label: string }[] = [
   { type: "trip_plan_ready", label: "A trip plan is ready" },
   { type: "event_offer", label: "A spot opens up for you on a waitlist" },
   { type: "event_offer_expired", label: "A spot offer runs out" },
+  { type: "event_not_happening", label: "A session is called off for too few people" },
+  { type: "series_update", label: "A series you follow changes" },
 ];
 export const ALL_NOTIFICATION_TYPES = NOTIFICATION_TYPES.map((t) => t.type);
 
@@ -78,6 +80,10 @@ export function notificationText(n: Describable): string {
       return `A spot opened up at ${label || "an event you're waiting for"}. Accept it before it runs out`;
     case "event_offer_expired":
       return `Your spot offer for ${label || "an event"} ran out`;
+    case "event_not_happening":
+      return `${label || "A session you signed up for"} isn't happening: not enough people signed up`;
+    case "series_update":
+      return `${label || "A series you follow"}: ${n.detail ? n.detail.charAt(0).toLowerCase() + n.detail.slice(1) : "something changed"}`;
   }
 }
 
@@ -96,6 +102,8 @@ export function notificationHref(n: Pick<AppNotification, "type" | "subjectType"
       return "/profile/reports";
     case "plan":
       return "/plan";
+    case "series":
+      return n.subjectId ? `/series/${n.subjectId}` : "/events";
     default:
       return "/profile";
   }
