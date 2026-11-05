@@ -79,6 +79,9 @@ export function deleteDemoAccount(handle: StoreHandle, userId: string): DeletedO
   for (const c of state.adCampaigns) if (c.reviewedBy === userId) c.reviewedBy = null;
   state.eventTags = state.eventTags.filter((t) => !ownEvents.has(t.eventId));
   state.eventAttendees = state.eventAttendees.filter((a) => a.userId !== userId && !ownEvents.has(a.eventId));
+  // 4.4: participant rows cascade like event_participants' foreign keys.
+  const loose = state as { eventParticipants?: { eventId: string; userId: string }[] };
+  if (loose.eventParticipants) loose.eventParticipants = loose.eventParticipants.filter((p) => p.userId !== userId && !ownEvents.has(p.eventId));
   for (const event of state.events) if (event.placeId && ownPlaces.has(event.placeId)) event.placeId = null;
 
   state.follows = state.follows.filter((f) => f.followerId !== userId && f.followingId !== userId);

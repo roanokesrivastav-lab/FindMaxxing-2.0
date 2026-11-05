@@ -2,6 +2,7 @@ import type { SupabaseClient, PostgrestError } from "@supabase/supabase-js";
 import type { DataRepository } from "../repository";
 import { DEFAULT_TIME_ZONE } from "@/lib/utils/timezone";
 import { featureEnabled } from "@/lib/config";
+import type { HostParticipant, JoinOutcome, ViewerParticipation } from "@findmaxxing/shared/events";
 import {
   DataError,
   MAX_INTERACTION_BATCH,
@@ -1011,11 +1012,16 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
           .sort((a, b) => a.created_at.localeCompare(b.created_at))
           .map((a) => mapSummary(a.profile))
           .filter((p): p is ProfileSummary => !!p);
+        // 4.4: the viewer's own participant row (RLS returns only their own to them).
+        const own = viewerId
+          ? (unwrap(await supabase.from("event_participants").select("status, offer_expires_at, reason").eq("event_id", id).eq("user_id", viewerId).maybeSingle()) as { status: HostParticipant["status"]; offer_expires_at: string | null; reason: string | null } | null)
+          : null;
         const detail: EventDetail = {
           ...mapEvent(row),
           attendeeCount: row.attendees.length,
           viewerJoined: viewerId ? attendees.some((a) => a.id === viewerId) : false,
           attendees,
+          viewerParticipant: own ? { status: own.status, offerExpiresAt: own.offer_expires_at, reason: own.reason } : null,
         };
         return detail;
       },
@@ -1083,12 +1089,39 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
         const deletedRows = unwrap(await supabase.from("events").delete().eq("id", id).eq("creator_id", creatorId).select("id")) as { id: string }[];
         if (!deletedRows.length) throw new DataError("You don't have permission to delete this event", "forbidden");
       },
-      async join(userId, eventId) {
-        const res = await supabase.from("event_attendees").insert({ user_id: userId, event_id: eventId });
-        if (res.error && res.error.code !== "23505") throw translate(res.error);
+      // 4.4: every join and leave goes through the atomic RPCs (0054); no direct event_attendees writes.
+      async join(_userId, eventId) {
+        return unwrap(await supabase.rpc("join_event", { p_event: eventId })) as JoinOutcome;
       },
-      async leave(userId, eventId) {
-        unwrap(await supabase.from("event_attendees").delete().eq("user_id", userId).eq("event_id", eventId));
+      async leave(_userId, eventId) {
+        unwrap(await supabase.rpc("leave_event", { p_event: eventId }));
+      },
+      async setInterest(_userId, eventId, on) {
+        return unwrap(await supabase.rpc("set_interest", { p_event: eventId, p_on: on })) as ViewerParticipation | "none";
+      },
+      async acceptOffer(_userId, eventId) {
+        return unwrap(await supabase.rpc("accept_offer", { p_event: eventId })) as "going" | "offer_expired";
+      },
+      async declineOffer(_userId, eventId) {
+        unwrap(await supabase.rpc("decline_offer", { p_event: eventId }));
+      },
+      async hostRemoveParticipant(_hostId, eventId, userId) {
+        unwrap(await supabase.rpc("host_remove_participant", { p_event: eventId, p_user: userId }));
+      },
+      async participants(hostId, eventId) {
+        // RLS: the creator sees every row of their own event; anyone else only their own (filtered out here).
+        const rows = unwrap(await supabase.from("event_participants")
+          .select(`user_id, status, queue_position, offer_expires_at, profile:profiles!event_participants_user_id_fkey(${PROFILE_SUMMARY}), event:events!event_participants_event_id_fkey(creator_id)`)
+          .eq("event_id", eventId).in("status", ["waitlisted", "offered"]).order("queue_position", { ascending: true })) as unknown as {
+            user_id: string; status: HostParticipant["status"]; queue_position: number | null; offer_expires_at: string | null; profile: ProfileSummaryRow | null; event: { creator_id: string | null } | null;
+          }[];
+        return rows.filter((r) => r.event?.creator_id === hostId).map((r) => ({
+          userId: r.user_id, displayName: r.profile?.display_name ?? "Someone", username: r.profile?.username ?? "", status: r.status,
+          queuePosition: r.queue_position === null ? null : Number(r.queue_position), offerExpiresAt: r.offer_expires_at,
+        }));
+      },
+      async expireOffers(now) {
+        return Number(unwrap(await supabase.rpc("expire_offers", { p_now: now })));
       },
       async listByCreator(userId) {
         const rows = unwrap(

@@ -89,8 +89,8 @@ describe("notifications in the database", () => {
 
   it("batches joins, saves, ratings and messages into one unread notification each", async () => {
     const ev = openEvent(createIsolatedStore().state);
-    await as(nina, "insert into public.event_attendees (event_id, user_id) values ($1, auth.uid())", [ev.id]);
-    await as(lena, "insert into public.event_attendees (event_id, user_id) values ($1, auth.uid())", [ev.id]).catch(() => {});
+    await as(nina, "select public.join_event($1)" /* 4.4: RPC, direct writes refused (D-I) */, [ev.id]);
+    await as(lena, "select public.join_event($1)" /* 4.4: RPC, direct writes refused (D-I) */, [ev.id]).catch(() => {});
     const joined = await mine(ev.creatorId!, "event_joined");
     expect(joined).toHaveLength(1);
     expect(joined[0].count).toBeGreaterThanOrEqual(1);
@@ -254,7 +254,7 @@ describe("notification parity", () => {
     const q = (id: string, sql: string, p: unknown[] = []) => queryAs(db, id, sql, p);
     const steps: [() => Promise<unknown>, () => Promise<unknown>][] = [
       [() => q(nina, "insert into public.follows (follower_id, following_id) values (auth.uid(), $1)", [theo]), () => repo.profiles.follow(nina, theo)],
-      [() => q(nina, "insert into public.event_attendees (event_id, user_id) values ($1, auth.uid())", [ev.id]), () => repo.events.join(nina, ev.id)],
+      [() => q(nina, "select public.join_event($1)" /* 4.4: RPC, direct writes refused (D-I) */, [ev.id]), () => repo.events.join(nina, ev.id)],
       [() => q(nina, "insert into public.saved_places (user_id, place_id) values (auth.uid(), $1)", [meeple]), () => repo.places.save(nina, meeple)],
       [() => q(nina, "insert into public.place_ratings (user_id, place_id, score) values (auth.uid(), $1, 5)", [meeple]), () => repo.places.rate(nina, meeple, 5, null)],
       [() => q(theo, "insert into public.notification_settings (user_id, push_types, quiet_start, quiet_end) values (auth.uid(), array['new_message'], 1, 2)"),

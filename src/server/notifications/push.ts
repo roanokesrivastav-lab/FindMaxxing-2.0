@@ -91,6 +91,8 @@ export function pushPayload(c: PushClaim): string {
 export interface PushRunResult {
   /** 4.3 (pilotEvents): sessions called off at their decision deadline. */
   notHappening?: number;
+  /** 4.4: waitlist offers that ran out (declined and passed on). */
+  offersExpired?: number;
   reminders: number;
   claimed: number;
   sent: number;
@@ -108,8 +110,11 @@ export async function runNotificationJobs(repo: DataRepository, sender: PushSend
   // 4.3 (pilotEvents): decide sessions at their deadline first, so the "not happening" notices go out
   // in this run's pushes.
   const notHappening = featureEnabled("pilotEvents") && typeof repo.events?.decideSessions === "function" ? await repo.events.decideSessions(now) : undefined;
+  // 4.4: expired offers are declined and the seat is offered on (the expiry itself already stopped
+  // holding at offer_expires_at; this tidies status and notifies). Runs whatever the flag: waitlists are data.
+  const offersExpired = typeof repo.events?.expireOffers === "function" ? await repo.events.expireOffers(now) : undefined;
   const reminders = await repo.notifications.scheduleReminders(now);
-  const result: PushRunResult = { ...(notHappening !== undefined ? { notHappening } : {}), reminders, claimed: 0, sent: 0, failed: 0, dropped: 0 };
+  const result: PushRunResult = { ...(notHappening !== undefined ? { notHappening } : {}), ...(offersExpired !== undefined ? { offersExpired } : {}), reminders, claimed: 0, sent: 0, failed: 0, dropped: 0 };
   if (!sender) return result;
   const kinds = sender.supportedKinds ?? ["web", "expo"];
   if (!kinds.length) return result;

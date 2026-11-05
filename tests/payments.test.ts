@@ -107,8 +107,9 @@ describe("payments in the database", () => {
     expect(await going()).toEqual([dev, t[0].user_id].sort());
     expect(await status(t[1].id)).toBe("refund_pending");
     // The ticket holder could leave and come back: the ticket lets them in.
-    await as(t[0].user_id, "delete from public.event_attendees where event_id = $1 and user_id = auth.uid()", [ev]);
-    await as(t[0].user_id, "insert into public.event_attendees (event_id, user_id) values ($1, auth.uid())", [ev]);
+    // 4.4 (D-I): through the RPCs now; join_event admits a paid ticket holder exactly like the trigger did.
+    await as(t[0].user_id, "select public.leave_event($1)", [ev]);
+    expect(await as(t[0].user_id, "select public.join_event($1) as r", [ev])).toEqual([{ r: "going" }]);
   });
 
   it("refunds every ticket when the host cancels, and frees the places when Stripe confirms", async () => {

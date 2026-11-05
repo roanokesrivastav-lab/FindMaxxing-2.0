@@ -32,6 +32,7 @@ import { LEVEL_RANK, refreshDemoReputation } from "./reputation";
 import { demoTaste, recommendDemoEvents, recommendDemoPlaces } from "./recommend";
 import { createDemoMessaging, dropEventChats, joinEventChat, leaveEventChat } from "./messaging";
 import { createDemoNotifications, notifyDemo, notifyOn } from "./notifications";
+import * as part from "./participation";
 import { createDemoAds } from "./ads";
 import { fitScores } from "@/lib/ranking/bradleyTerry";
 import { nextOpponent } from "@/lib/ranking/nextComparison";
@@ -173,7 +174,8 @@ export function demoReadiness(state: DemoState, row: EventRow) {
   const now = Date.now();
   return computeReadiness({
     going: state.eventAttendees.filter((a) => a.eventId === row.id).length,
-    held: state.tickets.filter((t) => t.eventId === row.id && t.status === "pending" && Date.parse(t.expiresAt) > now).length,
+    held: part.seatsHeld(state, row.id, now),
+    waitlist: part.waitlistCount(state, row.id),
     capacity: row.capacity,
     minAttendance: row.minAttendance ?? null,
     decisionDeadline: row.decisionDeadline ?? null,
@@ -422,6 +424,29 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
   const assertActive = (userId: string) => {
     if (state.suspensions.some((x) => x.userId === userId)) throw new DataError(SUSPENDED_MESSAGE, "forbidden");
   };
+  // 4.4: the going row and its side effects, shared by every path that adds or removes one.
+  const dropParticipant = (eventId: string, userId: string) => {
+    const list = part.participants(state);
+    const i = list.findIndex((p) => p.eventId === eventId && p.userId === userId);
+    if (i >= 0) list.splice(i, 1);
+  };
+  const addAttendee = (ev: EventRow, userId: string) => {
+    dropParticipant(ev.id, userId);
+    state.eventAttendees.push({ eventId: ev.id, userId, createdAt: new Date().toISOString() });
+    joinEventChat(state, ev.id, userId);
+    notifyOn.join(state, ev.id, userId);
+    recordOwnInteraction(state, userId, { itemType: "event", itemId: ev.id, action: "join" });
+  };
+  const removeAttendee = (eventId: string, userId: string): boolean => {
+    const idx = state.eventAttendees.findIndex((a) => a.eventId === eventId && a.userId === userId);
+    if (idx < 0) return false;
+    state.eventAttendees.splice(idx, 1);
+    leaveEventChat(state, eventId, userId);
+    recordOwnInteraction(state, userId, { itemType: "event", itemId: eventId, action: "leave" });
+    return true;
+  };
+  const viewerCan = (ev: EventRow | undefined) => (userId: string) => !!ev && canViewEvent(state, ev, userId);
+  const joinHooks = (ev: EventRow): part.JoinHooks => ({ canView: viewerCan(ev), addAttendee: (userId) => addAttendee(ev, userId) });
   const requireAdmin = (adminId: string, reason: string) => {
     if (!isAdmin(adminId)) throw new DataError("Admins only", "forbidden");
     const why = normalizeReason(reason);
@@ -892,6 +917,10 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           ...toEvent(state, row),
           viewerJoined: viewerId ? state.eventAttendees.some((a) => a.eventId === id && a.userId === viewerId) : false,
           attendees,
+          viewerParticipant: (() => {
+            const own = viewerId ? part.participantOf(state, id, viewerId) : undefined;
+            return own ? { status: own.status, offerExpiresAt: own.offerExpiresAt, reason: own.reason } : null;
+          })(),
         };
         return detail;
       },
@@ -942,6 +971,10 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         if (input.capacity !== null && input.capacity !== undefined && input.capacity < attendeeCount) {
           throw new DataError("capacity cannot be below the existing attendee count", "invalid");
         }
+        if (input.capacity !== null && input.capacity !== undefined && input.capacity < attendeeCount + part.liveOffers(state, id, Date.now())) {
+          throw new DataError("Capacity cannot be below the people going plus open offers", "invalid");
+        }
+        const oldCapacity = ev.capacity;
         // Validate the pilot fields against the new start and capacity before changing anything.
         applyEventPilotFields({ ...ev, startsAt: input.startsAt, capacity: input.capacity ?? null }, input);
         // Mirrors the trigger's "when or where changed" test (instants, not their spelling).
@@ -962,6 +995,8 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           updatedAt: new Date().toISOString(),
         });
         applyEventPilotFields(ev, input);
+        // A capacity increase passes seats to the waitlist (mirrors the events trigger).
+        if (oldCapacity !== null && (ev.capacity === null || ev.capacity > oldCapacity)) part.offerNext(state, ev, Date.now(), viewerCan(ev));
         state.eventTags = state.eventTags.filter((t) => t.eventId !== id);
         for (const tag of input.tags) state.eventTags.push({ eventId: id, interestSlug: tag });
         if (where(ev) !== before) notifyOn.eventChanged(state, id, creatorId);
@@ -976,6 +1011,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         if (ev.status !== "published" || eventEndOrStart(ev) <= Date.now()) throw new DataError("Only future published events can be cancelled", "invalid");
         ev.status = "cancelled";
         ev.updatedAt = new Date().toISOString();
+        part.onEventUnpublished(state, id, Date.now());
         refundOnCancel(state, id);
         notifyOn.eventCancelled(state, id, creatorId);
         persist();
@@ -990,6 +1026,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         state.events = state.events.filter((e) => e.id !== id);
         state.eventTags = state.eventTags.filter((t) => t.eventId !== id);
         state.eventAttendees = state.eventAttendees.filter((a) => a.eventId !== id);
+        for (const p of part.participants(state).filter((x) => x.eventId === id)) dropParticipant(id, p.userId);
         dropEventChats(state, new Set([id]));
         forgetItemInteractions(state, "event", new Set([id]));
         for (const t of state.tickets) if (t.eventId === id) t.eventId = null;
@@ -1001,25 +1038,72 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         const ev = state.events.find((e) => e.id === eventId);
         if (!ev || !canViewEvent(state, ev, userId) || ev.status !== "published") throw new DataError("Event not found", "not_found");
         if (eventEndOrStart(ev) < Date.now()) throw new DataError("This event has already ended", "invalid");
-        if (needsTicket(state, ev, userId) && !state.eventAttendees.some((a) => a.eventId === eventId && a.userId === userId)) throw paymentsError("ticket_required");
-        if (state.eventAttendees.some((a) => a.eventId === eventId && a.userId === userId)) return;
-        const count = state.eventAttendees.filter((a) => a.eventId === eventId).length;
-        if (ev.capacity !== null && count >= ev.capacity) throw new DataError("This event is full", "full");
-        state.eventAttendees.push({ eventId, userId, createdAt: new Date().toISOString() });
-        joinEventChat(state, eventId, userId);
-        notifyOn.join(state, eventId, userId);
-        recordOwnInteraction(state, userId, { itemType: "event", itemId: eventId, action: "join" });
+        if (state.eventAttendees.some((a) => a.eventId === eventId && a.userId === userId)) return "going";
+        // Paid events keep today's rule (a paid ticket admits; no waitlist, D-L).
+        if (ev.priceCents != null && ev.creatorId !== userId) {
+          if (needsTicket(state, ev, userId)) throw paymentsError("ticket_required");
+          if (ev.capacity !== null && part.seatsTaken(state, eventId, Date.now()) >= ev.capacity) throw new DataError("This event is full", "full");
+          addAttendee(ev, userId);
+          persist();
+          return "going";
+        }
+        const outcome = part.joinEvent(state, ev, userId, Date.now(), joinHooks(ev));
         persist();
+        return outcome;
       },
       async leave(userId, eventId) {
         assertActive(userId);
-        const idx = state.eventAttendees.findIndex((a) => a.eventId === eventId && a.userId === userId);
-        if (idx >= 0) {
-          state.eventAttendees.splice(idx, 1);
-          leaveEventChat(state, eventId, userId);
-          recordOwnInteraction(state, userId, { itemType: "event", itemId: eventId, action: "leave" });
-          persist();
-        }
+        const ev = state.events.find((e) => e.id === eventId);
+        part.leaveEvent(state, ev, userId, Date.now(), () => removeAttendee(eventId, userId), viewerCan(ev));
+        persist();
+      },
+      async setInterest(userId, eventId, on) {
+        assertActive(userId);
+        const ev = state.events.find((e) => e.id === eventId);
+        if (!ev || !canViewEvent(state, ev, userId)) throw new DataError("Event not found", "not_found");
+        const r = part.setInterest(state, ev, userId, on, Date.now());
+        persist();
+        return r;
+      },
+      async acceptOffer(userId, eventId) {
+        assertActive(userId);
+        const ev = state.events.find((e) => e.id === eventId);
+        if (!ev) throw new DataError("Event not found", "not_found");
+        const r = part.acceptOffer(state, ev, userId, Date.now(), joinHooks(ev));
+        persist();
+        return r;
+      },
+      async declineOffer(userId, eventId) {
+        assertActive(userId);
+        const ev = state.events.find((e) => e.id === eventId);
+        if (!ev) return;
+        part.declineOffer(state, ev, userId, Date.now(), viewerCan(ev));
+        persist();
+      },
+      async hostRemoveParticipant(hostId, eventId, userId) {
+        assertActive(hostId);
+        const ev = state.events.find((e) => e.id === eventId);
+        if (!ev || ev.creatorId !== hostId) throw new DataError("You do not host this event", "forbidden");
+        if (userId === ev.creatorId) throw new DataError("The host cannot remove themselves", "invalid");
+        if (removeAttendee(eventId, userId)) part.offerNext(state, ev, Date.now(), viewerCan(ev));
+        else part.hostRemoveWaiting(state, ev, userId, Date.now(), viewerCan(ev));
+        persist();
+      },
+      async participants(hostId, eventId) {
+        const ev = state.events.find((e) => e.id === eventId);
+        if (!ev || ev.creatorId !== hostId) return [];
+        return part.participants(state)
+          .filter((p) => p.eventId === eventId && (p.status === "waitlisted" || p.status === "offered"))
+          .sort((a, b) => (a.queuePosition ?? 0) - (b.queuePosition ?? 0))
+          .map((p) => {
+            const prof = profileOf(state, p.userId);
+            return { userId: p.userId, displayName: prof?.displayName ?? "Someone", username: prof?.username ?? "", status: p.status, queuePosition: p.queuePosition, offerExpiresAt: p.offerExpiresAt };
+          });
+      },
+      async expireOffers(now) {
+        const n = part.expireOffers(state, Date.parse(now), (id) => state.events.find((e) => e.id === id), (ev) => viewerCan(ev));
+        persist();
+        return n;
       },
       async listByCreator(userId, viewerId = null) {
         return state.events
@@ -1061,6 +1145,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
             ev.cancelReason = "below_minimum";
             ev.decision = "not_happening";
             ev.updatedAt = new Date(at).toISOString();
+            part.onEventUnpublished(state, ev.id, at);
             refundOnCancel(state, ev.id);
             cancelled++;
           } else ev.decision = "happening";

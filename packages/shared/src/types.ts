@@ -1,4 +1,4 @@
-import type { ActivityDetails, CardStyle, CancelReason, EventNewcomer, EventReadiness, SessionDecision, VenueStatus } from "./events";
+import type { ActivityDetails, CardStyle, CancelReason, ParticipantStatus, EventNewcomer, EventReadiness, SessionDecision, VenueStatus } from "./events";
 /**
  * Domain types shared by the UI, server actions and both repository
  * implementations (Supabase + demo). All dates are ISO-8601 strings.
@@ -166,6 +166,8 @@ export interface Event {
 export interface EventDetail extends Event {
   viewerJoined: boolean;
   attendees: ProfileSummary[];
+  /** 4.4: the viewer's non-going status (own event_participants row), when any. */
+  viewerParticipant?: { status: ParticipantStatus; offerExpiresAt: string | null; reason: string | null } | null;
 }
 
 export type ReportTargetType = "place" | "event" | "profile" | "message";
@@ -737,7 +739,10 @@ export type NotificationType =
   | "place_rated"
   | "report_resolved"
   | "content_moderated"
-  | "trip_plan_ready";
+  | "trip_plan_ready"
+  // 4.4: waitlist offers.
+  | "event_offer"
+  | "event_offer_expired";
 
 export interface AppNotification {
   id: string;

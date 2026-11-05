@@ -72,11 +72,14 @@ export async function event(id: string): Promise<(Event & { going: boolean }) | 
   return { ...toEvent(row), going };
 }
 
-export async function join(eventId: string, userId: string) {
-  check(await requireSupabase().from("event_attendees").insert({ event_id: eventId, user_id: userId }));
+// Roadmap 4.4 (0054, D-I): direct event_attendees writes are closed; join and leave go through the
+// atomic RPCs (the caller is auth.uid(), so userId is unused). A full free event returns "waitlisted";
+// the waitlist/offer UI is ticket 8.1b.
+export async function join(eventId: string, _userId: string): Promise<"going" | "waitlisted"> {
+  return check(await requireSupabase().rpc("join_event", { p_event: eventId })) as "going" | "waitlisted";
 }
-export async function leave(eventId: string, userId: string) {
-  check(await requireSupabase().from("event_attendees").delete().eq("event_id", eventId).eq("user_id", userId));
+export async function leave(eventId: string, _userId: string) {
+  check(await requireSupabase().rpc("leave_event", { p_event: eventId }));
 }
 
 export async function lists(): Promise<SavedList[]> {
