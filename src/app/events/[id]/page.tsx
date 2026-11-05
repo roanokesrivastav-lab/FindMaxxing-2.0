@@ -26,6 +26,7 @@ import { DEFAULT_TIME_ZONE } from "@/lib/utils/timezone";
 import { getViewerTime } from "@/lib/time/server";
 import { InterestIcon } from "@/components/ui/TaxonomyIcon";
 import { EditorialEvent } from "@/components/events/detail/EditorialEvent";
+import { describeActivity } from "@findmaxxing/shared/events";
 
 export const dynamic = "force-dynamic";
 
@@ -73,7 +74,8 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
         {viewer && featureEnabled("recommendations") ? <TrackView kind="event" id={event.id} /> : null}
         <EditorialEvent
           event={event}
-          time={time}
+          // 4.2: show the event in its own zone (labelled), not the viewer's.
+          time={{ timeZone: event.timeZone ?? time.timeZone, now: time.now }}
           ended={ended}
           cancelled={cancelled}
           full={full}
@@ -82,6 +84,11 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
           price={price}
           photo={lead ? { src: lead.url, alt: `${place!.name}` } : null}
           chatId={chatId}
+          requirements={describeActivity(event.activityDetails).length ? (
+            <ul className="flex flex-col gap-hair">
+              {describeActivity(event.activityDetails).map((line) => <li key={line} className="type-body text-ink-2">{line}</li>)}
+            </ul>
+          ) : null}
           notices={
             <>
               {sp.ticket === "success" ? <p role="status" className="surface-inset rounded-xl p-row mt-row type-body font-semibold">Payment received. Your ticket is confirmed{payments === "stripe" ? " as soon as Stripe tells us" : ""}.</p> : null}

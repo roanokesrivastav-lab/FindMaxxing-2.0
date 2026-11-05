@@ -1,5 +1,6 @@
 import type { DataRepository } from "../repository";
-import type { EventNewcomer } from "@findmaxxing/shared/events";
+import { activityDetailsSchema, type EventNewcomer } from "@findmaxxing/shared/events";
+import { DEFAULT_TIME_ZONE, normalizeTimeZone } from "@/lib/utils/timezone";
 import {
   DataError,
   MAX_PLACE_PHOTOS,
@@ -128,6 +129,15 @@ function applyEventPilotFields(row: EventRow, input: NewEventInput): void {
     if (!validNewcomer(input.newcomer)) throw new DataError("Invalid newcomer details", "invalid");
     row.newcomer = input.newcomer;
   }
+  if (input.activityDetails !== undefined) {
+    // Mirrors public.valid_activity_details(): the shared schema is the stricter of the two.
+    if (input.activityDetails !== null && !activityDetailsSchema.safeParse(input.activityDetails).success) throw new DataError("Invalid activity details", "invalid");
+    row.activityDetails = input.activityDetails;
+  }
+  if (input.timeZone !== undefined) {
+    if (!normalizeTimeZone(input.timeZone)) throw new DataError("Unknown time zone", "invalid");
+    row.timeZone = input.timeZone;
+  }
 }
 
 /** Mirrors public.valid_event_newcomer(). */
@@ -166,6 +176,8 @@ function toEvent(state: DemoState, row: EventRow): Event {
     createdAt: row.createdAt,
     priceCents: row.priceCents ?? null,
     newcomer: row.newcomer ?? null,
+    activityDetails: row.activityDetails ?? null,
+    timeZone: row.timeZone ?? DEFAULT_TIME_ZONE,
   };
 }
 

@@ -30,7 +30,9 @@ export function EventForm({ initialPlace, initial, defaultCity = "", edit = fals
     const startTime = String(formData.get("startTime") ?? "");
     const at = /^\d{4}-\d{2}-\d{2}$/.test(date) && /^\d{2}:\d{2}$/.test(startTime) ? zonedTimeToUtc(date, startTime, timeZone) : Date.now();
     formData.set("tzOffsetMinutes", String(zoneOffsetMinutes(at, timeZone)));
-  }, [timeZone]);
+    // 4.2: the event keeps the zone it was planned in (read by the action only with pilotEvents on).
+    if (pilotEvents) formData.set("timeZone", timeZone);
+  }, [timeZone, pilotEvents]);
   const { formRef, onSubmit } = useFormSubmit(action, state, { onBeforeSubmit: stampTimezone });
   const [linked, setLinked] = useState<PlaceOption | null>(initialPlace ?? null);
   const placeId = linked?.id ?? "";
