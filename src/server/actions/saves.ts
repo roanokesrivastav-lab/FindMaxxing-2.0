@@ -6,7 +6,8 @@ import { getViewer } from "@/lib/auth/server";
 import { featureEnabled } from "@/lib/config";
 import { uuidSchema } from "@/lib/validation/schemas";
 import type { SaveDetails, SaveDetailsInput } from "@/lib/places/saves";
-import { bulkSummary, type BulkOp, type SaveSnapshot } from "@/lib/places/library";
+import { bulkSummary, libraryHref, parseLibraryFilters, type BulkOp, type SaveSnapshot } from "@/lib/places/library";
+import { pickOne } from "@/lib/places/pick";
 import { fail, succeed, toFailure, type ActionResult } from "./result";
 
 /** Roadmap 3.1: edit why you saved a place (pilotLibrary). Owner-only by construction: the viewer's own save. */
@@ -60,3 +61,34 @@ export async function undoBulkSavesAction(snapshots: SaveSnapshot[]): Promise<Ac
     return toFailure(err);
   }
 }
+
+/** Roadmap 3.6: one place from the viewer's own saves matching the filters. No user parameter: owner only. */
+export async function pickFromSavesAction(filters: { q?: string; tag?: string | null; status?: string | null; category?: string | null }, shown: string[] = []): Promise<ActionResult<PickView>> {
+  if (!featureEnabled("pilotLibrary")) return fail("Not available", undefined, "forbidden");
+  const viewer = await getViewer();
+  if (!viewer) return fail("Sign in first", undefined, "unauthenticated");
+  const safeShown = Array.isArray(shown) ? shown.filter((id) => uuidSchema.safeParse(id).success).slice(-500) : [];
+  try {
+    const repo = await getRepository();
+    const f = parseLibraryFilters({ q: filters?.q ?? "", tag: filters?.tag ?? "", status: filters?.status ?? "", category: filters?.category ?? "" });
+    const result = pickOne(await repo.saves.library(viewer.id), f, safeShown);
+    if (result.kind === "picked") {
+      const { place } = result.item;
+      return succeed({
+        kind: "picked",
+        matches: result.matches,
+        round: result.round,
+        place: { id: place.id, name: place.name, categorySlug: place.categorySlug, neighborhood: place.neighborhood, lat: place.lat, lng: place.lng, photoUrl: place.photos[0]?.url ?? null },
+      });
+    }
+    if (result.kind === "none") return succeed({ kind: "none", widening: result.widening ? { label: result.widening.label, count: result.widening.count, href: libraryHref(result.widening.filters) } : null });
+    return succeed({ kind: "empty" });
+  } catch (err) {
+    return toFailure(err);
+  }
+}
+
+export type PickView =
+  | { kind: "picked"; matches: number; round: string[]; place: { id: string; name: string; categorySlug: string; neighborhood: string | null; lat: number; lng: number; photoUrl: string | null } }
+  | { kind: "none"; widening: { label: string; count: number; href: string } | null }
+  | { kind: "empty" };
