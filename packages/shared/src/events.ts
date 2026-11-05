@@ -172,3 +172,42 @@ export function describeActivity(d: ActivityDetails | null | undefined): string[
   }
   return lines;
 }
+
+// ---------------------------------------------------------------------------
+// 4.3 Minimum attendance and the Readiness row (4.0 spec §5)
+// ---------------------------------------------------------------------------
+export type VenueStatus = "confirmed" | "unconfirmed";
+export type SessionDecision = "open" | "happening" | "not_happening";
+export type CancelReason = "host" | "below_minimum" | "series_ended";
+
+/** public.event_readiness(): each number from its own field. Null fields mean "not set", never zero. */
+export interface EventReadiness {
+  going: number;
+  capacity: number | null;
+  /** Seats held without being going (live paid holds; 4.4 adds live offers). */
+  held: number;
+  spotsOpen: number | null;
+  minAttendance: number | null;
+  moreNeeded: number | null;
+  decisionDeadline: string | null;
+  decision: SessionDecision;
+  venueStatus: VenueStatus;
+  /** Count only, never names (D-K). */
+  waitlist: number;
+}
+
+/** Decision lead options in the form: how long before the start the host decides. */
+export const DECISION_LEADS_MINUTES = [60, 120, 240, 720, 1440, 2880] as const;
+
+export const sessionRulesSchema = z
+  .object({
+    minAttendance: z.coerce.number().int("Whole number").min(2, "At least 2").max(5000).optional().nullable(),
+    decisionLeadMinutes: z.coerce.number().int().refine((v) => (DECISION_LEADS_MINUTES as readonly number[]).includes(v), "Pick a time").optional().nullable(),
+    venueStatus: z.enum(["confirmed", "unconfirmed"]).optional().default("confirmed"),
+  })
+  .strict();
+
+// ---------------------------------------------------------------------------
+// 4.8 Party poster (host toggle; default is the Readiness row)
+// ---------------------------------------------------------------------------
+export type CardStyle = "readiness" | "party_poster";

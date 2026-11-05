@@ -85,6 +85,11 @@ export interface SeedEvent {
   /** Roadmap M4 pilot fields (4.1 newcomer, 4.2 activity details), written to SQL seed and demo alike. */
   newcomer?: EventNewcomer;
   activityDetails?: ActivityDetails;
+  /** 4.3: minimum attendance and how long before the start the host decides. */
+  minAttendance?: number;
+  decisionLeadMinutes?: number;
+  /** 4.8: the host turned on the Party poster. */
+  cardStyle?: "party_poster";
 }
 
 export interface SeedRating {
@@ -424,6 +429,7 @@ export const SEED_EVENTS: SeedEvent[] = [
     place: "Fourth Street Basement", locationName: "Fourth Street Basement", address: "45 E 4th Ave", lat: 39.9787, lng: -82.9972,
     startsInDays: 7, startHour: 21, startMinute: 0, durationMinutes: 180, creator: "dev", capacity: 80,
     tags: ["music", "nightlife"], attendees: ["dev", "jules", "lena"],
+    cardStyle: "party_poster",
   },
   {
     id: e("3v3 basketball run"), title: "3v3 basketball run", categorySlug: "pickup-sports",
@@ -432,6 +438,7 @@ export const SEED_EVENTS: SeedEvent[] = [
     startsInDays: 1, startHour: 18, startMinute: 0, durationMinutes: 120, creator: "marcus", capacity: 12,
     tags: ["pickup-sports", "sports"], attendees: ["marcus", "theo", "maya_r"],
     activityDetails: { kind: "basketball", format: "Half-court 3s, games to 15", playerLimit: 12 },
+    minAttendance: 6, decisionLeadMinutes: 120,
   },
   {
     id: e("Thursday run club"), title: "Thursday run club", categorySlug: "fitness",
@@ -470,6 +477,7 @@ export const SEED_EVENTS: SeedEvent[] = [
     startsInDays: 4, startHour: 18, startMinute: 30, durationMinutes: 90, creator: "hana_host", capacity: 10,
     tags: ["pickup-sports", "sports"], attendees: ["hana_host", "pat_participant"],
     activityDetails: { kind: "basketball", format: "Half-court 4v4", playerLimit: 10, beginnersWelcome: true },
+    minAttendance: 8, decisionLeadMinutes: 240,
     newcomer: { meetingSpot: "Bench by the north court", welcomer: "Hana, the host", bring: "Water", soloWelcome: true },
   },
   {

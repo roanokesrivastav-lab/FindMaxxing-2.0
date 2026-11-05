@@ -86,6 +86,16 @@ const groups = [
     reason: "Registration binds token to auth.uid(), caps devices and validates endpoint/token; delivery and device dropping remain service-only. Token transfer is existing account-switch behavior.",
     signatures: ["save_expo_push_token(text)", "save_push_subscription(text,text,text)"],
   },
+  {
+    anon: true,
+    reason: "Roadmap 4.3 (0052): Readiness counts for an event the caller can already see (can_view_event), null otherwise. Counts only, never names.",
+    signatures: ["event_readiness(uuid)", "event_readiness(events)"],
+  },
+  {
+    anon: false,
+    reason: "Roadmap 4.3 (0052): the caller confirms only an event they created (creator_id = auth.uid(), under the event row lock), before its deadline.",
+    signatures: ["confirm_session(uuid)"],
+  },
 ];
 
 export const FUNCTION_GRANT_ALLOWLIST = groups.flatMap(({ anon, reason, signatures }) =>

@@ -6,14 +6,19 @@ import { redirect } from "next/navigation";
 import { getRepository } from "@/lib/data";
 import { getViewer } from "@/lib/auth/server";
 import { featureEnabled, paymentsMode } from "@/lib/config";
-import { parseEventPilotFields, type EventPilotFields } from "@/lib/events/form";
+import { parseEventPilotFields, pilotInput, type EventPilotFields } from "@/lib/events/form";
 import { combineDateTime, eventSchema, fieldErrors, uuidSchema } from "@/lib/validation/schemas";
 import { fail, str, strList, succeed, toFailure, type ActionResult } from "./result";
 
 /** Pilot event fields (roadmap M4): read only with pilotEvents on; off, nothing extra is written. */
 function pilotFields(formData: FormData): { ok: true; data: EventPilotFields } | { ok: false; errors: Record<string, string> } {
   if (!featureEnabled("pilotEvents")) return { ok: true, data: {} };
-  return parseEventPilotFields((key) => str(formData, key));
+  const parsed = parseEventPilotFields((key) => str(formData, key));
+  const capacity = Number(str(formData, "capacity")) || null;
+  if (parsed.ok && parsed.data.minAttendance && capacity && parsed.data.minAttendance > capacity) {
+    return { ok: false, errors: { minAttendance: "The minimum can't be more than the capacity" } };
+  }
+  return parsed;
 }
 
 export async function createEventAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
@@ -58,7 +63,7 @@ export async function createEventAction(_prev: ActionResult | null, formData: Fo
         categorySlug: v.categorySlug,
         capacity: v.capacity,
         tags: v.tags,
-        ...pilot.data,
+        ...pilotInput(pilot.data, startsAt),
       },
       viewer.id,
     );
@@ -89,7 +94,7 @@ export async function updateEventAction(_prev: ActionResult | null, formData: Fo
   const { startsAt, endsAt } = combineDateTime(v.date, v.startTime, v.endTime, v.tzOffsetMinutes);
   try {
     const repo = await getRepository();
-    const event = await repo.events.update(id.data, { title: v.title, description: v.description, placeId: v.placeId, locationName: v.locationName, address: v.address, lat: v.lat, lng: v.lng, startsAt: startsAt.toISOString(), endsAt: endsAt?.toISOString() ?? null, categorySlug: v.categorySlug, capacity: v.capacity, tags: v.tags, ...pilot.data }, viewer.id);
+    const event = await repo.events.update(id.data, { title: v.title, description: v.description, placeId: v.placeId, locationName: v.locationName, address: v.address, lat: v.lat, lng: v.lng, startsAt: startsAt.toISOString(), endsAt: endsAt?.toISOString() ?? null, categorySlug: v.categorySlug, capacity: v.capacity, tags: v.tags, ...pilotInput(pilot.data, startsAt) }, viewer.id);
     revalidatePath(`/events/${id.data}`); revalidatePath(`/events/${id.data}/edit`); revalidatePath("/"); revalidatePath("/events"); revalidatePath("/profile");
     redirect(`/events/${event.id}`);
   } catch (err) { return toFailure(err); }
@@ -141,4 +146,19 @@ export async function toggleAttendanceAction(eventId: string, join: boolean): Pr
   } catch (err) {
     return toFailure(err);
   }
+}
+
+/** 4.3 (pilotEvents): the host confirms the session is happening before its deadline. */
+export async function confirmSessionAction(eventId: string): Promise<ActionResult> {
+  const viewer = await getViewer();
+  if (!viewer) return fail("Sign in first", undefined, "unauthenticated");
+  if (!featureEnabled("pilotEvents")) return fail("Not available", undefined, "not_found");
+  const id = uuidSchema.safeParse(eventId);
+  if (!id.success) return fail("Invalid event");
+  try {
+    const repo = await getRepository();
+    await repo.events.confirmSession(viewer.id, id.data);
+    revalidatePath(`/events/${id.data}`); revalidatePath("/events");
+    return succeed(undefined);
+  } catch (err) { return toFailure(err); }
 }

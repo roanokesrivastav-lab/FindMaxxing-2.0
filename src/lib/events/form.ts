@@ -3,13 +3,18 @@
  * actions behave exactly as before. Returns the fields to pass to repo.events.create/update, or field
  * errors keyed by input name.
  */
-import { activityDetailsSchema, eventNewcomerSchema, type ActivityDetails, type EventNewcomer } from "@findmaxxing/shared/events";
+import { activityDetailsSchema, eventNewcomerSchema, sessionRulesSchema, type ActivityDetails, type EventNewcomer, type VenueStatus } from "@findmaxxing/shared/events";
 import { normalizeTimeZone } from "@/lib/utils/timezone";
 
 export interface EventPilotFields {
   newcomer?: EventNewcomer | null;
   activityDetails?: ActivityDetails | null;
   timeZone?: string;
+  minAttendance?: number | null;
+  /** Minutes before the start; the action turns it into decisionDeadline. null = no deadline. */
+  decisionLeadMinutes?: number | null;
+  venueStatus?: VenueStatus;
+  cardStyle?: "readiness" | "party_poster";
 }
 
 /** Form input names for each activity-detail field (prefix + field). */
@@ -51,10 +56,33 @@ export function parseEventPilotFields(read: Read): { ok: true; data: EventPilotF
     else for (const issue of parsed.error.issues) errors[ACTIVITY_INPUTS[kind][String(issue.path[0])] ?? "activityKind"] = issue.message;
   }
 
+  const rules = sessionRulesSchema.safeParse({
+    minAttendance: read("minAttendance").trim() || null,
+    decisionLeadMinutes: read("decisionLead").trim() || null,
+    venueStatus: read("venueUnconfirmed") === "on" ? "unconfirmed" : "confirmed",
+  });
+  if (rules.success) {
+    data.minAttendance = rules.data.minAttendance ?? null;
+    data.decisionLeadMinutes = rules.data.decisionLeadMinutes ?? null;
+    data.venueStatus = rules.data.venueStatus;
+  } else for (const issue of rules.error.issues) errors[issue.path[0] === "decisionLeadMinutes" ? "decisionLead" : String(issue.path[0])] = issue.message;
+  if (data.decisionLeadMinutes && !data.minAttendance) errors.decisionLead = "Set a minimum first: the deadline decides whether enough people signed up";
+
+  data.cardStyle = read("partyPoster") === "on" ? "party_poster" : "readiness";
+
   const zone = read("timeZone");
   if (zone) {
     if (normalizeTimeZone(zone)) data.timeZone = zone;
     else errors.timeZone = "Unknown time zone";
   }
   return Object.keys(errors).length ? { ok: false, errors } : { ok: true, data };
+}
+
+/** The repository input for the parsed fields, given the event's start (4.3 deadline = start − lead). */
+export function pilotInput(data: EventPilotFields, startsAt: Date) {
+  const { decisionLeadMinutes, ...rest } = data;
+  return {
+    ...rest,
+    ...(decisionLeadMinutes !== undefined ? { decisionDeadline: decisionLeadMinutes ? new Date(startsAt.getTime() - decisionLeadMinutes * 60_000).toISOString() : null } : {}),
+  };
 }
