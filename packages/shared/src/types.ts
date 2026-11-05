@@ -750,7 +750,9 @@ export type NotificationType =
   | "event_offer_expired"
   // 4.6: material changes.
   | "event_not_happening"
-  | "series_update";
+  | "series_update"
+  // R2: opt-in need-players alerts.
+  | "need_players";
 
 export interface AppNotification {
   id: string;

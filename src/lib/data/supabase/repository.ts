@@ -1166,6 +1166,17 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
           .sort((a, b) => a.starts_at.localeCompare(b.starts_at))
           .map(mapEvent);
       },
+      async needPlayerAlerts(userId) {
+        const r = unwrap(await supabase.from("need_player_alerts").select("enabled, categories, cell_lat, cell_lng, radius_km").eq("user_id", userId).maybeSingle()) as
+          { enabled: boolean; categories: string[]; cell_lat: number; cell_lng: number; radius_km: number } | null;
+        return r ? { enabled: r.enabled, categories: r.categories, cellLat: Number(r.cell_lat), cellLng: Number(r.cell_lng), radiusKm: r.radius_km as 1 | 3 | 5 | 10 } : null;
+      },
+      async setNeedPlayerAlerts(_userId, input) {
+        unwrap(await supabase.rpc("set_need_player_alerts", { p_enabled: input.enabled, p_categories: input.categories, p_lat: input.cellLat, p_lng: input.cellLng, p_radius_km: input.radiusKm }));
+      },
+      async sendNeedPlayerAlerts(now) {
+        return Number(unwrap(await supabase.rpc("send_need_player_alerts", { p_now: now })));
+      },
       async confirmSession(_userId, eventId) {
         unwrap(await supabase.rpc("confirm_session", { p_event: eventId }));
       },

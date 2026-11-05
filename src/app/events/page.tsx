@@ -66,6 +66,9 @@ async function QuietEventsTab() {
         <div className="min-w-0">
           <h1 className="type-page-title text-ink">Events</h1>
           <p className="type-body text-ink-2 mt-hair">What you signed up for and what you usually go to.</p>
+          {featureEnabled("pilotEvents") ? (
+            <Link href={viewer ? "/events/alerts" : "/auth/sign-in?next=/events/alerts"} className="type-body font-semibold text-pulse-ink underline underline-offset-4">Need-players alerts</Link>
+          ) : null}
         </div>
         <Link href={viewer ? "/events/new" : "/auth/sign-in?next=/events/new"} className="chip shrink-0" data-active="true">
           <CalendarPlus size={15} /> Create

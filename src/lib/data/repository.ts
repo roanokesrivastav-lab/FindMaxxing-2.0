@@ -68,7 +68,7 @@ import type {
   UpdateProfileInput,
   UserActivity,
 } from "./types";
-import type { Club, EventSeries, HostParticipant, JoinOutcome, NewSeriesInput, SeriesUpdateInput, ViewerParticipation } from "@findmaxxing/shared/events";
+import type { Club, EventSeries, NeedPlayerAlerts, HostParticipant, JoinOutcome, NewSeriesInput, SeriesUpdateInput, ViewerParticipation } from "@findmaxxing/shared/events";
 import type { PlaceTip, TipEvidence, TipInput, TipStatus } from "@/lib/places/tips";
 import type { OccasionInput, OccasionNote } from "@/lib/places/occasions";
 import type { SaveDetails, SaveDetailsInput } from "@/lib/places/saves";
@@ -253,6 +253,11 @@ export interface DataRepository {
     participants(hostId: string, eventId: string): Promise<HostParticipant[]>;
     /** 4.4 service (cron): offers past expiry are declined and passed on; returns how many. */
     expireOffers(now: string): Promise<number>;
+    /** R2: the viewer's own need-players alert settings (null = never set: off). */
+    needPlayerAlerts(userId: string): Promise<NeedPlayerAlerts | null>;
+    setNeedPlayerAlerts(userId: string, input: NeedPlayerAlerts): Promise<void>;
+    /** R2 service (cron): sends due alerts; returns how many. */
+    sendNeedPlayerAlerts(now: string): Promise<number>;
     /** 4.3: the creator confirms the session is happening (before its deadline). */
     confirmSession(userId: string, eventId: string): Promise<void>;
     /** 4.3 service (cron): sessions past their deadline below minimum become not happening; returns how many. */

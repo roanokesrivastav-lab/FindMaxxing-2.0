@@ -26,6 +26,7 @@ export const NOTIFICATION_TYPES: { type: NotificationType; label: string }[] = [
   { type: "event_offer_expired", label: "A spot offer runs out" },
   { type: "event_not_happening", label: "A session is called off for too few people" },
   { type: "series_update", label: "A series you follow changes" },
+  { type: "need_players", label: "A nearby session needs players (if you turned these on)" },
 ];
 export const ALL_NOTIFICATION_TYPES = NOTIFICATION_TYPES.map((t) => t.type);
 
@@ -82,6 +83,8 @@ export function notificationText(n: Describable): string {
       return `Your spot offer for ${label || "an event"} ran out`;
     case "event_not_happening":
       return `${label || "A session you signed up for"} isn't happening: not enough people signed up`;
+    case "need_players":
+      return `${label || "A session near you"} needs players${n.detail ? `: ${n.detail}` : ""}`;
     case "series_update":
       return `${label || "A series you follow"}: ${n.detail ? n.detail.charAt(0).toLowerCase() + n.detail.slice(1) : "something changed"}`;
   }

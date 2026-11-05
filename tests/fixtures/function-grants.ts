@@ -133,6 +133,11 @@ const groups = [
       "remove_club_member(uuid,uuid)", "moderate_club(uuid,boolean)",
     ],
   },
+  {
+    anon: false,
+    reason: "Roadmap R2 (0058): writes only the caller's own alert settings (auth.uid()), rounding the area to a coarse cell; categories validated.",
+    signatures: ["set_need_player_alerts(boolean,text[],double precision,double precision,integer)"],
+  },
 ];
 
 export const FUNCTION_GRANT_ALLOWLIST = groups.flatMap(({ anon, reason, signatures }) =>

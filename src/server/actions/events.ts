@@ -8,7 +8,7 @@ import { getViewer } from "@/lib/auth/server";
 import { featureEnabled, paymentsMode } from "@/lib/config";
 import { durationMinutes, parseEventPilotFields, parseRepeatRule, pilotInput, type EventPilotFields } from "@/lib/events/form";
 import { combineDateTime, eventSchema, fieldErrors, uuidSchema } from "@/lib/validation/schemas";
-import { clubSchema } from "@findmaxxing/shared/events";
+import { clubSchema, needPlayerAlertsSchema } from "@findmaxxing/shared/events";
 import { fail, str, strList, succeed, toFailure, type ActionResult } from "./result";
 
 /** Pilot event fields (roadmap M4): read only with pilotEvents on; off, nothing extra is written. */
@@ -330,6 +330,21 @@ export async function clubMemberAction(clubId: string, op: "join" | "leave" | "r
       await repo.clubs.removeMember(viewer.id, id.data, who.data);
     } else await repo.clubs.join(viewer.id, id.data, op === "join");
     revalidatePath(`/clubs/${id.data}`);
+    return succeed(undefined);
+  } catch (err) { return toFailure(err); }
+}
+
+/** R2 (pilotEvents): save the viewer's own need-players alert settings (area stored as a coarse cell). */
+export async function saveNeedPlayerAlertsAction(input: { enabled: boolean; categories: string[]; cellLat: number; cellLng: number; radiusKm: number }): Promise<ActionResult> {
+  const viewer = await getViewer();
+  if (!viewer) return fail("Sign in first", undefined, "unauthenticated");
+  if (!featureEnabled("pilotEvents")) return fail("Not available", undefined, "not_found");
+  const parsed = needPlayerAlertsSchema.safeParse(input);
+  if (!parsed.success) return fail("Check the highlighted fields", fieldErrors(parsed.error));
+  try {
+    const repo = await getRepository();
+    await repo.events.setNeedPlayerAlerts(viewer.id, parsed.data);
+    revalidatePath("/events/alerts");
     return succeed(undefined);
   } catch (err) { return toFailure(err); }
 }

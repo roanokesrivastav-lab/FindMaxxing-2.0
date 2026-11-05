@@ -1,5 +1,6 @@
 import type { DataRepository } from "../repository";
-import { activityDetailsSchema, clubSchema, seriesRuleSchema, type EventNewcomer } from "@findmaxxing/shared/events";
+import { CATEGORY_MAP } from "@findmaxxing/shared/taxonomy";
+import { activityDetailsSchema, clubSchema, needPlayerAlertsSchema, NEED_PLAYERS_DAILY_CAP, NEED_PLAYERS_WINDOW_HOURS, seriesRuleSchema, type EventNewcomer, type NeedPlayerAlerts } from "@findmaxxing/shared/events";
 import { DEFAULT_TIME_ZONE, normalizeTimeZone } from "@/lib/utils/timezone";
 import { computeReadiness } from "@/lib/events/readiness";
 import { featureEnabled } from "@/lib/config";
@@ -453,6 +454,9 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
   type DemoClub = { id: string; ownerId: string; name: string; description: string; status: "active" | "removed"; createdAt: string };
   const loose = state as DemoState & { clubs?: DemoClub[]; clubSeries?: { clubId: string; seriesId: string }[]; clubMembers?: { clubId: string; userId: string; role: "owner" | "member"; joinedAt: string }[] };
   const clubsOf = () => (loose.clubs ??= []);
+  // R2: need-players alert settings (own rows only, mirrors need_player_alerts).
+  const looseAlerts = state as DemoState & { needPlayerAlerts?: { userId: string; settings: NeedPlayerAlerts }[] };
+  const alertsOf = () => (looseAlerts.needPlayerAlerts ??= []);
   const clubSeriesOf = () => (loose.clubSeries ??= []);
   const clubMembersOf = () => (loose.clubMembers ??= []);
   /** Mirrors can_view_series(). */
@@ -1134,6 +1138,47 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           .filter((e) => ids.has(e.id) && canViewEvent(state, e, viewer))
           .sort(byStart)
           .map((e) => toEvent(state, e));
+      },
+      async needPlayerAlerts(userId) {
+        return alertsOf().find((a) => a.userId === userId)?.settings ?? null;
+      },
+      async setNeedPlayerAlerts(userId, input) {
+        assertActive(userId);
+        const parsed = needPlayerAlertsSchema.safeParse(input);
+        if (!parsed.success) throw new DataError(parsed.error.issues[0]?.message ?? "Invalid alert settings", "invalid");
+        if (parsed.data.categories.some((c) => !(c in CATEGORY_MAP))) throw new DataError("Unknown activity", "invalid");
+        const list = alertsOf();
+        const i = list.findIndex((a) => a.userId === userId);
+        const row = { userId, settings: parsed.data };
+        if (i >= 0) list[i] = row; else list.push(row);
+        persist();
+      },
+      async sendNeedPlayerAlerts(now) {
+        // Mirrors send_need_player_alerts(): same filters, dedupe per session, 3 per rolling 24 hours.
+        const at = Date.parse(now);
+        let sent = 0;
+        for (const { userId, settings: a } of alertsOf()) {
+          if (!a.enabled || !a.categories.length || state.suspensions.some((s) => s.userId === userId)) continue;
+          let recent = state.notifications.filter((n) => n.userId === userId && n.type === "need_players" && Date.parse(n.createdAt) > at - 24 * 3_600_000).length;
+          const due = state.events
+            .filter((e) => e.status === "published" && e.priceCents == null && a.categories.includes(e.categorySlug) && e.minAttendance != null && (e.decision ?? "open") === "open"
+              && Date.parse(e.startsAt) > at && Date.parse(e.startsAt) <= at + NEED_PLAYERS_WINDOW_HOURS * 3_600_000
+              && (!e.decisionDeadline || Date.parse(e.decisionDeadline) > at) && e.creatorId !== userId
+              && 111.32 * Math.hypot(e.lat - a.cellLat, (e.lng - a.cellLng) * Math.cos((a.cellLat * Math.PI) / 180)) <= a.radiusKm
+              && !state.eventAttendees.some((x) => x.eventId === e.id && x.userId === userId)
+              && !part.participants(state).some((p) => p.eventId === e.id && p.userId === userId && (p.status === "waitlisted" || p.status === "offered"))
+              && !state.notifications.some((n) => n.userId === userId && n.dedupeKey === `need_players:${e.id}`))
+            .sort(byStart);
+          for (const e of due) {
+            if (recent >= NEED_PLAYERS_DAILY_CAP) break;
+            const going = state.eventAttendees.filter((x) => x.eventId === e.id).length;
+            if (going >= (e.minAttendance ?? 0) || !canViewEvent(state, e, userId)) continue;
+            notifyDemo(state, userId, { type: "need_players", actorId: e.creatorId, subjectType: "event", subjectId: e.id, label: e.title, dedupeKey: `need_players:${e.id}`, detail: `${(e.minAttendance ?? 0) - going} more needed` });
+            if (state.notifications.some((n) => n.userId === userId && n.dedupeKey === `need_players:${e.id}`)) { recent++; sent++; }
+          }
+        }
+        persist();
+        return sent;
       },
       async confirmSession(userId, eventId) {
         assertActive(userId);
