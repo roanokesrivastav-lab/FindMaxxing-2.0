@@ -342,3 +342,27 @@ export const clubSchema = z.object({
   name: z.string().trim().min(3, "At least 3 characters").max(80, "Keep it under 80 characters"),
   description: z.string().trim().max(600, "Keep it under 600 characters").default(""),
 });
+
+// ---------------------------------------------------------------------------
+// R2 Opt-in need-players alerts (docs/features/R2.md)
+// ---------------------------------------------------------------------------
+export const ALERT_RADII_KM = [1, 3, 5, 10] as const;
+export const NEED_PLAYERS_DAILY_CAP = 3;
+export const NEED_PLAYERS_WINDOW_HOURS = 48;
+export interface NeedPlayerAlerts {
+  enabled: boolean;
+  categories: string[];
+  /** The stored coarse cell (rounded to 0.01°), never a precise location. */
+  cellLat: number;
+  cellLng: number;
+  radiusKm: (typeof ALERT_RADII_KM)[number];
+}
+/** Rounds to the stored cell (0.01°). */
+export const toCell = (v: number) => Math.round(v * 100) / 100;
+export const needPlayerAlertsSchema = z.object({
+  enabled: z.boolean(),
+  categories: z.array(z.string().trim().min(1)).max(12).transform((c) => [...new Set(c)].sort()),
+  cellLat: z.coerce.number().min(-90).max(90).transform(toCell),
+  cellLng: z.coerce.number().min(-180).max(180).transform(toCell),
+  radiusKm: z.coerce.number().refine((r) => (ALERT_RADII_KM as readonly number[]).includes(r), "Pick a distance").transform((r) => r as NeedPlayerAlerts["radiusKm"]),
+}).refine((v) => !v.enabled || v.categories.length > 0, { message: "Pick at least one activity", path: ["categories"] });

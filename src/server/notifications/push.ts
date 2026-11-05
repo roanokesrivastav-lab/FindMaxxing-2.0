@@ -95,6 +95,8 @@ export interface PushRunResult {
   offersExpired?: number;
   /** 4.5a: series occurrences materialized this run. */
   occurrencesGenerated?: number;
+  /** R2: need-players alerts sent this run. */
+  needPlayers?: number;
   reminders: number;
   claimed: number;
   sent: number;
@@ -117,8 +119,10 @@ export async function runNotificationJobs(repo: DataRepository, sender: PushSend
   const offersExpired = typeof repo.events?.expireOffers === "function" ? await repo.events.expireOffers(now) : undefined;
   // 4.5a: keep every active series materialized 4 weeks ahead (idempotent).
   const occurrencesGenerated = typeof repo.series?.generate === "function" ? await repo.series.generate(now) : undefined;
+  // R2 (pilotEvents): opt-in need-players alerts, before this run's pushes are claimed.
+  const needPlayers = featureEnabled("pilotEvents") && typeof repo.events?.sendNeedPlayerAlerts === "function" ? await repo.events.sendNeedPlayerAlerts(now) : undefined;
   const reminders = await repo.notifications.scheduleReminders(now);
-  const result: PushRunResult = { ...(notHappening !== undefined ? { notHappening } : {}), ...(offersExpired !== undefined ? { offersExpired } : {}), ...(occurrencesGenerated !== undefined ? { occurrencesGenerated } : {}), reminders, claimed: 0, sent: 0, failed: 0, dropped: 0 };
+  const result: PushRunResult = { ...(notHappening !== undefined ? { notHappening } : {}), ...(offersExpired !== undefined ? { offersExpired } : {}), ...(occurrencesGenerated !== undefined ? { occurrencesGenerated } : {}), ...(needPlayers !== undefined ? { needPlayers } : {}), reminders, claimed: 0, sent: 0, failed: 0, dropped: 0 };
   if (!sender) return result;
   const kinds = sender.supportedKinds ?? ["web", "expo"];
   if (!kinds.length) return result;
