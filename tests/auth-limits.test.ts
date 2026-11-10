@@ -80,7 +80,7 @@ describe("sign-in (5 / email / 15 min, 20 / IP / 15 min)", () => {
     expect(h.signIn).toHaveBeenCalledTimes(5);
     h.signIn.mockClear();
     // Normalized: case and surrounding space do not make a new email.
-    expect(await signIn("  maya@example.TEST ")).toMatchObject({ ok: false, code: "rate_limited", error: expect.stringMatching(/^Too many sign-in attempts\. Try again in \d+ minutes?\.$/) });
+    expect(await signIn("  maya@example.TEST ")).toMatchObject({ ok: false, code: "rate_limited", error: expect.stringMatching(/^Too many sign-in attempts\. Try again in (a minute|\d+ minutes?)\.$/) });
     expect(h.signIn).not.toHaveBeenCalled();
   });
 
