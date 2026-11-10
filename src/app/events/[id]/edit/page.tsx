@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { requireViewer } from "@/lib/auth/server";
 import { getRepository } from "@/lib/data";
+import { featureEnabled } from "@/lib/config";
 import { EventForm } from "@/components/forms/EventForm";
 import { toPlaceOption } from "@/components/forms/PlacePicker";
 import { FormShell } from "@/components/layout/FormShell";
@@ -18,7 +19,7 @@ export default async function EditEventPage({ params }: PageProps<"/events/[id]/
   const linked = event.placeId ? await repo.places.get(event.placeId, viewer.id) : null;
   return (
     <FormShell title="Edit event" subtitle="Existing attendees stay joined when details change." eyebrow="Owner controls" backHref={`/events/${id}`} tone="pulse">
-      <EventForm initialPlace={linked ? toPlaceOption(linked) : null} initial={event} defaultCity={viewer.profile.homeCity ?? ""} edit />
+      <EventForm initialPlace={linked ? toPlaceOption(linked) : null} initial={event} defaultCity={viewer.profile.homeCity ?? ""} edit pilotEvents={featureEnabled("pilotEvents")} />
     </FormShell>
   );
 }

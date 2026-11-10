@@ -67,7 +67,7 @@ const groups = [
     reason: "Authenticated creation uses auth.uid(), ownership/visible linked items, validation and write triggers; updates restrict creator_id to auth.uid().",
     signatures: [
       "create_place_with_details(text,text,text,text,double precision,double precision,text,text,text,text,text[],jsonb)",
-      "update_event_with_tags(uuid,text,text,uuid,text,text,double precision,double precision,timestamp with time zone,timestamp with time zone,text,integer,text[])",
+      "update_event_with_tags(uuid,text,text,uuid,text,text,double precision,double precision,timestamp with time zone,timestamp with time zone,text,integer,text[],text,jsonb)",
       "update_place_with_tags(uuid,text,text,text,text,double precision,double precision,text,text,text,text[])",
       "create_ad_campaign(text,uuid,text,text,text,double precision,double precision,double precision,double precision,timestamp with time zone,timestamp with time zone,integer)",
       "set_ad_campaign_paused(uuid,boolean)", "set_event_price(uuid,integer)", "event_ticket_summary(uuid)",

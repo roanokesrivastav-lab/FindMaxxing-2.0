@@ -25,6 +25,7 @@ import { shareMetadata } from "@/lib/utils/share-metadata";
 import { DEFAULT_TIME_ZONE } from "@/lib/utils/timezone";
 import { getViewerTime } from "@/lib/time/server";
 import { InterestIcon } from "@/components/ui/TaxonomyIcon";
+import { ACTIVITY_KIND_LABELS, describeActivity } from "@/lib/activity";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +60,9 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
   const payments = paymentsMode();
   const price = payments ? (event.priceCents ?? null) : null;
   const isHost = !!viewer && viewer.id === event.creatorId;
+  // Structured activity details (roadmap 4.2), behind the pilot flag.
+  const activity = featureEnabled("pilotEvents") ? (event.activityDetails ?? null) : null;
+  const activityLines = describeActivity(activity);
   const [ticketSummary, canSell] = payments && isHost && !cancelled && !ended
     ? await Promise.all([repo.payments.ticketSummary(viewer!.id, event.id), repo.payments.canSell(viewer!.id)])
     : [null, false];
@@ -147,6 +151,16 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
         <section className="mt-6">
           <h2 className="text-lg font-bold mb-2">Details</h2>
           <p className="text-[15px] leading-relaxed text-ink-2 whitespace-pre-line">{event.description}</p>
+          {activity ? (
+            <div className="card p-4 mt-3">
+              <h3 className="text-sm font-bold">{ACTIVITY_KIND_LABELS[activity.kind]}</h3>
+              {activityLines.length ? (
+                <ul className="mt-1.5 flex flex-col gap-1 text-sm text-ink-2 list-disc pl-5">
+                  {activityLines.map((line) => <li key={line}>{line}</li>)}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
           {event.tags.length ? (
             <div className="mt-3 flex flex-wrap gap-2">
               {event.tags.map((t) => {

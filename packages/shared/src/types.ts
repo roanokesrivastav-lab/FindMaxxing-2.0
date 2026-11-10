@@ -3,6 +3,8 @@
  * implementations (Supabase + demo). All dates are ISO-8601 strings.
  */
 
+import type { ActivityDetails } from "./activity";
+
 export type PlaceStatus = "published" | "pending" | "hidden" | "removed";
 export type EventStatus = "published" | "cancelled" | "hidden" | "removed";
 /**
@@ -144,6 +146,10 @@ export interface Event {
   createdAt: string;
   /** Ticket price in cents (USD); null or absent for a free event. */
   priceCents?: number | null;
+  /** IANA zone the event happens in (events.time_zone). */
+  timeZone: string;
+  /** Structured activity facts (roadmap 4.2); null when the host gave none. */
+  activityDetails?: ActivityDetails | null;
 }
 
 export interface EventDetail extends Event {
@@ -202,6 +208,10 @@ export interface NewEventInput {
   categorySlug: string;
   capacity?: number | null;
   tags: string[];
+  /** IANA zone; omitted keeps the stored zone on update and uses the launch city's on create. */
+  timeZone?: string | null;
+  /** Omitted keeps what is stored on update; null clears it. */
+  activityDetails?: ActivityDetails | null;
 }
 
 export type UpdateEventInput = NewEventInput;

@@ -26,6 +26,8 @@ import {
   seedUserByName,
 } from "@/lib/seed/seed-data";
 import type { UserInteraction, AppNotification, EntitlementStatus, TicketStatus, EventStatus, ModerationLogAction, NotificationSettings, NotificationType, PlaceStatus, ReportReason, ReportStatus, ReportTargetType, ReputationLevel, Visibility } from "../types";
+import type { ActivityDetails } from "@/lib/activity";
+import { DEFAULT_TIME_ZONE } from "@/lib/utils/timezone";
 import { refreshDemoReputation } from "./reputation";
 import { syncAllEventChats } from "./messaging";
 import { CATEGORIES, INTERESTS } from "../taxonomy";
@@ -115,6 +117,10 @@ export interface EventRow {
   updatedAt: string;
   /** Ticket price in cents; absent or null for free. */
   priceCents?: number | null;
+  /** Mirrors events.time_zone; absent in stores written before 0050 (reads as the default). */
+  timeZone?: string;
+  /** Mirrors events.activity_details. */
+  activityDetails?: ActivityDetails | null;
 }
 export interface ReportRow {
   id: string;
@@ -634,6 +640,8 @@ export function buildSeedState(now = new Date()): DemoState {
       status: "published",
       createdAt: daysAgo(14 - (i % 10)),
       updatedAt: daysAgo(14 - (i % 10)),
+      timeZone: DEFAULT_TIME_ZONE,
+      activityDetails: ev.activity ?? null,
     });
     for (const t of ev.tags) state.eventTags.push({ eventId: ev.id, interestSlug: t });
     for (const a of ev.attendees) {

@@ -88,8 +88,8 @@ on conflict (id) do nothing;`);
   for (const e of SEED_EVENTS) {
     const start = `(date_trunc('day', now()) + interval '${e.startsInDays} days' + interval '${e.startHour} hours' + interval '${e.startMinute} minutes')`;
     const end = e.durationMinutes ? `(${start} + interval '${e.durationMinutes} minutes')` : "null";
-    out.push(`insert into public.events (id, title, description, place_id, location_name, address, lat, lng, starts_at, ends_at, creator_id, category_slug, capacity)
-values (${q(e.id)}, ${q(e.title)}, ${q(e.description)}, ${e.place ? q(seedPlaceByName(e.place).id) : "null"}, ${q(e.locationName)}, ${q(e.address)}, ${e.lat}, ${e.lng}, ${start}, ${end}, ${q(seedUserByName(e.creator).id)}, ${q(e.categorySlug)}, ${n(e.capacity)})
+    out.push(`insert into public.events (id, title, description, place_id, location_name, address, lat, lng, starts_at, ends_at, creator_id, category_slug, capacity, activity_details)
+values (${q(e.id)}, ${q(e.title)}, ${q(e.description)}, ${e.place ? q(seedPlaceByName(e.place).id) : "null"}, ${q(e.locationName)}, ${q(e.address)}, ${e.lat}, ${e.lng}, ${start}, ${end}, ${q(seedUserByName(e.creator).id)}, ${q(e.categorySlug)}, ${n(e.capacity)}, ${e.activity ? `${q(JSON.stringify(e.activity))}::jsonb` : "null"})
 on conflict (id) do nothing;`);
     for (const t of e.tags) out.push(`insert into public.event_tags (event_id, interest_slug) values (${q(e.id)}, ${q(t)}) on conflict do nothing;`);
   }

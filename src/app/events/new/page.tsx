@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { requireViewer } from "@/lib/auth/server";
 import { getRepository } from "@/lib/data";
+import { featureEnabled } from "@/lib/config";
 import { uuidSchema } from "@/lib/validation/schemas";
 import { toPlaceOption } from "@/components/forms/PlacePicker";
 import { EventForm } from "@/components/forms/EventForm";
@@ -25,7 +26,7 @@ export default async function NewEventPage({ searchParams }: PageProps<"/events/
       backHref="/events"
       tone="pulse"
     >
-      <EventForm initialPlace={initialPlace} defaultCity={viewer.profile.homeCity ?? ""} />
+      <EventForm initialPlace={initialPlace} defaultCity={viewer.profile.homeCity ?? ""} pilotEvents={featureEnabled("pilotEvents")} />
     </FormShell>
   );
 }

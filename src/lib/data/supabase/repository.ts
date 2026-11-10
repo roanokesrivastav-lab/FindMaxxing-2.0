@@ -40,6 +40,9 @@ import {
 } from "../types";
 import { DEFAULT_NOTIFICATION_SETTINGS } from "@/lib/notifications";
 import { parsePaymentsMessage } from "../payments";
+import { eventsError, parseEventsMessage } from "../events";
+import { activityDetailsSchema, parseActivityDetails } from "@/lib/activity";
+import { DEFAULT_TIME_ZONE } from "@/lib/utils/timezone";
 import { impressionBudget, parseAdsMessage, validateCampaign } from "../ads";
 import { MESSAGE_PAGE_SIZE, messagingError, normalizeMessageBody, parseMessagingMessage } from "../messaging";
 import { parseRateLimitMessage } from "@/lib/rateLimits";
@@ -130,6 +133,8 @@ interface EventRow {
   category_slug: string;
   capacity: number | null;
   price_cents?: number | null;
+  time_zone?: string | null;
+  activity_details?: unknown;
   status: Event["status"];
   created_at: string;
   creator?: ProfileSummaryRow | null;
@@ -206,6 +211,8 @@ function mapEvent(r: EventRow): Event {
     status: r.status,
     createdAt: r.created_at,
     priceCents: r.price_cents ?? null,
+    timeZone: r.time_zone ?? DEFAULT_TIME_ZONE,
+    activityDetails: parseActivityDetails(r.activity_details),
   };
 }
 
@@ -222,11 +229,14 @@ export function translate(error: PostgrestError): DataError {
       return new DataError("Related record not found", "not_found");
     case "42501":
       return parsePaymentsMessage(error.message) ?? new DataError("You don't have permission to do that", "forbidden");
+    case "23514": // check_violation
+      if (/events_activity_details_check/.test(error.message)) return eventsError("bad_activity");
+      return new DataError(error.message || "Something went wrong", "unavailable");
     case "22007": // invalid_datetime_format
     case "22008": // datetime_field_overflow
       return new DataError("Invalid date or time", "invalid");
     case "P0001": { // raise exception from our triggers
-      const moderation = parseModerationMessage(error.message) ?? parseMessagingMessage(error.message) ?? parsePaymentsMessage(error.message) ?? parseAdsMessage(error.message);
+      const moderation = parseModerationMessage(error.message) ?? parseMessagingMessage(error.message) ?? parsePaymentsMessage(error.message) ?? parseAdsMessage(error.message) ?? parseEventsMessage(error.message);
       if (moderation) return moderation;
       const cooldown = /home_city_cooldown:(\S+)/.exec(error.message);
       if (cooldown) return new DataError(homeCityCooldownMessage(cooldown[1]), "rate_limited");
@@ -962,6 +972,7 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
       },
       async create(input, creatorId) {
         // Event, tags and the creator's attendance in one transaction (0036_create_event_with_details.sql).
+        if (input.activityDetails && !activityDetailsSchema.safeParse(input.activityDetails).success) throw eventsError("bad_activity");
         const id = unwrap(
           await supabase.rpc("create_event_with_details", {
             p_title: input.title,
@@ -976,6 +987,8 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
             p_category_slug: input.categorySlug,
             p_capacity: input.capacity ?? null,
             p_tags: input.tags,
+            p_time_zone: input.timeZone ?? null,
+            p_activity_details: input.activityDetails ?? null,
           }),
         ) as string;
         const created = await repo.events.get(id, creatorId);
@@ -988,6 +1001,7 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
         if (current.status !== "published" || new Date(current.ends_at ?? current.starts_at).getTime() <= Date.now()) throw new DataError("Only future published events can be edited", "invalid");
         const attendees = unwrap(await supabase.from("event_attendees").select("user_id", { count: "exact" }).eq("event_id", id)) as { user_id: string }[];
         if (input.capacity !== null && input.capacity !== undefined && input.capacity < attendees.length) throw new DataError("Capacity cannot be below the existing attendee count", "invalid");
+        if (input.activityDetails && !activityDetailsSchema.safeParse(input.activityDetails).success) throw eventsError("bad_activity");
         unwrap(
           await supabase.rpc("update_event_with_tags", {
             p_id: id,
@@ -1003,6 +1017,9 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
             p_category_slug: input.categorySlug,
             p_capacity: input.capacity ?? null,
             p_tags: input.tags,
+            p_time_zone: input.timeZone ?? null,
+            // Omitted keeps the stored details; null clears them (an empty object, see 0050).
+            p_activity_details: input.activityDetails === undefined ? null : (input.activityDetails ?? {}),
           }),
         );
         const updated = await repo.events.get(id, creatorId);

@@ -39,6 +39,7 @@ export function toEvent(r: Row): Event {
     capacity: (r.capacity as number | null) ?? null, attendeeCount: (r.attendee_count as { count: number }[] | undefined)?.[0]?.count ?? 0,
     tags: ((r.event_tags as { interest_slug: string }[]) ?? []).map((t) => t.interest_slug), status: r.status as Event["status"],
     createdAt: r.created_at as string, priceCents: (r.price_cents as number | null) ?? null,
+    timeZone: (r.time_zone as string | null) ?? "America/New_York",
   };
 }
 

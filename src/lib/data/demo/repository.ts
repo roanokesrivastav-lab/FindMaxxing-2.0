@@ -33,6 +33,9 @@ import { nextOpponent } from "@/lib/ranking/nextComparison";
 import { createDemoInteractions, forgetItemInteractions, recordOwnInteraction } from "./interactions";
 import { createDemoPayments, isPlusIn, needsTicket, refundOnCancel } from "./payments";
 import { PLUS_LIST_CAP, paymentsError } from "../payments";
+import { eventsError } from "../events";
+import { activityDetailsSchema, type ActivityDetails } from "@/lib/activity";
+import { DEFAULT_TIME_ZONE, eventTimeZone } from "@/lib/utils/timezone";
 import { LIST_LIMIT_ERROR, MAX_SAVED_LISTS, duplicateListName, listNameKey, normalizeListName } from "../savedLists";
 import { newId } from "@/lib/utils/ids";
 import { neighborhoodKey } from "@/lib/utils/neighborhoods";
@@ -118,6 +121,20 @@ function toPlace(state: DemoState, row: PlaceRow): Place {
   };
 }
 
+/** Mirrors check_event_time_zone() (0050): null/absent means "not given". */
+function eventZone(zone: string | null | undefined): string | null {
+  if (zone === null || zone === undefined) return null;
+  if (!eventTimeZone(zone)) throw eventsError("bad_time_zone");
+  return zone;
+}
+/** Mirrors events_activity_details_check (0050), with the app's exact shape. */
+function eventActivity(details: ActivityDetails | null | undefined): ActivityDetails | null {
+  if (details === null || details === undefined) return null;
+  const parsed = activityDetailsSchema.safeParse(details);
+  if (!parsed.success) throw eventsError("bad_activity");
+  return parsed.data;
+}
+
 function toEvent(state: DemoState, row: EventRow): Event {
   const place = row.placeId ? state.places.find((p) => p.id === row.placeId) : null;
   return {
@@ -141,6 +158,8 @@ function toEvent(state: DemoState, row: EventRow): Event {
     status: row.status,
     createdAt: row.createdAt,
     priceCents: row.priceCents ?? null,
+    timeZone: row.timeZone ?? DEFAULT_TIME_ZONE,
+    activityDetails: row.activityDetails ?? null,
   };
 }
 
@@ -838,6 +857,8 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           status: "published",
           createdAt: now,
           updatedAt: now,
+          timeZone: eventZone(input.timeZone) ?? DEFAULT_TIME_ZONE,
+          activityDetails: eventActivity(input.activityDetails) ?? null,
         };
         state.events.push(row);
         for (const t of input.tags) state.eventTags.push({ eventId: row.id, interestSlug: t });
@@ -862,7 +883,12 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         // Mirrors the trigger's "when or where changed" test (instants, not their spelling).
         const where = (e: EventRow) => JSON.stringify([Date.parse(e.startsAt), e.endsAt ? Date.parse(e.endsAt) : null, e.locationName, e.address, e.lat, e.lng, e.placeId]);
         const before = where(ev);
+        // Checked before anything changes, as the SQL update is one statement.
+        const timeZone = eventZone(input.timeZone) ?? ev.timeZone ?? DEFAULT_TIME_ZONE;
+        const activityDetails = input.activityDetails === undefined ? (ev.activityDetails ?? null) : (eventActivity(input.activityDetails) ?? null);
         Object.assign(ev, {
+          timeZone,
+          activityDetails,
           title: input.title,
           description: input.description,
           placeId: input.placeId ?? null,

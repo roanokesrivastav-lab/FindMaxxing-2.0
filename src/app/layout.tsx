@@ -5,7 +5,8 @@ import { AppShell } from "@/components/layout/AppShell";
 import { RegisterServiceWorker } from "@/components/pwa/RegisterServiceWorker";
 import { getViewer } from "@/lib/auth/server";
 import { ToastProvider } from "@/components/ui/Toast";
-import { featureEnabled, getDataMode, getSiteUrl } from "@/lib/config";
+import { featureEnabled, getDataMode, getSiteUrl, pilotFlags } from "@/lib/config";
+import { PilotFlagsProvider } from "@/components/shared/PilotFlags";
 import { getRepository } from "@/lib/data";
 import { ViewerTimeProvider } from "@/components/time/ViewerTime";
 import { getViewerTime } from "@/lib/time/server";
@@ -64,9 +65,11 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col">
         <ViewerTimeProvider initial={time}>
           <ToastProvider>
-            <AppShell viewer={viewer} dataMode={getDataMode()} extras={extras}>
-              {children}
-            </AppShell>
+            <PilotFlagsProvider flags={pilotFlags()}>
+              <AppShell viewer={viewer} dataMode={getDataMode()} extras={extras}>
+                {children}
+              </AppShell>
+            </PilotFlagsProvider>
             {featureEnabled("pwa") ? <RegisterServiceWorker /> : null}
           </ToastProvider>
         </ViewerTimeProvider>

@@ -36,6 +36,25 @@
         "3124"
       ],
       "port": 3124
+    },
+    {
+      "name": "web-demo-pilot",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "TZ=UTC",
+        "NEXT_PUBLIC_SUPABASE_URL=",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY=",
+        "SUPABASE_SERVICE_ROLE_KEY=",
+        "NEXT_PUBLIC_FEATURES=pilot,notifications,messaging",
+        "FINDMAXXING_DEMO_NO_PERSIST=1",
+        "FINDMAXXING_DEMO_FRESH=1",
+        "npx",
+        "next",
+        "dev",
+        "-p",
+        "3125"
+      ],
+      "port": 3125
     }
   ]
 }

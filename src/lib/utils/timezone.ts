@@ -30,6 +30,16 @@ export function normalizeTimeZone(input: string | null | undefined): string | nu
   return ok ? input : null;
 }
 
+/**
+ * A zone the database accepts for events.time_zone (valid_time_zone(), 0050):
+ * "UTC" or an "Area/Location" name. Legacy names a browser may report ("GMT",
+ * "EST5EDT") are real zones but not accepted there, so they return null.
+ */
+export function eventTimeZone(input: string | null | undefined): string | null {
+  const zone = normalizeTimeZone(input);
+  return zone && (zone === "UTC" || /^[A-Za-z_]+(\/[A-Za-z0-9_+-]+)+$/.test(zone)) ? zone : null;
+}
+
 const formatters = new Map<string, Intl.DateTimeFormat>();
 
 /** A cached en-US formatter pinned to `timeZone`. */

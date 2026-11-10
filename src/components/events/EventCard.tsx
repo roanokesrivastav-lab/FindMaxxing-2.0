@@ -9,6 +9,8 @@ import { useViewerTime } from "@/components/time/ViewerTime";
 import { cn } from "@/lib/utils/cn";
 import { AvatarStack } from "@/components/ui/Avatar";
 import { CategoryIcon } from "@/components/ui/TaxonomyIcon";
+import { activitySummary } from "@/lib/activity";
+import { usePilotFlag } from "@/components/shared/PilotFlags";
 
 export function EventCard({
   event,
@@ -29,6 +31,8 @@ export function EventCard({
   const cancelled = event.status === "cancelled";
   const full = event.capacity !== null && event.attendeeCount >= event.capacity;
   const day = relativeDayLabel(event.startsAt, time);
+  const pilotEvents = usePilotFlag("pilotEvents");
+  const activity = pilotEvents ? activitySummary(event.activityDetails) : null;
   return (
     <Link
       href={`/events/${event.id}`}
@@ -60,6 +64,7 @@ export function EventCard({
         <p className="text-sm text-ink-2">
           {formatEventDate(event.startsAt, time)} · {formatTimeRange(event.startsAt, event.endsAt, time)}
         </p>
+        {activity ? <p className="text-xs text-ink-2 line-clamp-1">{activity}</p> : null}
         <div className="flex items-center gap-3 text-xs text-muted mt-auto pt-1">
           <span className="inline-flex items-center gap-1 min-w-0">
             <MapPin size={12} className="shrink-0" />
