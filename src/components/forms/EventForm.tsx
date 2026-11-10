@@ -16,6 +16,7 @@ import { useViewerTime } from "@/components/time/ViewerTime";
 import type { LngLat } from "@/lib/map/types";
 import { useFormSubmit } from "@/lib/forms/useFormSubmit";
 import { ActivityFields } from "@/components/events/ActivityFields";
+import { SessionRulesFields } from "@/components/events/SessionRulesFields";
 
 export function EventForm({ initialPlace, initial, defaultCity = "", edit = false, pilotEvents = false }: { initialPlace?: PlaceOption | null; initial?: Event; defaultCity?: string; edit?: boolean; /** Resolved pilotEvents flag (roadmap 4.x), from the server page. */ pilotEvents?: boolean }) {
   const [state, action, pending] = useActionState(edit ? updateEventAction : createEventAction, null);
@@ -118,6 +119,7 @@ export function EventForm({ initialPlace, initial, defaultCity = "", edit = fals
       <FormField label="Capacity" htmlFor="capacity" hint="optional" error={errors.capacity}>
         <Input id="capacity" name="capacity" type="number" min={2} max={5000} defaultValue={initial?.capacity ?? ""} placeholder="Leave blank for unlimited" error={errors.capacity} />
       </FormField>
+      {pilotEvents ? <SessionRulesFields initial={initial} errors={errors} /> : null}
       {pilotEvents ? <ActivityFields initial={initial?.activityDetails ?? null} errors={errors} /> : null}
       <TagPicker name="tags" label="Tags" initial={initial?.tags} error={errors.tags} />
       {state && !state.ok && !Object.keys(errors).length ? <p className="text-sm text-danger font-medium" role="alert">{state.error}</p> : null}

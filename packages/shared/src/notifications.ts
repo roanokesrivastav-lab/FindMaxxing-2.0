@@ -17,6 +17,7 @@ export const NOTIFICATION_TYPES: { type: NotificationType; label: string }[] = [
   { type: "event_soon", label: "An event you're going to starts soon" },
   { type: "event_changed", label: "An event you're going to changes" },
   { type: "event_cancelled", label: "An event you're going to is cancelled" },
+  { type: "event_not_happening", label: "An event you're going to doesn't get enough people" },
   { type: "place_saved", label: "Your places are saved" },
   { type: "place_rated", label: "Your places are rated" },
   { type: "report_resolved", label: "Your reports are reviewed" },
@@ -56,6 +57,8 @@ export function notificationText(n: Describable): string {
       return `${label || "An event you're going to"} changed time or place`;
     case "event_cancelled":
       return `${label || "An event you're going to"} was cancelled`;
+    case "event_not_happening":
+      return `${label || "An event you're going to"} isn't happening: not enough people signed up`;
     case "new_message":
       return label
         ? others(n.count, `New message in ${label}`, `{n} new messages in ${label}`)

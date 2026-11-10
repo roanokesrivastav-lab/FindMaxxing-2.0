@@ -7,6 +7,7 @@ import { getRepository } from "@/lib/data";
 import { getViewer } from "@/lib/auth/server";
 import { featureEnabled, paymentsMode } from "@/lib/config";
 import { activityDetailsSchema, activityFromFields, type ActivityDetails } from "@/lib/activity";
+import type { SessionRules } from "@/lib/data/types";
 import { eventTimeZone } from "@/lib/utils/timezone";
 import { combineDateTime, eventSchema, fieldErrors, uuidSchema } from "@/lib/validation/schemas";
 import { fail, str, strList, succeed, toFailure, type ActionResult } from "./result";
@@ -31,6 +32,33 @@ function eventExtras(formData: FormData): { timeZone: string | null; activityDet
   }
   if (!Object.keys(errors).length) errors["activity.kind"] = "Check the activity details";
   return { timeZone, activityDetails: undefined, errors };
+}
+
+/**
+ * The 4.3 session rules from the event form, behind pilotEvents. `undefined`
+ * (flag off, or the fields were not on the form) leaves the stored rules alone.
+ * The deadline is the start minus the chosen lead time.
+ */
+function sessionRulesFromForm(formData: FormData, startsAt: Date, capacity: number | null): { rules: SessionRules | undefined; errors: Record<string, string> | null } {
+  if (!featureEnabled("pilotEvents") || !formData.has("sessionRules")) return { rules: undefined, errors: null };
+  const errors: Record<string, string> = {};
+  const minText = str(formData, "minAttendance").trim();
+  const leadText = str(formData, "decisionLeadMinutes").trim();
+  const min = minText === "" ? null : Number(minText);
+  const lead = leadText === "" ? null : Number(leadText);
+  if (min !== null && (!Number.isInteger(min) || min < 2 || min > 5000)) errors.minAttendance = "The minimum must be at least 2";
+  else if (min !== null && capacity !== null && min > capacity) errors.minAttendance = "The minimum can't be more than the capacity";
+  if (lead !== null && (!Number.isInteger(lead) || lead < 15 || lead > 7 * 24 * 60)) errors.decisionLeadMinutes = "Pick when you'll decide";
+  else if (lead !== null && min === null) errors.decisionLeadMinutes = "Set a minimum first";
+  if (Object.keys(errors).length) return { rules: undefined, errors };
+  return {
+    rules: {
+      minAttendance: min,
+      decisionDeadline: lead === null ? null : new Date(startsAt.getTime() - lead * 60_000).toISOString(),
+      venueStatus: formData.get("venueUnconfirmed") === "on" ? "unconfirmed" : "confirmed",
+    },
+    errors: null,
+  };
 }
 
 export async function createEventAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
@@ -60,6 +88,8 @@ export async function createEventAction(_prev: ActionResult | null, formData: Fo
 
   const v = parsed.data;
   const { startsAt, endsAt } = combineDateTime(v.date, v.startTime, v.endTime, v.tzOffsetMinutes);
+  const session = sessionRulesFromForm(formData, startsAt, v.capacity);
+  if (session.errors) return fail("Check the highlighted fields", session.errors);
   try {
     const repo = await getRepository();
     const event = await repo.events.create(
@@ -78,6 +108,7 @@ export async function createEventAction(_prev: ActionResult | null, formData: Fo
         tags: v.tags,
         timeZone: extras.timeZone,
         activityDetails: extras.activityDetails,
+        sessionRules: session.rules,
       },
       viewer.id,
     );
@@ -108,9 +139,11 @@ export async function updateEventAction(_prev: ActionResult | null, formData: Fo
   if (extras.errors) return fail("Check the highlighted fields", extras.errors);
   const v = parsed.data;
   const { startsAt, endsAt } = combineDateTime(v.date, v.startTime, v.endTime, v.tzOffsetMinutes);
+  const session = sessionRulesFromForm(formData, startsAt, v.capacity);
+  if (session.errors) return fail("Check the highlighted fields", session.errors);
   try {
     const repo = await getRepository();
-    const event = await repo.events.update(id.data, { title: v.title, description: v.description, placeId: v.placeId, locationName: v.locationName, address: v.address, lat: v.lat, lng: v.lng, startsAt: startsAt.toISOString(), endsAt: endsAt?.toISOString() ?? null, categorySlug: v.categorySlug, capacity: v.capacity, tags: v.tags, activityDetails: extras.activityDetails }, viewer.id);
+    const event = await repo.events.update(id.data, { title: v.title, description: v.description, placeId: v.placeId, locationName: v.locationName, address: v.address, lat: v.lat, lng: v.lng, startsAt: startsAt.toISOString(), endsAt: endsAt?.toISOString() ?? null, categorySlug: v.categorySlug, capacity: v.capacity, tags: v.tags, activityDetails: extras.activityDetails, sessionRules: session.rules }, viewer.id);
     revalidatePath(`/events/${id.data}`); revalidatePath(`/events/${id.data}/edit`); revalidatePath("/"); revalidatePath("/events"); revalidatePath("/profile");
     redirect(`/events/${event.id}`);
   } catch (err) { return toFailure(err); }
@@ -142,6 +175,21 @@ export async function deleteEventAction(eventId: string): Promise<ActionResult> 
     await repo.events.delete(id.data, viewer.id);
     revalidatePath(`/events/${id.data}`); revalidatePath("/events"); revalidatePath("/profile");
     redirect("/events");
+  } catch (err) { return toFailure(err); }
+}
+
+/** Host: confirms the session is on (roadmap 4.3). */
+export async function confirmSessionAction(eventId: string): Promise<ActionResult> {
+  const viewer = await getViewer();
+  if (!viewer) return fail("Sign in to manage your event", undefined, "unauthenticated");
+  const id = uuidSchema.safeParse(eventId);
+  if (!id.success) return fail("Invalid event");
+  if (!featureEnabled("pilotEvents")) return fail("Not available yet", undefined, "forbidden");
+  try {
+    const repo = await getRepository();
+    await repo.events.confirmSession(viewer.id, id.data);
+    revalidatePath(`/events/${id.data}`); revalidatePath("/events");
+    return succeed(undefined);
   } catch (err) { return toFailure(err); }
 }
 

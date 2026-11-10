@@ -26,6 +26,8 @@ import { DEFAULT_TIME_ZONE } from "@/lib/utils/timezone";
 import { getViewerTime } from "@/lib/time/server";
 import { InterestIcon } from "@/components/ui/TaxonomyIcon";
 import { ACTIVITY_KIND_LABELS, describeActivity } from "@/lib/activity";
+import { readinessParts } from "@/lib/readiness";
+import { ConfirmSessionButton } from "@/components/events/ConfirmSessionButton";
 
 export const dynamic = "force-dynamic";
 
@@ -51,8 +53,9 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
   if (!event) notFound();
   const ended = eventHasEnded(event.startsAt, event.endsAt, time.now);
   const cancelled = event.status === "cancelled";
-  const full = event.capacity !== null && event.attendeeCount >= event.capacity;
-  const spotsLeft = event.capacity !== null ? Math.max(0, event.capacity - event.attendeeCount) : null;
+  // Seats held by a paid checkout count too (events_readiness); without it, fall back to the going count.
+  const spotsLeft = event.readiness?.spotsOpen != null ? event.readiness.spotsOpen : event.capacity !== null ? Math.max(0, event.capacity - event.attendeeCount) : null;
+  const full = spotsLeft === 0;
   const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${event.lat},${event.lng}`;
   // The group chat, for people going (behind the messaging flag).
   const chatId = viewer && event.viewerJoined && featureEnabled("messaging") ? await repo.messaging.eventConversation(viewer.id, event.id) : null;
@@ -63,6 +66,10 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
   // Structured activity details (roadmap 4.2), behind the pilot flag.
   const activity = featureEnabled("pilotEvents") ? (event.activityDetails ?? null) : null;
   const activityLines = describeActivity(activity);
+  // The Readiness row and the host's confirm button (roadmap 4.3), behind the pilot flag.
+  const pilotEvents = featureEnabled("pilotEvents");
+  const readiness = pilotEvents && event.readiness ? readinessParts(event.readiness, { now: time.now, cancelled, ended, viewerTimeZone: time.timeZone }) : null;
+  const canConfirm = pilotEvents && isHost && !cancelled && !ended && event.decision === "open" && event.minAttendance != null;
   const [ticketSummary, canSell] = payments && isHost && !cancelled && !ended
     ? await Promise.all([repo.payments.ticketSummary(viewer!.id, event.id), repo.payments.canSell(viewer!.id)])
     : [null, false];
@@ -119,8 +126,9 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
             <p className="font-bold inline-flex items-center gap-1.5">
               <Users size={16} /> {event.attendeeCount} going
             </p>
+            {readiness && readiness.length > 1 ? <p className="text-sm font-semibold mt-0.5" data-testid="readiness-row">{readiness.slice(1).join(" · ")}</p> : null}
             <p className="text-xs text-muted mt-0.5">
-              {!cancelled && event.capacity ? `${spotsLeft} spot${spotsLeft === 1 ? "" : "s"} left · ` : ""}
+              {!readiness && !cancelled && event.capacity ? `${spotsLeft} spot${spotsLeft === 1 ? "" : "s"} left · ` : ""}
               {cancelled ? (event.viewerJoined ? "You were on the attendee list." : "This event is no longer accepting attendees.") : event.viewerJoined ? "You're on the list." : full ? "Full for now." : "Free to join. Just show up."}
             </p>
           </div>
@@ -130,6 +138,17 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
             <JoinButton eventId={event.id} joined={event.viewerJoined} signedIn={!!viewer} full={full} ended={ended} cancelled={cancelled} size="md" />
           )}
         </div>
+        {cancelled && event.cancelReason === "below_minimum" && pilotEvents ? (
+          <p className="mt-3 text-sm text-ink-2">Not enough people signed up by the decision time, so it was called off automatically.</p>
+        ) : null}
+        {canConfirm ? (
+          <div className="card p-4 mt-3 flex items-center gap-3">
+            <p className="flex-1 min-w-0 text-sm text-ink-2">
+              Needs {event.minAttendance} to go ahead. Confirm it yourself and it won&apos;t be called off automatically.
+            </p>
+            <ConfirmSessionButton eventId={event.id} />
+          </div>
+        ) : null}
         {chatId ? (
           <Link href={`/messages/${chatId}`} className="mt-3 card p-3 flex items-center gap-2 font-semibold hover:bg-surface-2">
             <MessageCircle size={18} className="text-pulse" /> Group chat

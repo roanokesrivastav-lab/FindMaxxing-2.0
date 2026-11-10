@@ -8,7 +8,7 @@ import { combinedSender, expoPushSender, runNotificationJobs, webPushSender } fr
 export const dynamic = "force-dynamic";
 
 /**
- * Every 15 minutes (vercel.json crons): event reminders, then pending pushes;
+ * Every 15 minutes (vercel.json crons): session decisions, event reminders, then pending pushes;
  * once a day it also applies retention. Bearer CRON_SECRET only. Safe to
  * retry: reminders are deduplicated and pushes are claimed before sending.
  */
@@ -28,10 +28,13 @@ export async function GET(req: Request) {
     // Browsers need the push flag and VAPID keys; the mobile app's devices go through Expo.
     const sender = combinedSender(pushTransportReady("web") ? await webPushSender() : null,
       pushTransportReady("expo") ? expoPushSender() : null);
+    // Sessions past their decision deadline (roadmap 4.3) are decided first, so
+    // the people affected are told in this same run.
+    const decided = await repo.events.decideSessions(now.toISOString());
     const result = await runNotificationJobs(repo, sender, now.toISOString());
     // Retention once a day, on the first run after 04:00 UTC.
     const purged = now.getUTCHours() === 4 && now.getUTCMinutes() < 15 ? await repo.notifications.purge(now.toISOString()) : 0;
-    return NextResponse.json({ ...result, purged });
+    return NextResponse.json({ ...result, decided, purged });
   } catch (err) {
     reportError(err, { where: "cron:notifications" });
     return NextResponse.json({ error: "failed" }, { status: 500 });

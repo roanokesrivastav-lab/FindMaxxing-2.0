@@ -8,6 +8,8 @@ import {
   MAX_PLACE_PHOTOS,
   type Event,
   type EventDetail,
+  type EventReadiness,
+  type SessionRules,
   type NeighborhoodSummary,
   type Place,
   type PlaceDetail,
@@ -135,6 +137,11 @@ interface EventRow {
   price_cents?: number | null;
   time_zone?: string | null;
   activity_details?: unknown;
+  min_attendance?: number | null;
+  decision_deadline?: string | null;
+  venue_status?: Event["venueStatus"];
+  decision?: Event["decision"];
+  cancel_reason?: Event["cancelReason"];
   status: Event["status"];
   created_at: string;
   creator?: ProfileSummaryRow | null;
@@ -213,6 +220,27 @@ function mapEvent(r: EventRow): Event {
     priceCents: r.price_cents ?? null,
     timeZone: r.time_zone ?? DEFAULT_TIME_ZONE,
     activityDetails: parseActivityDetails(r.activity_details),
+    minAttendance: r.min_attendance ?? null,
+    decisionDeadline: r.decision_deadline ?? null,
+    venueStatus: r.venue_status ?? "confirmed",
+    decision: r.decision ?? "open",
+    cancelReason: r.cancel_reason ?? null,
+  };
+}
+
+/** The p_session_rules argument (0051): null means "not given". */
+function sessionRulesArg(rules: SessionRules | undefined): Record<string, unknown> | null {
+  return rules ? { min_attendance: rules.minAttendance, decision_deadline: rules.decisionDeadline, venue_status: rules.venueStatus } : null;
+}
+
+interface ReadinessRow {
+  event_id: string; going: number; capacity: number | null; spots_open: number | null; min_attendance: number | null; more_needed: number | null;
+  decision_deadline: string | null; time_zone: string; venue_status: EventReadiness["venueStatus"]; decision: EventReadiness["decision"]; waitlist: number;
+}
+function mapReadiness(r: ReadinessRow): EventReadiness {
+  return {
+    going: r.going, capacity: r.capacity, spotsOpen: r.spots_open, minAttendance: r.min_attendance, moreNeeded: r.more_needed,
+    decisionDeadline: r.decision_deadline, timeZone: r.time_zone, venueStatus: r.venue_status, decision: r.decision, waitlist: r.waitlist,
   };
 }
 
@@ -222,7 +250,7 @@ export function translate(error: PostgrestError): DataError {
     case "FM429": // check_rate_limit()
       return parseRateLimitMessage(error.message) ?? new DataError("Too many requests. Try again later.", "rate_limited");
     case "P0002": // no_data_found, raised by our functions for a missing target
-      return parseModerationMessage(error.message) ?? parseMessagingMessage(error.message) ?? parsePaymentsMessage(error.message) ?? parseAdsMessage(error.message) ?? new DataError("Not found", "not_found");
+      return parseModerationMessage(error.message) ?? parseMessagingMessage(error.message) ?? parsePaymentsMessage(error.message) ?? parseAdsMessage(error.message) ?? parseEventsMessage(error.message) ?? new DataError("Not found", "not_found");
     case "23505":
       return new DataError("That already exists", "conflict");
     case "23503":
@@ -576,6 +604,13 @@ const PLACE_MAP_SELECT = "id, name, category_slug, lat, lng, rating_avg, rating_
 const EVENT_MAP_SELECT = "id, title, category_slug, lat, lng, starts_at";
 
 export function createSupabaseRepository(supabase: SupabaseClient): DataRepository {
+  /** Adds the Readiness numbers (events_readiness, 0051) in one call for the whole list. */
+  async function withReadiness<T extends Event>(events: T[]): Promise<T[]> {
+    if (!events.length) return events;
+    const rows = unwrap(await supabase.rpc("events_readiness", { p_events: events.map((e) => e.id) })) as ReadinessRow[] | null;
+    const byId = new Map((Array.isArray(rows) ? rows : []).map((row) => [row.event_id, mapReadiness(row)]));
+    return events.map((e) => ({ ...e, readiness: byId.get(e.id) ?? null }));
+  }
   const repo: DataRepository = {
     places: {
       async search(opts = {}) {
@@ -915,7 +950,8 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
             .order("id", { ascending: true })
             .limit(limit + 1),
         ) as EventRow[];
-        return toPage(rows, limit, mapEvent, (r) => ({ key: r.starts_at, id: r.id }));
+        const page = toPage(rows, limit, mapEvent, (r) => ({ key: r.starts_at, id: r.id }));
+        return { ...page, items: await withReadiness(page.items) };
       },
       async count(opts = {}) {
         const { count, error } = await supabase.rpc(
@@ -968,7 +1004,7 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
           viewerJoined: viewerId ? attendees.some((a) => a.id === viewerId) : false,
           attendees,
         };
-        return detail;
+        return (await withReadiness([detail]))[0];
       },
       async create(input, creatorId) {
         // Event, tags and the creator's attendance in one transaction (0036_create_event_with_details.sql).
@@ -989,6 +1025,7 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
             p_tags: input.tags,
             p_time_zone: input.timeZone ?? null,
             p_activity_details: input.activityDetails ?? null,
+            p_session_rules: sessionRulesArg(input.sessionRules),
           }),
         ) as string;
         const created = await repo.events.get(id, creatorId);
@@ -1020,6 +1057,7 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
             p_time_zone: input.timeZone ?? null,
             // Omitted keeps the stored details; null clears them (an empty object, see 0050).
             p_activity_details: input.activityDetails === undefined ? null : (input.activityDetails ?? {}),
+            p_session_rules: sessionRulesArg(input.sessionRules),
           }),
         );
         const updated = await repo.events.get(id, creatorId);
@@ -1045,17 +1083,17 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
         const rows = unwrap(
           await supabase.from("events").select(EVENT_SELECT).eq("creator_id", userId).neq("status", "removed").order("starts_at", { ascending: true }),
         ) as EventRow[];
-        return rows.map(mapEvent);
+        return withReadiness(rows.map(mapEvent));
       },
       async listJoined(userId) {
         const rows = unwrap(
           await supabase.from("event_attendees").select(`event:events!event_attendees_event_id_fkey(${EVENT_SELECT})`).eq("user_id", userId),
         ) as unknown as { event: EventRow | null }[];
-        return rows
+        return withReadiness(rows
           .map((r) => r.event)
           .filter((e): e is EventRow => !!e && (e.status === "published" || e.status === "cancelled"))
           .sort((a, b) => a.starts_at.localeCompare(b.starts_at))
-          .map(mapEvent);
+          .map(mapEvent));
       },
       async listForPlace(placeId) {
         const cutoff = new Date().toISOString();
@@ -1068,7 +1106,18 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
             .or(`ends_at.gte.${cutoff},and(ends_at.is.null,starts_at.gte.${cutoff})`)
             .order("starts_at", { ascending: true }),
         ) as EventRow[];
-        return rows.map(mapEvent);
+        return withReadiness(rows.map(mapEvent));
+      },
+      async setSessionRules(_userId, eventId, rules) {
+        unwrap(await supabase.rpc("set_session_rules", {
+          p_event: eventId, p_min_attendance: rules.minAttendance, p_decision_deadline: rules.decisionDeadline, p_venue_status: rules.venueStatus,
+        }));
+      },
+      async confirmSession(_userId, eventId) {
+        unwrap(await supabase.rpc("confirm_session", { p_event: eventId }));
+      },
+      async decideSessions(now) {
+        return Number(unwrap(await supabase.rpc("decide_sessions", { p_now: now })) ?? 0);
       },
     },
 

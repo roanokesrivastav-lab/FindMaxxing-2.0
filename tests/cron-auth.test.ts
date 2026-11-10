@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   admin: vi.fn(), rpc: vi.fn(), repository: vi.fn(), service: vi.fn(),
   resume: vi.fn(), endAds: vi.fn(), stripe: vi.fn(), refunds: vi.fn(),
-  jobs: vi.fn(), purge: vi.fn(), web: vi.fn(), expo: vi.fn(), combined: vi.fn(),
+  jobs: vi.fn(), purge: vi.fn(), web: vi.fn(), expo: vi.fn(), combined: vi.fn(), decide: vi.fn(),
 }));
 vi.mock("@/lib/config", () => ({ getDataMode: () => "supabase", paymentsMode: () => "test", pushTransportReady: () => true }));
 vi.mock("@/lib/supabase/admin", () => ({ createSupabaseAdminClient: mocks.admin }));
@@ -27,7 +27,8 @@ beforeEach(() => {
   vi.setSystemTime(new Date("2026-10-28T04:05:00Z"));
   mocks.admin.mockReturnValue({ rpc: mocks.rpc });
   mocks.rpc.mockResolvedValue({ data: 2, error: null });
-  mocks.repository.mockReturnValue({ notifications: { purge: mocks.purge } });
+  mocks.repository.mockReturnValue({ notifications: { purge: mocks.purge }, events: { decideSessions: mocks.decide } });
+  mocks.decide.mockResolvedValue(0);
   mocks.service.mockResolvedValue({ ads: { endFinished: mocks.endAds } });
   mocks.resume.mockResolvedValue({ completed: 0, failed: 0 });
   mocks.stripe.mockResolvedValue({});
@@ -71,5 +72,7 @@ describe.each([
       expect(mocks.rpc.mock.calls.filter(([name]) => name === "purge_server_abuse")).toHaveLength(1);
     }
     if (name === "refresh-reputation") expect(mocks.rpc).toHaveBeenCalledWith("refresh_all_reputation");
+    // Sessions past their decision deadline are decided on the same schedule (roadmap 4.3).
+    if (name === "notifications") expect(mocks.decide).toHaveBeenCalledWith("2026-10-28T04:05:00.000Z");
   });
 });

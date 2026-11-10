@@ -34,6 +34,7 @@ import { createDemoInteractions, forgetItemInteractions, recordOwnInteraction } 
 import { createDemoPayments, isPlusIn, needsTicket, refundOnCancel } from "./payments";
 import { PLUS_LIST_CAP, paymentsError } from "../payments";
 import { eventsError } from "../events";
+import { checkSessionRules, decideDemoSessions, readinessOf } from "./sessions";
 import { activityDetailsSchema, type ActivityDetails } from "@/lib/activity";
 import { DEFAULT_TIME_ZONE, eventTimeZone } from "@/lib/utils/timezone";
 import { LIST_LIMIT_ERROR, MAX_SAVED_LISTS, duplicateListName, listNameKey, normalizeListName } from "../savedLists";
@@ -160,6 +161,12 @@ function toEvent(state: DemoState, row: EventRow): Event {
     priceCents: row.priceCents ?? null,
     timeZone: row.timeZone ?? DEFAULT_TIME_ZONE,
     activityDetails: row.activityDetails ?? null,
+    minAttendance: row.minAttendance ?? null,
+    decisionDeadline: row.decisionDeadline ?? null,
+    venueStatus: row.venueStatus ?? "confirmed",
+    decision: row.decision ?? "open",
+    cancelReason: row.cancelReason ?? null,
+    readiness: readinessOf(state, row),
   };
 }
 
@@ -859,7 +866,13 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           updatedAt: now,
           timeZone: eventZone(input.timeZone) ?? DEFAULT_TIME_ZONE,
           activityDetails: eventActivity(input.activityDetails) ?? null,
+          minAttendance: input.sessionRules?.minAttendance ?? null,
+          decisionDeadline: input.sessionRules?.decisionDeadline ?? null,
+          venueStatus: input.sessionRules?.venueStatus ?? "confirmed",
+          decision: "open",
+          cancelReason: null,
         };
+        checkSessionRules(row, true);
         state.events.push(row);
         for (const t of input.tags) state.eventTags.push({ eventId: row.id, interestSlug: t });
         // Creators attend their own events by default.
@@ -886,7 +899,20 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         // Checked before anything changes, as the SQL update is one statement.
         const timeZone = eventZone(input.timeZone) ?? ev.timeZone ?? DEFAULT_TIME_ZONE;
         const activityDetails = input.activityDetails === undefined ? (ev.activityDetails ?? null) : (eventActivity(input.activityDetails) ?? null);
+        // Mirrors guard_event_session_rules(): rules given are final; otherwise a
+        // moved start carries the deadline along at the same lead time.
+        const rules = input.sessionRules;
+        const oldDeadline = ev.decisionDeadline ?? null;
+        const shifted = !rules && oldDeadline !== null && Date.parse(input.startsAt) !== Date.parse(ev.startsAt);
+        const decisionDeadline = rules ? rules.decisionDeadline
+          : shifted ? new Date(Date.parse(oldDeadline!) + Date.parse(input.startsAt) - Date.parse(ev.startsAt)).toISOString() : oldDeadline;
+        const minAttendance = rules ? rules.minAttendance : (ev.minAttendance ?? null);
+        const deadlineSet = !!rules && (decisionDeadline === null ? oldDeadline !== null : oldDeadline === null || Date.parse(decisionDeadline) !== Date.parse(oldDeadline));
+        checkSessionRules({ capacity: input.capacity ?? null, startsAt: input.startsAt, minAttendance, decisionDeadline }, deadlineSet);
         Object.assign(ev, {
+          minAttendance,
+          decisionDeadline,
+          venueStatus: rules ? rules.venueStatus : (ev.venueStatus ?? "confirmed"),
           timeZone,
           activityDetails,
           title: input.title,
@@ -915,6 +941,8 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         if (ev.creatorId !== creatorId) throw new DataError("You don't have permission to cancel this event", "forbidden");
         if (ev.status !== "published" || eventEndOrStart(ev) <= Date.now()) throw new DataError("Only future published events can be cancelled", "invalid");
         ev.status = "cancelled";
+        ev.cancelReason = "host";
+        ev.decision = "not_happening";
         ev.updatedAt = new Date().toISOString();
         refundOnCancel(state, id);
         notifyOn.eventCancelled(state, id, creatorId);
@@ -960,6 +988,34 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           recordOwnInteraction(state, userId, { itemType: "event", itemId: eventId, action: "leave" });
           persist();
         }
+      },
+      async setSessionRules(userId, eventId, rules) {
+        assertActive(userId);
+        const ev = state.events.find((e) => e.id === eventId);
+        if (!ev || ev.creatorId !== userId) throw eventsError("not_found");
+        if (ev.status !== "published" || eventEndOrStart(ev) <= Date.now()) throw eventsError("closed");
+        if (rules.venueStatus !== "confirmed" && rules.venueStatus !== "unconfirmed") throw eventsError("bad_session_rules");
+        const oldDeadline = ev.decisionDeadline ?? null;
+        const deadlineSet = rules.decisionDeadline === null ? oldDeadline !== null : oldDeadline === null || Date.parse(rules.decisionDeadline) !== Date.parse(oldDeadline);
+        checkSessionRules({ capacity: ev.capacity, startsAt: ev.startsAt, minAttendance: rules.minAttendance, decisionDeadline: rules.decisionDeadline }, deadlineSet);
+        Object.assign(ev, { minAttendance: rules.minAttendance, decisionDeadline: rules.decisionDeadline, venueStatus: rules.venueStatus, updatedAt: new Date().toISOString() });
+        persist();
+      },
+      async confirmSession(userId, eventId) {
+        assertActive(userId);
+        const ev = state.events.find((e) => e.id === eventId);
+        if (!ev || ev.creatorId !== userId) throw eventsError("not_found");
+        if (ev.status !== "published" || eventEndOrStart(ev) <= Date.now()) throw eventsError("closed");
+        if ((ev.decision ?? "open") === "open") {
+          ev.decision = "happening";
+          ev.updatedAt = new Date().toISOString();
+          persist();
+        }
+      },
+      async decideSessions(now) {
+        const n = decideDemoSessions(state, now, (eventId) => refundOnCancel(state, eventId));
+        if (n) persist();
+        return n;
       },
       async listByCreator(userId, viewerId = null) {
         return state.events

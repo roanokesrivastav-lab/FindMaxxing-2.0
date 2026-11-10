@@ -21,6 +21,7 @@ import type {
   EventCountOptions,
   EventMapRecord,
   EventSearchOptions,
+  SessionRules,
   MapQueryOptions,
   MapResult,
   NeighborhoodSummary,
@@ -159,6 +160,12 @@ export interface DataRepository {
     listByCreator(userId: string, viewerId?: string | null): Promise<Event[]>;
     listJoined(userId: string, viewerId?: string | null): Promise<Event[]>;
     listForPlace(placeId: string): Promise<Event[]>;
+    /** Host: minimum attendance, decision deadline and venue status (set_session_rules, 0051). */
+    setSessionRules(userId: string, eventId: string, rules: SessionRules): Promise<void>;
+    /** Host: says the session is on, which blocks the automatic cancel at the deadline. */
+    confirmSession(userId: string, eventId: string): Promise<void>;
+    /** Service: decides sessions whose deadline has passed (below the minimum: cancelled, attendees told). Returns how many. */
+    decideSessions(now: string): Promise<number>;
   };
   tags: {
     /** Visible places and upcoming events per interest slug, over the whole data set. */

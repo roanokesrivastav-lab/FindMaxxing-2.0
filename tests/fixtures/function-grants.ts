@@ -67,7 +67,7 @@ const groups = [
     reason: "Authenticated creation uses auth.uid(), ownership/visible linked items, validation and write triggers; updates restrict creator_id to auth.uid().",
     signatures: [
       "create_place_with_details(text,text,text,text,double precision,double precision,text,text,text,text,text[],jsonb)",
-      "update_event_with_tags(uuid,text,text,uuid,text,text,double precision,double precision,timestamp with time zone,timestamp with time zone,text,integer,text[],text,jsonb)",
+      "update_event_with_tags(uuid,text,text,uuid,text,text,double precision,double precision,timestamp with time zone,timestamp with time zone,text,integer,text[],text,jsonb,jsonb)",
       "update_place_with_tags(uuid,text,text,text,text,double precision,double precision,text,text,text,text[])",
       "create_ad_campaign(text,uuid,text,text,text,double precision,double precision,double precision,double precision,timestamp with time zone,timestamp with time zone,integer)",
       "set_ad_campaign_paused(uuid,boolean)", "set_event_price(uuid,integer)", "event_ticket_summary(uuid)",
@@ -80,6 +80,16 @@ const groups = [
       "check_rate_limit(text)", "consume_trip_plan()", "count_upload(text,text)", "reserve_ticket(uuid)",
       "start_direct(uuid)", "track_event(text,jsonb)", "notify_trip_plan_ready(text)",
     ],
+  },
+  {
+    anon: true,
+    reason: "Readiness counts (going, open seats, more needed, waitlist) only for events the caller passes can_view_event(); never names, tickets or who holds a seat.",
+    signatures: ["event_readiness(uuid)", "events_readiness(uuid[])"],
+  },
+  {
+    anon: false,
+    reason: "Event host tools: the caller must be the event's creator (can_host_event with auth.uid()), an active account, on a future published event under the event row lock.",
+    signatures: ["confirm_session(uuid)", "set_session_rules(uuid,integer,timestamp with time zone,text)"],
   },
   {
     anon: false,

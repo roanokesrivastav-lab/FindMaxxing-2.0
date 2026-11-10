@@ -7,6 +7,11 @@ import { DataError } from "./types";
 const ERRORS = {
   bad_time_zone: ["Unknown time zone", "invalid"],
   bad_activity: ["Check the activity details", "invalid"],
+  not_found: ["That event isn't available", "not_found"],
+  closed: ["This event can no longer be changed", "invalid"],
+  bad_session_rules: ["Check the minimum and the decision time", "invalid"],
+  min_above_capacity: ["The minimum can't be more than the capacity", "invalid"],
+  bad_deadline: ["The decision time must be before the start, and still ahead", "invalid"],
 } as const satisfies Record<string, readonly [string, DataError["code"]]>;
 
 export type EventsErrorKey = keyof typeof ERRORS;

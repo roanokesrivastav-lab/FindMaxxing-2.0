@@ -25,7 +25,7 @@ import {
   seedPlaceByName,
   seedUserByName,
 } from "@/lib/seed/seed-data";
-import type { UserInteraction, AppNotification, EntitlementStatus, TicketStatus, EventStatus, ModerationLogAction, NotificationSettings, NotificationType, PlaceStatus, ReportReason, ReportStatus, ReportTargetType, ReputationLevel, Visibility } from "../types";
+import type { CancelReason, SessionDecision, VenueStatus, UserInteraction, AppNotification, EntitlementStatus, TicketStatus, EventStatus, ModerationLogAction, NotificationSettings, NotificationType, PlaceStatus, ReportReason, ReportStatus, ReportTargetType, ReputationLevel, Visibility } from "../types";
 import type { ActivityDetails } from "@/lib/activity";
 import { DEFAULT_TIME_ZONE } from "@/lib/utils/timezone";
 import { refreshDemoReputation } from "./reputation";
@@ -121,6 +121,12 @@ export interface EventRow {
   timeZone?: string;
   /** Mirrors events.activity_details. */
   activityDetails?: ActivityDetails | null;
+  /** Mirror the 0051 session columns; absent reads as no minimum, confirmed venue, open. */
+  minAttendance?: number | null;
+  decisionDeadline?: string | null;
+  venueStatus?: VenueStatus;
+  decision?: SessionDecision;
+  cancelReason?: CancelReason | null;
 }
 export interface ReportRow {
   id: string;
@@ -318,7 +324,7 @@ export interface SavedListRow {
   updatedAt: string;
 }
 
-export const STATE_VERSION = 16;
+export const STATE_VERSION = 17;
 const DATA_DIR = path.join(process.cwd(), ".data");
 const STATE_FILE = path.join(DATA_DIR, "demo-store.json");
 
@@ -463,6 +469,19 @@ const MIGRATIONS: Record<number, (state: LooseState) => void> = {
   // v14 → v15: head-to-head place comparisons. None answered yet.
   14(state) {
     state.placeComparisons ??= [];
+  },
+  // v16 → v17: session rules (0051). Events cancelled so far were cancelled by
+  // their host; people who have cancellations pushed get the new type pushed too.
+  16(state) {
+    for (const e of (state.events ?? []) as Partial<EventRow>[]) {
+      if (e.status === "cancelled") {
+        e.cancelReason ??= "host";
+        e.decision = "not_happening";
+      }
+    }
+    for (const n of (state.notificationSettings ?? []) as { pushTypes?: string[] }[]) {
+      if (n.pushTypes?.includes("event_cancelled") && !n.pushTypes.includes("event_not_happening")) n.pushTypes.push("event_not_happening");
+    }
   },
 };
 

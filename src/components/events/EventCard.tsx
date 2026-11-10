@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils/cn";
 import { AvatarStack } from "@/components/ui/Avatar";
 import { CategoryIcon } from "@/components/ui/TaxonomyIcon";
 import { activitySummary } from "@/lib/activity";
+import { readinessText } from "@/lib/readiness";
 import { usePilotFlag } from "@/components/shared/PilotFlags";
 
 export function EventCard({
@@ -29,7 +30,8 @@ export function EventCard({
   const time = useViewerTime();
   const isPast = eventHasEnded(event.startsAt, event.endsAt, time.now);
   const cancelled = event.status === "cancelled";
-  const full = event.capacity !== null && event.attendeeCount >= event.capacity;
+  // Seats held by a paid checkout count too (events_readiness); without it, fall back to the going count.
+  const full = event.readiness?.spotsOpen != null ? event.readiness.spotsOpen === 0 : event.capacity !== null && event.attendeeCount >= event.capacity;
   const day = relativeDayLabel(event.startsAt, time);
   const pilotEvents = usePilotFlag("pilotEvents");
   const activity = pilotEvents ? activitySummary(event.activityDetails) : null;
@@ -39,11 +41,14 @@ export function EventCard({
       onMouseEnter={onHover}
       className={cn("card flex gap-3 hover:shadow-float transition-shadow group", compact ? "p-3" : "p-4", (isPast || cancelled) && "opacity-70", className)}
     >
-      <div className="shrink-0 w-14 rounded-2xl bg-pulse-50 border border-pulse-100 flex flex-col items-center justify-center py-2 text-pulse">
-        <span className="text-[11px] font-bold uppercase tracking-wide">{formatInZone(event.startsAt, time, { month: "short" })}</span>
-        <span className="font-display text-2xl font-extrabold leading-none">{formatInZone(event.startsAt, time, { day: "numeric" })}</span>
-        <span className="text-[10px] font-semibold mt-1 text-pulse-ink">{formatInZone(event.startsAt, time, { weekday: "short" })}</span>
-      </div>
+      {/* Founder decision: the pilot card is the Readiness row, with no calendar date block. */}
+      {pilotEvents ? null : (
+        <div className="shrink-0 w-14 rounded-2xl bg-pulse-50 border border-pulse-100 flex flex-col items-center justify-center py-2 text-pulse">
+          <span className="text-[11px] font-bold uppercase tracking-wide">{formatInZone(event.startsAt, time, { month: "short" })}</span>
+          <span className="font-display text-2xl font-extrabold leading-none">{formatInZone(event.startsAt, time, { day: "numeric" })}</span>
+          <span className="text-[10px] font-semibold mt-1 text-pulse-ink">{formatInZone(event.startsAt, time, { weekday: "short" })}</span>
+        </div>
+      )}
       <div className="min-w-0 flex-1 flex flex-col gap-1">
         <div className="flex items-center gap-2 text-xs font-semibold flex-wrap">
           <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5" style={{ background: `${c.color}1a`, color: readableInk(c.color) }}>
@@ -70,14 +75,23 @@ export function EventCard({
             <MapPin size={12} className="shrink-0" />
             <span className="truncate">{event.locationName}</span>
           </span>
-          <span className="inline-flex items-center gap-1 shrink-0 ml-auto">
-            {attendees && attendees.length ? <AvatarStack people={attendees} size={22} max={3} /> : <Users size={12} />}
-            <span className="font-semibold text-ink">
-              {event.attendeeCount}
-              {event.capacity ? `/${event.capacity}` : ""}
+          {pilotEvents ? (
+            attendees && attendees.length ? <span className="shrink-0 ml-auto"><AvatarStack people={attendees} size={22} max={3} /></span> : null
+          ) : (
+            <span className="inline-flex items-center gap-1 shrink-0 ml-auto">
+              {attendees && attendees.length ? <AvatarStack people={attendees} size={22} max={3} /> : <Users size={12} />}
+              <span className="font-semibold text-ink">
+                {event.attendeeCount}
+                {event.capacity ? `/${event.capacity}` : ""}
+              </span>
             </span>
-          </span>
+          )}
         </div>
+        {pilotEvents ? (
+          <p className="text-xs font-semibold text-ink" data-testid="readiness-row">
+            {readinessText(event.readiness ?? { going: event.attendeeCount }, { now: time.now, cancelled, ended: isPast, viewerTimeZone: time.timeZone })}
+          </p>
+        ) : null}
       </div>
     </Link>
   );

@@ -150,6 +150,42 @@ export interface Event {
   timeZone: string;
   /** Structured activity facts (roadmap 4.2); null when the host gave none. */
   activityDetails?: ActivityDetails | null;
+  /** Session rules and the decision (roadmap 4.3). Absent on rows mapped before 0051. */
+  minAttendance?: number | null;
+  decisionDeadline?: string | null;
+  venueStatus?: VenueStatus;
+  decision?: SessionDecision;
+  cancelReason?: CancelReason | null;
+  /** The numbers behind the Readiness row; null when they could not be read. */
+  readiness?: EventReadiness | null;
+}
+
+export type VenueStatus = "confirmed" | "unconfirmed";
+export type SessionDecision = "open" | "happening" | "not_happening";
+export type CancelReason = "host" | "below_minimum" | "series_ended";
+
+/** Mirrors events_readiness() (0051): each number from its own field. */
+export interface EventReadiness {
+  going: number;
+  capacity: number | null;
+  /** capacity minus seats spoken for (going, live paid holds, live offers); null without a capacity. */
+  spotsOpen: number | null;
+  minAttendance: number | null;
+  /** max(0, minimum - going); null without a minimum. */
+  moreNeeded: number | null;
+  decisionDeadline: string | null;
+  timeZone: string;
+  venueStatus: VenueStatus;
+  decision: SessionDecision;
+  /** People waitlisted (a count only; names are for hosts). */
+  waitlist: number;
+}
+
+/** What a host sets for a session (set_session_rules, 0051). */
+export interface SessionRules {
+  minAttendance: number | null;
+  decisionDeadline: string | null;
+  venueStatus: VenueStatus;
 }
 
 export interface EventDetail extends Event {
@@ -212,6 +248,8 @@ export interface NewEventInput {
   timeZone?: string | null;
   /** Omitted keeps what is stored on update; null clears it. */
   activityDetails?: ActivityDetails | null;
+  /** Omitted keeps the stored rules on update and uses the defaults on create. */
+  sessionRules?: SessionRules;
 }
 
 export type UpdateEventInput = NewEventInput;
@@ -713,7 +751,8 @@ export type NotificationType =
   | "place_rated"
   | "report_resolved"
   | "content_moderated"
-  | "trip_plan_ready";
+  | "trip_plan_ready"
+  | "event_not_happening";
 
 export interface AppNotification {
   id: string;
