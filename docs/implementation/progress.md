@@ -36,7 +36,7 @@ This file lets another founder’s agent resume without chat history. Baseline l
 | [5.5](tickets/5-5-start-outing-from-an-event.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 06 |
 | [6.0](tickets/6-0-routing-and-feasibility-spec.md) | Must | SPEC RECONCILED (document only) | `fbd995b` | [6.0 validation note](../features/6.0.md); provider terms unconfirmed |
 | [6.1](tickets/6-1-real-walking-routes.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 04 |
-| [6.2](tickets/6-2-deterministic-feasibility-checks.md) | Must | IMPLEMENTED-LOCAL (pure module; nothing calls it yet) | COMMIT62 | [features/6.2.md](../features/6.2.md); three reading choices for the reviewer; 6.1 not started |
+| [6.2](tickets/6-2-deterministic-feasibility-checks.md) | Must | IMPLEMENTED-LOCAL (pure module; nothing calls it yet) | `78cc608` | [features/6.2.md](../features/6.2.md); three reading choices for the reviewer; 6.1 not started |
 | [6.3](tickets/6-3-shared-versioned-itinerary.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 07 |
 | [6.4](tickets/6-4-itinerary-editor.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 07 |
 | [7.1](tickets/7-1-flash-maps.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 08 |
@@ -146,5 +146,5 @@ This file lets another founder’s agent resume without chat history. Baseline l
   `npm run check` exit 0 (1,285 tests, 0 skipped); mobile typecheck exit 0; `npm run e2e` 21/21.
 - Open from the Codex review of the same day, not yet acted on: the 4.1 host-leave wording fix, and a
   third targeted revision of 4.0 A1 and 5.0 A1.
-- Next ready: 6.1. Seven commits are local and not pushed (owner's instruction: push later).
+- Next ready: 6.1. The commits since `e5acdd4` are local and not pushed (owner's instruction: push later).
 
