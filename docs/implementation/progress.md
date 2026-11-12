@@ -5,8 +5,8 @@ This file lets another founder’s agent resume without chat history. Baseline l
 | Ticket | Priority | Current state | Implementation commit | Evidence / blocker |
 | --- | --- | --- | --- | --- |
 | [1.1](tickets/1-1-design-tokens-and-primitives.md) | Must | IMPLEMENTED-LOCAL (reverified 2026-11-11) | earlier work | [00-baseline](../features/00-baseline.md) §3; not independently verified |
-| [1.2](tickets/1-2-six-interest-thumbnail-picker.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 01 |
-| [1.3](tickets/1-3-first-map-arrival.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 01 |
+| [1.2](tickets/1-2-six-interest-thumbnail-picker.md) | Must | IMPLEMENTED-LOCAL | `78b0b34` | [features/1.2.md](../features/1.2.md); no real thumbnail photos, no device run |
+| [1.3](tickets/1-3-first-map-arrival.md) | Must | IMPLEMENTED-LOCAL; e2e and a11y NOT RERUN | `29cc1ce` | [features/1.3.md](../features/1.3.md); run `npm run e2e` and `npm run a11y` on this commit |
 | [1.5](tickets/1-5-quiet-events-tab.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 02 |
 | [2.1](tickets/2-1-map-clustering.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 05 |
 | [2.4a](tickets/2-4a-time-and-travel-filters.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 05 |
@@ -72,3 +72,14 @@ This file lets another founder’s agent resume without chat history. Baseline l
 - Owner actions open: push the two `codex/` branches (neither is on origin); confirm whether 0052 was
   ever applied to a hosted database before any hosted rollout.
 - Next ready: batch 01, tickets 1.2 then 1.3.
+
+### 2026-11-11 — batch 01 (onboarding), stopped at the session's usage limit
+
+- Done and committed: 1.2 (`78b0b34`) and 1.3 (`29cc1ce`). `npm run check` exit 0 on both (1,214 tests on
+  1.3, none skipped); `npm run e2e:onboarding` 10/10 on 1.3.
+- **Not done:** `npm run e2e` and `npm run a11y` on the 1.3 commit (the golden journey script changed
+  in 1.3); the batch 01 review bundle with screenshots. Build in demo mode first (see
+  [00-baseline](../features/00-baseline.md) "Environment facts").
+- Nothing was pushed. Still blocked on Codex preflight: 4.0 A1 and 5.0 A1.
+- Next ready after those two runs: batch 02's UI-only tickets (4.1, 1.5); 4.5a/4.5b/4.6 wait for the
+  4.0 preflight.
