@@ -10,6 +10,10 @@ import {
   type EventDetail,
   type EventReadiness,
   type SessionRules,
+  type JoinResult,
+  type OfferResult,
+  type ParticipantStatus,
+  type ViewerEventStatus,
   type NeighborhoodSummary,
   type Place,
   type PlaceDetail,
@@ -998,11 +1002,18 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
           .sort((a, b) => a.created_at.localeCompare(b.created_at))
           .map((a) => mapSummary(a.profile))
           .filter((p): p is ProfileSummary => !!p);
+        const viewerJoined = viewerId ? attendees.some((a) => a.id === viewerId) : false;
+        // The viewer's own participant row, if any (RLS: own row only).
+        const mine = viewerId && !viewerJoined
+          ? (unwrap(await supabase.from("event_participants").select("status, offer_expires_at").eq("event_id", id).eq("user_id", viewerId).maybeSingle()) as { status: ParticipantStatus; offer_expires_at: string | null } | null)
+          : null;
         const detail: EventDetail = {
           ...mapEvent(row),
           attendeeCount: row.attendees.length,
-          viewerJoined: viewerId ? attendees.some((a) => a.id === viewerId) : false,
+          viewerJoined,
           attendees,
+          viewerStatus: viewerJoined ? "going" : (mine?.status ?? null),
+          viewerOfferExpiresAt: mine?.status === "offered" ? mine.offer_expires_at : null,
         };
         return (await withReadiness([detail]))[0];
       },
@@ -1072,12 +1083,45 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
         const deletedRows = unwrap(await supabase.from("events").delete().eq("id", id).eq("creator_id", creatorId).select("id")) as { id: string }[];
         if (!deletedRows.length) throw new DataError("You don't have permission to delete this event", "forbidden");
       },
-      async join(userId, eventId) {
-        const res = await supabase.from("event_attendees").insert({ user_id: userId, event_id: eventId });
-        if (res.error && res.error.code !== "23505") throw translate(res.error);
+      // Joins and leaves are the atomic functions of 0052. Clients cannot write the
+      // going list directly, and the functions act for auth.uid(), not a passed id.
+      async join(_userId, eventId) {
+        return unwrap(await supabase.rpc("join_event", { p_event: eventId })) as JoinResult;
       },
-      async leave(userId, eventId) {
-        unwrap(await supabase.from("event_attendees").delete().eq("user_id", userId).eq("event_id", eventId));
+      async leave(_userId, eventId) {
+        unwrap(await supabase.rpc("leave_event", { p_event: eventId }));
+      },
+      async setInterest(_userId, eventId, on) {
+        const status = unwrap(await supabase.rpc("set_interest", { p_event: eventId, p_on: on })) as string;
+        return status === "none" ? null : (status as ViewerEventStatus);
+      },
+      async acceptOffer(_userId, eventId) {
+        return unwrap(await supabase.rpc("accept_offer", { p_event: eventId })) as OfferResult;
+      },
+      async declineOffer(_userId, eventId) {
+        unwrap(await supabase.rpc("decline_offer", { p_event: eventId }));
+      },
+      async removeParticipant(_hostId, eventId, userId) {
+        unwrap(await supabase.rpc("host_remove_participant", { p_event: eventId, p_user: userId }));
+      },
+      async participants(_hostId, eventId) {
+        // RLS returns every row only to the event's host; anyone else sees at most their own.
+        if (!unwrap(await supabase.rpc("is_event_host", { p_event: eventId }))) return [];
+        const rows = unwrap(
+          await supabase.from("event_participants")
+            .select(`status, queue_position, offer_expires_at, created_at, profile:profiles!event_participants_user_id_fkey(${PROFILE_SUMMARY})`)
+            .eq("event_id", eventId).in("status", ["offered", "waitlisted", "interested"]),
+        ) as unknown as { status: ParticipantStatus; queue_position: number | null; offer_expires_at: string | null; created_at: string; profile: ProfileSummaryRow | null }[];
+        const rank = { offered: 0, waitlisted: 1, interested: 2, declined: 3, left: 3 } as const;
+        return rows
+          .sort((a, b) => rank[a.status] - rank[b.status] || (a.queue_position ?? 0) - (b.queue_position ?? 0) || a.created_at.localeCompare(b.created_at))
+          .flatMap((row) => {
+            const user = mapSummary(row.profile);
+            return user ? [{ user, status: row.status, queuePosition: row.queue_position, offerExpiresAt: row.status === "offered" ? row.offer_expires_at : null }] : [];
+          });
+      },
+      async expireOffers(now = null) {
+        return Number(unwrap(await supabase.rpc("expire_offers", { p_now: now })) ?? 0);
       },
       async listByCreator(userId) {
         const rows = unwrap(

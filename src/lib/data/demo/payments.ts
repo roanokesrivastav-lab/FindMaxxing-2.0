@@ -8,7 +8,8 @@ import { DataError, type Entitlement, type Ticket } from "../types";
 import { HOLD_MINUTES, MAX_PRICE_CENTS, MIN_PRICE_CENTS, paymentsError } from "../payments";
 import type { RateLimitAction } from "@/lib/rateLimits";
 import { newId } from "@/lib/utils/ids";
-import { leaveEventChat, joinEventChat } from "./messaging";
+import { addGoing, removeGoing, type ParticipantDeps } from "./participants";
+import { seatsTaken } from "./sessions";
 import type { DemoState, EventRow, TicketRow } from "./store";
 
 const LIVE = new Set(["pending", "paid", "refund_pending"]);
@@ -29,18 +30,15 @@ export function refundOnCancel(state: DemoState, eventId: string) {
   }
 }
 
-/** Mirrors check_event_join()'s ticket rule. */
-export function needsTicket(state: DemoState, event: EventRow, userId: string): boolean {
-  return event.priceCents != null && event.creatorId !== userId
-    && !state.tickets.some((t) => t.eventId === event.id && t.userId === userId && t.status === "paid");
-}
+export { needsTicket } from "./participants";
 
 export function createDemoPayments(state: DemoState, h: {
   persist(): void;
   assertActive(userId: string): void;
   rateLimit(userId: string, action: RateLimitAction): () => void;
-  canViewEvent(event: EventRow, viewerId: string): boolean;
+  canViewEvent(event: EventRow, viewerId: string | null): boolean;
 }): DataRepository["payments"] {
+  const deps: ParticipantDeps = { canViewEvent: h.canViewEvent };
   const toTicket = (t: TicketRow): Ticket => {
     const e = t.eventId ? state.events.find((x) => x.id === t.eventId) : null;
     return {
@@ -70,7 +68,8 @@ export function createDemoPayments(state: DemoState, h: {
       if (!e || e.creatorId !== ownerId) throw paymentsError("not_found");
       if (e.status !== "published" || ended(e)) throw paymentsError("event_closed");
       if (cents !== null && (!Number.isInteger(cents) || cents < MIN_PRICE_CENTS || cents > MAX_PRICE_CENTS)) throw paymentsError("bad_price");
-      if (state.tickets.some((t) => t.eventId === eventId && LIVE.has(t.status)) || state.eventAttendees.some((a) => a.eventId === eventId && a.userId !== e.creatorId)) {
+      if (state.tickets.some((t) => t.eventId === eventId && LIVE.has(t.status)) || state.eventAttendees.some((a) => a.eventId === eventId && a.userId !== e.creatorId)
+        || state.eventParticipants.some((p) => p.eventId === eventId && (p.status === "waitlisted" || p.status === "offered"))) {
         throw paymentsError("price_locked");
       }
       e.priceCents = cents;
@@ -88,10 +87,8 @@ export function createDemoPayments(state: DemoState, h: {
       let t = state.tickets.find((x) => x.eventId === eventId && x.userId === userId && LIVE.has(x.status));
       if (t && t.status !== "pending") throw paymentsError("already_going");
       if (!t) {
-        if (e.capacity !== null) {
-          const taken = state.eventAttendees.filter((a) => a.eventId === eventId).length + state.tickets.filter((x) => x.eventId === eventId && x.status === "pending").length;
-          if (taken >= e.capacity) throw new DataError("This event is full", "full");
-        }
+        // The one capacity definition (seats_taken): going, live offers, live holds.
+        if (e.capacity !== null && seatsTaken(state, eventId, now) >= e.capacity) throw new DataError("This event is full", "full");
         const counted = h.rateLimit(userId, "tickets");
         t = {
           id: newId(), eventId, userId, status: "pending", amountCents: e.priceCents, currency: "usd", checkoutSessionId: null, paymentIntentId: null,
@@ -143,14 +140,19 @@ export function createDemoPayments(state: DemoState, h: {
       if (t.status === "expired" || Date.parse(t.expiresAt) <= Date.now()) return refund();
       if (amountCents !== t.amountCents) return refund();
       const e = state.events.find((x) => x.id === t.eventId);
-      const going = state.eventAttendees.filter((a) => a.eventId === t.eventId);
       if (!e || e.status !== "published" || ended(e) || !t.userId) return refund();
-      if (!going.some((a) => a.userId === t.userId)) {
-        if (e.capacity !== null && going.length >= e.capacity) return refund();
-        state.eventAttendees.push({ eventId: e.id, userId: t.userId, createdAt: new Date().toISOString() });
-        joinEventChat(state, e.id, t.userId);
-      }
+      // Paid first, as confirm_ticket() does: the join rule lets a paid ticket holder in,
+      // and the hold stops counting as a seat the moment it becomes a ticket.
+      const before = { status: t.status, paymentIntentId: t.paymentIntentId, paidAt: t.paidAt };
       Object.assign(t, { status: "paid", paymentIntentId, paidAt: new Date().toISOString() });
+      if (!state.eventAttendees.some((a) => a.eventId === e.id && a.userId === t.userId)) {
+        try {
+          addGoing(state, e.id, t.userId, null, deps);
+        } catch {
+          Object.assign(t, before);
+          return refund();
+        }
+      }
       h.persist();
       return "confirmed";
     },
@@ -171,8 +173,7 @@ export function createDemoPayments(state: DemoState, h: {
       if (!t) return;
       t.status = "refunded";
       t.refundedAt ??= new Date().toISOString();
-      state.eventAttendees = state.eventAttendees.filter((a) => !(a.eventId === t.eventId && a.userId === t.userId));
-      if (t.eventId && t.userId) leaveEventChat(state, t.eventId, t.userId);
+      if (t.eventId && t.userId) removeGoing(state, t.eventId, t.userId, null, deps);
       h.persist();
     },
     async setEntitlement(userId, status, periodEnd, subscriptionId) {

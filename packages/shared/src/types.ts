@@ -191,6 +191,25 @@ export interface SessionRules {
 export interface EventDetail extends Event {
   viewerJoined: boolean;
   attendees: ProfileSummary[];
+  /** The viewer's own state (roadmap 4.4): "going", a participant status, or null. */
+  viewerStatus?: ViewerEventStatus;
+  /** When the viewer's live offer runs out; null unless viewerStatus is "offered". */
+  viewerOfferExpiresAt?: string | null;
+}
+
+/** Every state that is not "going" (event_participants, 0052). */
+export type ParticipantStatus = "interested" | "waitlisted" | "offered" | "declined" | "left";
+export type ViewerEventStatus = "going" | ParticipantStatus | null;
+export type JoinResult = "going" | "waitlisted";
+export type OfferResult = "going" | "offer_expired";
+
+/** A host's view of one person who is not going (names are for hosts only, D-K). */
+export interface EventParticipant {
+  user: ProfileSummary;
+  status: ParticipantStatus;
+  /** Place in line; null unless waitlisted. */
+  queuePosition: number | null;
+  offerExpiresAt: string | null;
 }
 
 export type ReportTargetType = "place" | "event" | "profile" | "message";
@@ -752,7 +771,9 @@ export type NotificationType =
   | "report_resolved"
   | "content_moderated"
   | "trip_plan_ready"
-  | "event_not_happening";
+  | "event_not_happening"
+  | "event_offer"
+  | "event_offer_expired";
 
 export interface AppNotification {
   id: string;

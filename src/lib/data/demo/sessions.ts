@@ -15,6 +15,7 @@ import type { DemoState, EventRow } from "./store";
  */
 export function seatsTaken(state: DemoState, eventId: string, now = Date.now()): number {
   return state.eventAttendees.filter((a) => a.eventId === eventId).length
+    + state.eventParticipants.filter((p) => p.eventId === eventId && p.status === "offered" && !!p.offerExpiresAt && Date.parse(p.offerExpiresAt) > now).length
     + state.tickets.filter((t) => t.eventId === eventId && t.status === "pending" && Date.parse(t.expiresAt) > now).length;
 }
 
@@ -32,7 +33,7 @@ export function readinessOf(state: DemoState, e: EventRow, now = Date.now()): Ev
     timeZone: e.timeZone ?? DEFAULT_TIME_ZONE,
     venueStatus: e.venueStatus ?? "confirmed",
     decision: e.decision ?? "open",
-    waitlist: 0,
+    waitlist: state.eventParticipants.filter((p) => p.eventId === e.id && p.status === "waitlisted").length,
   };
 }
 

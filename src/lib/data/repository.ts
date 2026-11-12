@@ -22,6 +22,10 @@ import type {
   EventMapRecord,
   EventSearchOptions,
   SessionRules,
+  EventParticipant,
+  JoinResult,
+  OfferResult,
+  ViewerEventStatus,
   MapQueryOptions,
   MapResult,
   NeighborhoodSummary,
@@ -155,8 +159,24 @@ export interface DataRepository {
     update(id: string, input: UpdateEventInput, creatorId: string): Promise<Event>;
     cancel(id: string, creatorId: string): Promise<void>;
     delete(id: string, creatorId: string): Promise<void>;
-    join(userId: string, eventId: string): Promise<void>;
+    /**
+     * Atomic join (join_event, 0052): going if a seat is free, otherwise waitlisted (free events).
+     * A paid event still needs a ticket, and answers "full" rather than waitlisting.
+     */
+    join(userId: string, eventId: string): Promise<JoinResult>;
+    /** Gives up a seat, an offer or a place in line. The freed seat is offered to the next person. */
     leave(userId: string, eventId: string): Promise<void>;
+    /** "Interested" on or off. Never touches going, the waitlist or a seat. */
+    setInterest(userId: string, eventId: string, on: boolean): Promise<ViewerEventStatus>;
+    /** Takes the seat a live offer holds. An expired offer is not re-queued. */
+    acceptOffer(userId: string, eventId: string): Promise<OfferResult>;
+    declineOffer(userId: string, eventId: string): Promise<void>;
+    /** Host: removes someone from going, the waitlist or an offer. */
+    removeParticipant(hostId: string, eventId: string, userId: string): Promise<void>;
+    /** Host: who is offered, waitlisted (in order) or interested. Empty for anyone else. */
+    participants(hostId: string, eventId: string): Promise<EventParticipant[]>;
+    /** Service: marks offers past their expiry, tells their holders, passes the seats on. null = the store's clock. */
+    expireOffers(now?: string | null): Promise<number>;
     listByCreator(userId: string, viewerId?: string | null): Promise<Event[]>;
     listJoined(userId: string, viewerId?: string | null): Promise<Event[]>;
     listForPlace(placeId: string): Promise<Event[]>;

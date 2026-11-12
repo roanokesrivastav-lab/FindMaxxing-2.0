@@ -35,6 +35,7 @@ import { createDemoPayments, isPlusIn, needsTicket, refundOnCancel } from "./pay
 import { PLUS_LIST_CAP, paymentsError } from "../payments";
 import { eventsError } from "../events";
 import { checkSessionRules, decideDemoSessions, readinessOf } from "./sessions";
+import { acceptOffer, declineOffer, expireOffers, hostRemoveParticipant, joinEvent, leaveEvent, liveOfferCount, offersFollowEventChange, setInterest, viewerStatus, type ParticipantDeps } from "./participants";
 import { activityDetailsSchema, type ActivityDetails } from "@/lib/activity";
 import { DEFAULT_TIME_ZONE, eventTimeZone } from "@/lib/utils/timezone";
 import { LIST_LIMIT_ERROR, MAX_SAVED_LISTS, duplicateListName, listNameKey, normalizeListName } from "../savedLists";
@@ -363,6 +364,9 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
       .filter((p): p is PlaceRow => !!p && p.status === "published" && canViewPlace(state, p, list.ownerId));
   const isAdmin = (userId: string | null) => !!userId && state.admins.some((a) => a.userId === userId);
   /** Mirrors block_suspended_writes(): a suspended account cannot write anything. */
+  const participantDeps: ParticipantDeps = { canViewEvent: (event, viewerId) => canViewEvent(state, event, viewerId) };
+  /** Mirrors can_host_event(): the event's creator. */
+  const isEventHost = (eventId: string, userId: string) => state.events.some((e) => e.id === eventId && e.creatorId === userId);
   const assertActive = (userId: string) => {
     if (state.suspensions.some((x) => x.userId === userId)) throw new DataError(SUSPENDED_MESSAGE, "forbidden");
   };
@@ -832,10 +836,13 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
           .map((a) => profileOf(state, a.userId))
           .filter((p): p is ProfileSummary => !!p);
+        const mine = viewerStatus(state, id, viewerId);
         const detail: EventDetail = {
           ...toEvent(state, row),
           viewerJoined: viewerId ? state.eventAttendees.some((a) => a.eventId === id && a.userId === viewerId) : false,
           attendees,
+          viewerStatus: mine.status,
+          viewerOfferExpiresAt: mine.offerExpiresAt,
         };
         return detail;
       },
@@ -891,8 +898,13 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         if (input.placeId && !state.places.some((p) => p.id === input.placeId && canViewPlace(state, p, creatorId))) throw new DataError("Linked place not found", "not_found");
         const attendeeCount = state.eventAttendees.filter((a) => a.eventId === id).length;
         if (input.capacity !== null && input.capacity !== undefined && input.capacity < attendeeCount) {
-          throw new DataError("capacity cannot be below the existing attendee count", "invalid");
+          throw new DataError("Capacity cannot be below the existing attendee count", "invalid");
         }
+        // Mirrors guard_owner_event_change() (0052): a held offer is a seat too.
+        if (input.capacity !== null && input.capacity !== undefined && input.capacity < attendeeCount + liveOfferCount(state, id)) {
+          throw new DataError("Capacity cannot be below the people going plus the offers being held", "invalid");
+        }
+        const seatsBefore = { capacity: ev.capacity, startsAt: ev.startsAt };
         // Mirrors the trigger's "when or where changed" test (instants, not their spelling).
         const where = (e: EventRow) => JSON.stringify([Date.parse(e.startsAt), e.endsAt ? Date.parse(e.endsAt) : null, e.locationName, e.address, e.lat, e.lng, e.placeId]);
         const before = where(ev);
@@ -931,6 +943,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         state.eventTags = state.eventTags.filter((t) => t.eventId !== id);
         for (const tag of input.tags) state.eventTags.push({ eventId: id, interestSlug: tag });
         if (where(ev) !== before) notifyOn.eventChanged(state, id, creatorId);
+        offersFollowEventChange(state, ev, seatsBefore, participantDeps);
         persist();
         return toEvent(state, ev);
       },
@@ -958,6 +971,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         state.events = state.events.filter((e) => e.id !== id);
         state.eventTags = state.eventTags.filter((t) => t.eventId !== id);
         state.eventAttendees = state.eventAttendees.filter((a) => a.eventId !== id);
+        state.eventParticipants = state.eventParticipants.filter((p) => p.eventId !== id);
         dropEventChats(state, new Set([id]));
         forgetItemInteractions(state, "event", new Set([id]));
         for (const t of state.tickets) if (t.eventId === id) t.eventId = null;
@@ -966,28 +980,57 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
       async join(userId, eventId) {
         assertActive(userId);
         requireProfile(userId);
-        const ev = state.events.find((e) => e.id === eventId);
-        if (!ev || !canViewEvent(state, ev, userId) || ev.status !== "published") throw new DataError("Event not found", "not_found");
-        if (eventEndOrStart(ev) < Date.now()) throw new DataError("This event has already ended", "invalid");
-        if (needsTicket(state, ev, userId) && !state.eventAttendees.some((a) => a.eventId === eventId && a.userId === userId)) throw paymentsError("ticket_required");
-        if (state.eventAttendees.some((a) => a.eventId === eventId && a.userId === userId)) return;
-        const count = state.eventAttendees.filter((a) => a.eventId === eventId).length;
-        if (ev.capacity !== null && count >= ev.capacity) throw new DataError("This event is full", "full");
-        state.eventAttendees.push({ eventId, userId, createdAt: new Date().toISOString() });
-        joinEventChat(state, eventId, userId);
-        notifyOn.join(state, eventId, userId);
-        recordOwnInteraction(state, userId, { itemType: "event", itemId: eventId, action: "join" });
+        const result = joinEvent(state, userId, eventId, participantDeps);
         persist();
+        return result;
       },
       async leave(userId, eventId) {
         assertActive(userId);
-        const idx = state.eventAttendees.findIndex((a) => a.eventId === eventId && a.userId === userId);
-        if (idx >= 0) {
-          state.eventAttendees.splice(idx, 1);
-          leaveEventChat(state, eventId, userId);
-          recordOwnInteraction(state, userId, { itemType: "event", itemId: eventId, action: "leave" });
-          persist();
-        }
+        requireProfile(userId);
+        leaveEvent(state, userId, eventId, participantDeps);
+        persist();
+      },
+      async setInterest(userId, eventId, on) {
+        assertActive(userId);
+        requireProfile(userId);
+        const status = setInterest(state, userId, eventId, on, participantDeps);
+        persist();
+        return status;
+      },
+      async acceptOffer(userId, eventId) {
+        assertActive(userId);
+        requireProfile(userId);
+        const result = acceptOffer(state, userId, eventId, participantDeps);
+        persist();
+        return result;
+      },
+      async declineOffer(userId, eventId) {
+        assertActive(userId);
+        requireProfile(userId);
+        declineOffer(state, userId, eventId, participantDeps);
+        persist();
+      },
+      async removeParticipant(hostId, eventId, userId) {
+        assertActive(hostId);
+        requireProfile(hostId);
+        hostRemoveParticipant(state, hostId, eventId, userId, isEventHost(eventId, hostId), participantDeps);
+        persist();
+      },
+      async participants(hostId, eventId) {
+        if (!isEventHost(eventId, hostId)) return [];
+        const rank = { offered: 0, waitlisted: 1, interested: 2, declined: 3, left: 3 } as const;
+        return state.eventParticipants
+          .filter((p) => p.eventId === eventId && (p.status === "offered" || p.status === "waitlisted" || p.status === "interested"))
+          .sort((a, b) => rank[a.status] - rank[b.status] || (a.queuePosition ?? 0) - (b.queuePosition ?? 0) || a.createdAt.localeCompare(b.createdAt))
+          .flatMap((p) => {
+            const user = profileOf(state, p.userId);
+            return user ? [{ user, status: p.status, queuePosition: p.queuePosition, offerExpiresAt: p.status === "offered" ? p.offerExpiresAt : null }] : [];
+          });
+      },
+      async expireOffers(now = null) {
+        const n = expireOffers(state, participantDeps, now ? Date.parse(now) : Date.now());
+        persist();
+        return n;
       },
       async setSessionRules(userId, eventId, rules) {
         assertActive(userId);

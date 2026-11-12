@@ -61,7 +61,9 @@ describe("payments in the database", () => {
   });
 
   it("refuses a plain join to a paid event", async () => {
-    await expect(as(maya, "insert into public.event_attendees (event_id, user_id) values ($1, auth.uid())", [ev])).rejects.toThrow(/payments:ticket_required/);
+    await expect(as(maya, "select public.join_event($1)", [ev])).rejects.toThrow(/payments:ticket_required/);
+    // Clients cannot write the going list directly at all (0052, phase 2).
+    await expect(as(maya, "insert into public.event_attendees (event_id, user_id) values ($1, auth.uid())", [ev])).rejects.toThrow(/permission denied/);
   });
 
   it("holds spots against capacity, reuses a hold, and frees it when it lapses", async () => {
@@ -107,8 +109,10 @@ describe("payments in the database", () => {
     expect(await going()).toEqual([dev, t[0].user_id].sort());
     expect(await status(t[1].id)).toBe("refund_pending");
     // The ticket holder could leave and come back: the ticket lets them in.
-    await as(t[0].user_id, "delete from public.event_attendees where event_id = $1 and user_id = auth.uid()", [ev]);
-    await as(t[0].user_id, "insert into public.event_attendees (event_id, user_id) values ($1, auth.uid())", [ev]);
+    await as(t[0].user_id, "select public.leave_event($1)", [ev]);
+    expect(await going()).toEqual([dev]);
+    expect(await as(t[0].user_id, "select public.join_event($1) as r", [ev])).toEqual([{ r: "going" }]);
+    expect(await going()).toEqual([dev, t[0].user_id].sort());
   });
 
   it("refunds every ticket when the host cancels, and frees the places when Stripe confirms", async () => {
@@ -229,7 +233,7 @@ describe("payments parity", () => {
     const cat = (await db.query<{ category_slug: string }>("select category_slug from public.events limit 1")).rows[0].category_slug;
     const sqlEv = (await queryAs<{ id: string }>(db, dev, `insert into public.events (title, description, location_name, lat, lng, starts_at, creator_id, category_slug, capacity)
       values ('Paid supper club', 'A long enough description', 'Somewhere', 39.96, -83, $1, auth.uid(), $2, 3) returning id`, [tomorrow(), cat]))[0].id;
-    await queryAs(db, dev, "insert into public.event_attendees (event_id, user_id) values ($1, auth.uid()) on conflict do nothing", [sqlEv]);
+    await queryAs(db, dev, "select public.join_event($1)", [sqlEv]);
     await db.exec("set role service_role");
     await db.query("select public.set_host_account($1, 'acct', true)", [dev]);
     await db.exec("reset role");

@@ -25,7 +25,7 @@ import {
   seedPlaceByName,
   seedUserByName,
 } from "@/lib/seed/seed-data";
-import type { CancelReason, SessionDecision, VenueStatus, UserInteraction, AppNotification, EntitlementStatus, TicketStatus, EventStatus, ModerationLogAction, NotificationSettings, NotificationType, PlaceStatus, ReportReason, ReportStatus, ReportTargetType, ReputationLevel, Visibility } from "../types";
+import type { CancelReason, ParticipantStatus, SessionDecision, VenueStatus, UserInteraction, AppNotification, EntitlementStatus, TicketStatus, EventStatus, ModerationLogAction, NotificationSettings, NotificationType, PlaceStatus, ReportReason, ReportStatus, ReportTargetType, ReputationLevel, Visibility } from "../types";
 import type { ActivityDetails } from "@/lib/activity";
 import { DEFAULT_TIME_ZONE } from "@/lib/utils/timezone";
 import { refreshDemoReputation } from "./reputation";
@@ -140,6 +140,18 @@ export interface ReportRow {
   createdAt: string;
   resolvedAt: string | null;
 }
+/** Mirrors event_participants (0052). */
+export interface ParticipantRow {
+  eventId: string;
+  userId: string;
+  status: ParticipantStatus;
+  queuePosition: number | null;
+  offeredAt: string | null;
+  offerExpiresAt: string | null;
+  reason: "declined" | "expired" | "removed" | null;
+  createdAt: string;
+  updatedAt: string;
+}
 /** Mirrors moderation_actions: append-only. */
 export interface ModerationActionRow {
   id: string;
@@ -179,6 +191,10 @@ export interface DemoState {
   events: EventRow[];
   eventTags: { eventId: string; interestSlug: string }[];
   eventAttendees: { eventId: string; userId: string; createdAt: string }[];
+  /** Mirrors event_participants (0052): every state that is not "going". */
+  eventParticipants: ParticipantRow[];
+  /** Mirrors event_waitlist_seq: the last place in line handed out. */
+  waitlistSeq: number;
   follows: { followerId: string; followingId: string; createdAt: string }[];
   reports: ReportRow[];
   moderators: { userId: string; grantedAt: string; grantedBy: string | null }[];
@@ -324,7 +340,7 @@ export interface SavedListRow {
   updatedAt: string;
 }
 
-export const STATE_VERSION = 17;
+export const STATE_VERSION = 18;
 const DATA_DIR = path.join(process.cwd(), ".data");
 const STATE_FILE = path.join(DATA_DIR, "demo-store.json");
 
@@ -339,7 +355,7 @@ type LooseState = Record<string, unknown> & { version?: unknown };
 
 const COLLECTIONS = [
   "authUsers", "profiles", "profileInterests", "places", "placeTags", "placePhotos",
-  "placeRatings", "savedPlaces", "savedLists", "savedListItems", "events", "eventTags", "eventAttendees", "follows", "reports",
+  "placeRatings", "savedPlaces", "savedLists", "savedListItems", "events", "eventTags", "eventAttendees", "eventParticipants", "follows", "reports",
   "moderators", "moderationActions", "localRevocations", "rateLimits", "admins", "analyticsEvents", "reputationResets", "suspensions", "taxonomy",
   "conversations", "conversationMembers", "messages", "blocks",
   "notifications", "notificationSettings", "pushSubscriptions", "pushLog",
@@ -483,6 +499,15 @@ const MIGRATIONS: Record<number, (state: LooseState) => void> = {
       if (n.pushTypes?.includes("event_cancelled") && !n.pushTypes.includes("event_not_happening")) n.pushTypes.push("event_not_happening");
     }
   },
+  // v17 → v18: waitlist and offers (0052). Nobody is waiting yet; people who have
+  // event changes pushed get offers pushed.
+  17(state) {
+    state.eventParticipants ??= [];
+    state.waitlistSeq ??= 0;
+    for (const n of (state.notificationSettings ?? []) as { pushTypes?: string[] }[]) {
+      if (n.pushTypes?.includes("event_changed") && !n.pushTypes.includes("event_offer")) n.pushTypes.push("event_offer", "event_offer_expired");
+    }
+  },
 };
 
 export type MigrationResult =
@@ -539,6 +564,8 @@ export function buildSeedState(now = new Date()): DemoState {
     events: [],
     eventTags: [],
     eventAttendees: [],
+    eventParticipants: [],
+    waitlistSeq: 0,
     follows: [],
     reports: [],
     moderators: [],

@@ -11,6 +11,8 @@
 import { recomputeRating, type StoreHandle } from "./store";
 import { deleteMessagingFor, dropEventChats } from "./messaging";
 import { forgetItemInteractions } from "./interactions";
+import { offerNext } from "./participants";
+import { canViewEvent } from "./repository";
 
 export interface DeletedObjects {
   /** Place photo storage paths (each with its stored sizes) to remove. */
@@ -77,7 +79,10 @@ export function deleteDemoAccount(handle: StoreHandle, userId: string): DeletedO
   state.adImpressions = state.adImpressions.filter((i) => !campaigns.has(i.campaignId));
   for (const c of state.adCampaigns) if (c.reviewedBy === userId) c.reviewedBy = null;
   state.eventTags = state.eventTags.filter((t) => !ownEvents.has(t.eventId));
+  // Seats they held on other people's events are handed on below (offer_seat_after_leave, 0052).
+  const freedSeats = state.eventAttendees.filter((a) => a.userId === userId && !ownEvents.has(a.eventId)).map((a) => a.eventId);
   state.eventAttendees = state.eventAttendees.filter((a) => a.userId !== userId && !ownEvents.has(a.eventId));
+  state.eventParticipants = state.eventParticipants.filter((p) => p.userId !== userId && !ownEvents.has(p.eventId));
   for (const event of state.events) if (event.placeId && ownPlaces.has(event.placeId)) event.placeId = null;
 
   state.follows = state.follows.filter((f) => f.followerId !== userId && f.followingId !== userId);
@@ -97,6 +102,7 @@ export function deleteDemoAccount(handle: StoreHandle, userId: string): DeletedO
   state.profileInterests = state.profileInterests.filter((i) => i.profileId !== userId);
   state.profiles = state.profiles.filter((p) => p.id !== userId);
   state.authUsers = state.authUsers.filter((u) => u.id !== userId);
+  for (const eventId of freedSeats) offerNext(state, eventId, { canViewEvent: (event, viewerId) => canViewEvent(state, event, viewerId) });
   persist();
   return { placePhotos, avatars };
 }

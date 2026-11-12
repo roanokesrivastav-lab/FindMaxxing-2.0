@@ -58,8 +58,8 @@ describe("interaction attribution in the database", () => {
       { action: "rate", item_id: place, value: 2 },
     ];
     if (event) {
-      await as(jules, "insert into public.event_attendees (user_id, event_id) values ($1, $2)", [jules, event]);
-      await as(jules, "delete from public.event_attendees where user_id = $1 and event_id = $2", [jules, event]);
+      await as(jules, "select public.join_event($1)", [event]);
+      await as(jules, "select public.leave_event($1)", [event]);
       expected.push({ action: "join", item_id: event, value: null }, { action: "leave", item_id: event, value: null });
     }
     expect(await mine(jules)).toEqual(expected);
