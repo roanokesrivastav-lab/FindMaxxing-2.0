@@ -6,8 +6,8 @@ This file lets another founder’s agent resume without chat history. Baseline l
 | --- | --- | --- | --- | --- |
 | [1.1](tickets/1-1-design-tokens-and-primitives.md) | Must | IMPLEMENTED-LOCAL (reverified 2026-11-11) | earlier work | [00-baseline](../features/00-baseline.md) §3; not independently verified |
 | [1.2](tickets/1-2-six-interest-thumbnail-picker.md) | Must | IMPLEMENTED-LOCAL | `78b0b34` | [features/1.2.md](../features/1.2.md); no real thumbnail photos, no device run |
-| [1.3](tickets/1-3-first-map-arrival.md) | Must | IMPLEMENTED-LOCAL | `29cc1ce` | [features/1.3.md](../features/1.3.md); Chrome only, no device run |
-| [1.5](tickets/1-5-quiet-events-tab.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 02 |
+| [1.3](tickets/1-3-first-map-arrival.md) | Must | IMPLEMENTED-LOCAL; review fixes awaiting Codex re-check | `29cc1ce`, fixes `d8dc696` | [features/1.3.md](../features/1.3.md); Chrome only, no device run |
+| [1.5](tickets/1-5-quiet-events-tab.md) | Must | BLOCKED — needs followed-series data (4.5a) | — | See batch 02; waits for the 4.0 A1 second preflight |
 | [2.1](tickets/2-1-map-clustering.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 05 |
 | [2.4a](tickets/2-4a-time-and-travel-filters.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 05 |
 | [2.4b](tickets/2-4b-has-room-availability-filter.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 05 |
@@ -19,14 +19,14 @@ This file lets another founder’s agent resume without chat history. Baseline l
 | [3.2](tickets/3-2-library-tools.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 03 |
 | [3.3](tickets/3-3-matching-provider-specification.md) | Must | SPEC RECONCILED (document only) | `99f8023` | [3.3 validation note](../features/3.3.md); B1/B2 deferred with the Later importers |
 | [3.6](tickets/3-6-pick-from-my-saves.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 03 |
-| [4.0](tickets/4-0-event-foundation-specification.md) | Must | BLOCKED — amendment awaiting Codex preflight | `c06f1ad` | [4.0 Amendment A1](../features/4.0.md); blocks 4.5a, 4.5b, 4.6, 8.1b, 5.5 |
-| [4.1](tickets/4-1-editorial-event-detail.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 02 |
+| [4.0](tickets/4-0-event-foundation-specification.md) | Must | BLOCKED — amendment revision 2 awaiting second Codex preflight | `c06f1ad`, r2 `3bd83e0` | [4.0 Amendment A1](../features/4.0.md); blocks 4.5a, 4.5b, 4.6, 4.8, 1.5, 8.1b, 5.5 and the 4.1 newcomer block |
+| [4.1](tickets/4-1-editorial-event-detail.md) | Must | PARTLY IMPLEMENTED-LOCAL (existing-contract part) | see session log 2026-11-12 | [features/4.1.md](../features/4.1.md); newcomer block not built (needs a column); Chrome only |
 | [4.2](tickets/4-2-structured-activity-details.md) | Must | IMPLEMENTED-LOCAL (reverified 2026-11-11) | `15f5561` | [00-baseline](../features/00-baseline.md) §3; hosted NOT VERIFIED |
 | [4.3](tickets/4-3-attendance-and-readiness.md) | Must | IMPLEMENTED-LOCAL (reverified 2026-11-11) | `f2eb957` | [00-baseline](../features/00-baseline.md) §3; cron, push and the decide-vs-join race NOT VERIFIED |
-| [4.5a](tickets/4-5a-recurring-series-and-host-tools.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 02 |
-| [4.5b](tickets/4-5b-permanent-series-page.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 02 |
-| [4.6](tickets/4-6-material-change-notifications.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 02 |
-| [4.8](tickets/4-8-optional-party-poster.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 02 |
+| [4.5a](tickets/4-5a-recurring-series-and-host-tools.md) | Must | BLOCKED — 4.0 A1 second preflight | — | See batch 02 |
+| [4.5b](tickets/4-5b-permanent-series-page.md) | Must | BLOCKED — needs 4.5a | — | See batch 02 |
+| [4.6](tickets/4-6-material-change-notifications.md) | Must | BLOCKED — 4.0 A1 second preflight | — | See batch 02 |
+| [4.8](tickets/4-8-optional-party-poster.md) | Must | BLOCKED — needs an event column; event schema held for the second preflight | — | See batch 02 |
 | [4.pre](tickets/4-pre-real-postgres-concurrency-harness.md) | Must | IMPLEMENTED-LOCAL (harness reverified) | earlier work | [00-baseline](../features/00-baseline.md) §3; event race suites arrive with 4.5a (4.0 A1.6) |
 | [5.0](tickets/5-0-outings-specification.md) | Must | BLOCKED — amendment awaiting Codex preflight | `9c515b9` | [5.0 Amendment A1](../features/5.0.md); blocks 5.1–5.5 |
 | [5.1](tickets/5-1-outing-core-and-invites.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 06 |
@@ -118,3 +118,18 @@ This file lets another founder’s agent resume without chat history. Baseline l
 - `npm run check` exit 0 (1,216 tests, 0 skipped); `npm run e2e:onboarding` 13/13; `npm run e2e` 21/21;
   `npm run a11y` clean. The new checks fail with the fixes removed.
 - Awaiting Codex re-verification of 1.3. Still no Safari, device or hosted run.
+
+### 2026-11-12 — brief revisions and batch 02 (what was ready)
+
+- **4.0 A1 and 5.0 A1 revision 2** written with every change the Codex review required (`3bd83e0`).
+  Both wait for a second preflight. Until it returns, no event or outing schema work starts.
+- **Batch 02.** Only the part of 4.1 that uses existing contracts was ready, and it is done:
+  the editorial event page ([features/4.1.md](../features/4.1.md)). `npm run check` exit 0 (1,234
+  tests, 0 skipped); `e2e:event-detail` 9/9; `e2e` 21/21; `a11y` clean; `e2e:onboarding` 13/13;
+  `e2e:features` 11/11.
+- **Blocked in batch 02:** the 4.1 newcomer block and 4.8 (each needs an event column), 4.5a, 4.5b,
+  4.6 (the amended contract) and 1.5 (followed-series data from 4.5a).
+- **Not started:** 6.2 feasibility, which the review named as independent work that can proceed.
+  It is the next ready ticket.
+- Stopped at the batch 02 boundary. Nothing merged or deployed; no hosted database touched.
+

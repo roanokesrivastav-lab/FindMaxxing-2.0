@@ -17,6 +17,7 @@
     "e2e": "node scripts/e2e.mjs",
     "e2e:features": "node scripts/e2e-features.mjs",
     "e2e:onboarding": "node scripts/e2e-onboarding.mjs",
+    "e2e:event-detail": "node scripts/e2e-event-detail.mjs",
     "a11y": "node scripts/a11y.mjs"
   },
   "dependencies": {

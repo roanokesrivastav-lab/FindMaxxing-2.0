@@ -65,6 +65,11 @@ jobs:
           ONBOARDING_E2E_OUT: artifacts/e2e-onboarding
         run: npm run e2e:onboarding
 
+      - name: Event detail flows
+        env:
+          EVENT_DETAIL_E2E_OUT: artifacts/e2e-event-detail
+        run: npm run e2e:event-detail
+
       - name: Build feature-enabled demo for release smoke tests
         env:
           NEXT_PUBLIC_FEATURES: messaging,notifications,payments,ads,admin,reputation,recommendations,pwa

@@ -237,6 +237,19 @@ body {
     animation: var(--animate-shimmer);
     border-radius: 0.75rem;
   }
+  /* Event page action (roadmap 4.1). It keeps its place in the page's reading order and rides at
+     the foot of the screen until the reader gets there. When the screen is narrow for the text
+     (under 19rem wide: a phone at about 130% text or more) the block would cover most of the page
+     and whatever has focus behind it, so its offset is pushed far below the screen and it simply
+     stays where it is in the page. rem follows the reader's text size; vw does not. */
+  .action-dock {
+    position: sticky;
+    z-index: 10;
+    bottom: calc(var(--nav-height) + var(--safe-bottom) + 0.5rem - max(0px, 19rem - 100vw) * 9999);
+  }
+  @media (min-width: 768px) {
+    .action-dock { bottom: calc(1rem - max(0px, 19rem - 100vw) * 9999); }
+  }
   .scrollbar-none {
     scrollbar-width: none;
   }
