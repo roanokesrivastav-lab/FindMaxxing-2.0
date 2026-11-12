@@ -11,7 +11,9 @@
     "./notifications": "./src/notifications.ts",
     "./activity": "./src/activity.ts",
     "./readiness": "./src/readiness.ts",
-    "./timestamps": "./src/timestamps.ts"
+    "./timestamps": "./src/timestamps.ts",
+    "./timezone": "./src/timezone.ts",
+    "./feasibility": "./src/feasibility.ts"
   },
   "dependencies": {
     "zod": "^4.5.4"
