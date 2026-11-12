@@ -6,7 +6,7 @@ This file lets another founder’s agent resume without chat history. Baseline l
 | --- | --- | --- | --- | --- |
 | [1.1](tickets/1-1-design-tokens-and-primitives.md) | Must | IMPLEMENTED-LOCAL (reverified 2026-11-11) | earlier work | [00-baseline](../features/00-baseline.md) §3; not independently verified |
 | [1.2](tickets/1-2-six-interest-thumbnail-picker.md) | Must | IMPLEMENTED-LOCAL | `78b0b34` | [features/1.2.md](../features/1.2.md); no real thumbnail photos, no device run |
-| [1.3](tickets/1-3-first-map-arrival.md) | Must | IMPLEMENTED-LOCAL; e2e and a11y NOT RERUN | `29cc1ce` | [features/1.3.md](../features/1.3.md); run `npm run e2e` and `npm run a11y` on this commit |
+| [1.3](tickets/1-3-first-map-arrival.md) | Must | IMPLEMENTED-LOCAL | `29cc1ce` | [features/1.3.md](../features/1.3.md); Chrome only, no device run |
 | [1.5](tickets/1-5-quiet-events-tab.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 02 |
 | [2.1](tickets/2-1-map-clustering.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 05 |
 | [2.4a](tickets/2-4a-time-and-travel-filters.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 05 |
@@ -83,3 +83,13 @@ This file lets another founder’s agent resume without chat history. Baseline l
 - Nothing was pushed. Still blocked on Codex preflight: 4.0 A1 and 5.0 A1.
 - Next ready after those two runs: batch 02's UI-only tickets (4.1, 1.5); 4.5a/4.5b/4.6 wait for the
   4.0 preflight.
+
+### 2026-11-11 — batch 01 closed for review
+
+- The two suites owed above were run on the 1.3 code: `npm run e2e` 21/21, `npm run a11y` clean,
+  `npm run e2e:onboarding` 10/10. Review bundle with screenshots:
+  [features/batch-01-review.md](../features/batch-01-review.md).
+- Last completed ticket: 1.3. Stopped at the batch boundary for review; batch 02 not started.
+- Blocked on Codex preflight: 4.0 A1, 5.0 A1. Awaiting Codex verification: 1.2, 1.3.
+- Next ready: 4.1 and 1.5 (batch 02, the parts that need no series schema), or 6.1/6.2 (batch 04).
+- Branch `codex/founder-implementation-handoff-2026-11-11`, main checkout, nothing pushed.
