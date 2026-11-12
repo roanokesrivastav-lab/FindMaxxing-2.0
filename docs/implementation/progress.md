@@ -102,3 +102,9 @@ This file lets another founder’s agent resume without chat history. Baseline l
   `git switch --track origin/...` step in `IMPLEMENTATION_START_HERE.md` now works.
 - The snapshot branch is pushed for safekeeping only. It is still not a base and must not be merged.
 - No pull request was opened, and nothing was merged or deployed.
+
+### Independent Codex review of batches 00 and 01
+
+- 1.2 is ready for product review on mobile web. 1.3 requires a working text-search state and usable first-map controls at 200% text before independent sign-off.
+- 4.0 A1 and 5.0 A1 are approved with required changes. Revise the briefs and return them for preflight before starting dependent schema work.
+- Review findings, handoff contracts and independent checks are in [batch-01-codex-review.md](../features/batch-01-codex-review.md).
