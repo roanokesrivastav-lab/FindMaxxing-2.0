@@ -35,7 +35,7 @@ vi.mock("@/components/explore/ExploreClient", () => ({ ExploreClient: () => null
 vi.mock("@/components/recommendations/ForYouRail", () => ({ ForYouRail: () => null }));
 vi.mock("@/server/recommendations", () => ({ forYouPlaces: async () => [] }));
 
-const base: ArrivalInput = { interests: ["coffee", "hiking"], settled: true, failed: false, total: 3, loadedTags: [["coffee"], ["coffee", "studying"], ["hiking"]], complete: true, locationDenied: false, widened: false };
+const base: ArrivalInput = { interests: ["coffee", "hiking"], settled: true, failed: false, total: 3, loadedTags: [["coffee"], ["coffee", "studying"], ["hiking"]], complete: true, locationDenied: false, widened: false, textSearch: false };
 const notice = (over: Partial<ArrivalInput>) => arrivalNotice({ ...base, ...over });
 
 describe("what the first map may say", () => {
@@ -77,6 +77,19 @@ describe("what the first map may say", () => {
     expect(notice({ locationDenied: true, widened: true })).toMatchObject({ locationDenied: true, widening: null });
     // Still loading: the note stands, but no action is offered on unknown results.
     expect(notice({ locationDenied: true, settled: false })).toMatchObject({ locationDenied: true, widening: null });
+  });
+
+  it("during a text search it says nothing about the area and offers no widening, whatever the results", () => {
+    const silent = { emptyInterests: [], nothingMatches: false, stillEmptyAfterWidening: false, locationDenied: false, widening: null };
+    // A search with no matches is the search's own empty state, not "nothing in this area".
+    expect(notice({ textSearch: true, total: 0, loadedTags: [] })).toEqual(silent);
+    // One interest missing from the matches says nothing about the area either.
+    expect(notice({ textSearch: true, loadedTags: [["coffee"]], total: 1 })).toEqual(silent);
+    // Location off does not bring the widening back: there is no area to widen in a search.
+    expect(notice({ textSearch: true, locationDenied: true, total: 0, loadedTags: [] })).toEqual(silent);
+    expect(notice({ textSearch: true, widened: true, total: 0, loadedTags: [] })).toEqual(silent);
+    // Leaving the search restores exactly what the area's results support.
+    expect(notice({ textSearch: false, total: 0, loadedTags: [] })).toMatchObject({ nothingMatches: true, widening: "wider-area" });
   });
 
   it("with no interest filter there is nothing to report about interests", () => {
@@ -170,6 +183,15 @@ describe("the strip as rendered", () => {
     expect(count(html, /data-widening=/g)).toBe(1);
   });
 
+  it("scrolls inside its own box when it is given less height than it needs, rather than squashing a row", () => {
+    const html = render(["coffee", "hiking"]);
+    const section = html.match(/<section[^>]*>/)?.[0] ?? "";
+    expect(section).toContain("overflow-y-auto");
+    expect(section).toContain("min-h-0");
+    // A flex column would shrink the chip row (it scrolls sideways, so it has no minimum height).
+    expect(section).not.toMatch(/\bflex\b/);
+  });
+
   it("with no interests it says the map shows everything and has no filter chips", () => {
     const html = render([]);
     expect(html).toContain("The map is showing everything.");
@@ -199,6 +221,7 @@ describe("no nearby matches through the real save and Explore paths (demo reposi
       complete: !p.initial.placeMarkers.truncated && !p.initial.eventMarkers.truncated && !p.initial.places.nextCursor && !p.initial.events.nextCursor,
       locationDenied: false,
       widened: false,
+      textSearch: false,
     });
 
   beforeEach(() => {

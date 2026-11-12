@@ -7,8 +7,9 @@
 // Covers: zero and maximum choices, skip, keyboard-only use, coming back to the
 // step, returning users, 200% text, and axe on each picker state; then the
 // first map: removable interests, Show everything, no nearby matches, a refused
-// location prompt, the one widening, list mode and desktop width. Exits
-// non-zero on any failed check; screenshots go to ONBOARDING_E2E_OUT.
+// location prompt, the one widening, going into and out of a text search, the
+// strip used by keyboard and by touch at 200% text, list mode and desktop
+// width. Exits non-zero on any failed check; screenshots go to ONBOARDING_E2E_OUT.
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -88,6 +89,54 @@ const bboxArea = (params) => {
   const [west, south, east, north] = (params.get("bbox") ?? "").split(",").map(Number);
   return (east - west) * (north - south);
 };
+/** Root text size, as a browser's 200% text setting changes it. Stays until set again. */
+async function textSize(page, percent) {
+  await page.evaluate((p) => {
+    let tag = document.getElementById("e2e-text-size");
+    if (!tag) { tag = document.createElement("style"); tag.id = "e2e-text-size"; document.head.append(tag); }
+    tag.textContent = `html{font-size:${p}% !important}`;
+  }, percent);
+  await page.waitForTimeout(250);
+}
+/**
+ * Where the map's overlays are: the strip, the results card and the bottom navigation.
+ * `apart` is false when any two of them share pixels.
+ */
+const overlayLayout = (page) => page.evaluate(() => {
+  const box = (el) => { const r = el.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left), right: Math.round(r.right), height: Math.round(r.height) }; };
+  const strip = box(document.querySelector(".explore-map [data-first-arrival]"));
+  const summary = box(document.querySelector("[data-results-summary]"));
+  const nav = box(Array.from(document.querySelectorAll("nav")).filter((n) => getComputedStyle(n).position === "fixed" && n.getBoundingClientRect().height > 0).at(-1));
+  return { strip, summary, nav, apart: strip.bottom <= summary.top && summary.bottom <= nav.top, scroll: document.documentElement.scrollWidth };
+});
+/**
+ * Is this control somewhere a person can use it right now: inside the window, inside every
+ * scrolling box that clips it, above the bottom navigation, and the topmost thing at its centre.
+ */
+const usable = (locator) => locator.evaluate((el) => {
+  const r = el.getBoundingClientRect();
+  const x = r.left + r.width / 2, y = r.top + r.height / 2;
+  // Clipped: any part of it cut off by a scrolling box (1px of rounding allowed).
+  let clipped = false;
+  for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+    const style = getComputedStyle(p);
+    if (!/(auto|scroll|hidden)/.test(style.overflowX + style.overflowY)) continue;
+    const c = p.getBoundingClientRect();
+    if (r.left < c.left - 1 || r.right > c.right + 1 || r.top < c.top - 1 || r.bottom > c.bottom + 1) clipped = true;
+  }
+  const top = document.elementFromPoint(x, y);
+  return { inWindow: r.left >= 0 && r.right <= document.documentElement.clientWidth && r.top >= 0 && r.bottom <= window.innerHeight, clipped, onTop: !!top && (top === el || el.contains(top)), covering: top && !(top === el || el.contains(top)) ? (top.closest("[data-results-summary],nav,[data-first-arrival]")?.tagName ?? top.tagName) : null, box: [r.left, r.right, r.top, r.bottom].map(Math.round) };
+});
+async function assertUsable(locator, label) {
+  const u = await usable(locator);
+  assert.ok(u.inWindow && !u.clipped && u.onTop, `${label} cannot be used where it is: ${JSON.stringify(u)}`);
+}
+/** The strip never scrolls sideways itself; its chip row may, at normal text size. */
+const stripFit = (page) => page.evaluate(() => {
+  const strip = document.querySelector(".explore-map [data-first-arrival]");
+  const row = strip.querySelector("ul");
+  return { sideways: strip.scrollWidth - strip.clientWidth, rowSideways: row ? row.scrollWidth - row.clientWidth : 0, scrollsDown: strip.scrollHeight > strip.clientHeight };
+});
 async function auditMapPage(page) {
   await page.addScriptTag({ content: AXE });
   const result = await page.evaluate(async () => await window.axe.run({ exclude: [[".maplibregl-canvas"], [".mapboxgl-canvas"]] }, { resultTypes: ["violations"], rules: { "target-size": { enabled: true } } }));
@@ -178,6 +227,15 @@ try {
     await strip(page).waitFor();
     assert.equal(await removers(page).count(), MAX);
     await strip(page).getByRole("button", { name: "Show everything", exact: true }).waitFor();
+    // The row scrolls sideways at this size. Tabbing along it brings each chip wholly into view.
+    assert.ok((await stripFit(page)).rowSideways > 0, "twelve chips are more than the row is wide");
+    await strip(page).getByRole("button", { name: "Show everything", exact: true }).focus();
+    for (let i = 0; i < MAX; i++) {
+      await page.keyboard.press("Tab");
+      const name = await page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? "");
+      assert.match(name, /^Remove /, `Tab ${i + 1} lands on a remove chip`);
+      await assertUsable(page.locator(":focus"), `focused "${name}"`);
+    }
     await snap(page, "map-twelve-interests");
     // Removing one filters by the other eleven, and only because it was tapped.
     const label = await removers(page).first().getAttribute("aria-label");
@@ -356,16 +414,11 @@ try {
     await snap(page, "map-location-denied");
     assertClean(await auditMapPage(page), "axe: first map with location off");
 
-    // 200% text: the strip still fits the phone.
-    await page.addStyleTag({ content: "html{font-size:200% !important}" });
-    await page.waitForTimeout(200);
-    const fit = await strip(page).evaluate((el) => ({ right: Math.round(el.getBoundingClientRect().right), left: Math.round(el.getBoundingClientRect().left), scroll: document.documentElement.scrollWidth }));
-    assert.ok(fit.left >= 0 && fit.right <= VIEWPORT.width, `strip spans ${fit.left}–${fit.right}px at 200% text`);
-    assert.ok(fit.scroll <= VIEWPORT.width, `page is ${fit.scroll}px wide at 200% text`);
-    await snap(page, "map-location-denied-large-text");
-    await page.addStyleTag({ content: "html{font-size:100% !important}" });
+    // The strip and the results card do not share pixels, and neither is under the navigation.
+    const layout = await overlayLayout(page);
+    assert.ok(layout.apart, `overlays overlap at normal text: ${JSON.stringify(layout)}`);
 
-    // The widening keeps the filter and is offered once.
+    // The widening keeps the filter and is offered once. (Used at 200% text in the next two steps.)
     const before = page.pinQueries.at(-1);
     const [wider] = await Promise.all([nextPinQuery(page), widen(page).click()]);
     assert.equal(wider.get("tags"), "coffee");
@@ -373,6 +426,189 @@ try {
     await widen(page).waitFor({ state: "detached" });
     assert.equal(await removers(page).count(), 1);
     await note.waitFor();
+  });
+
+  await step("text search: the strip stops talking about the area and offers no widening; the query and interests stay; leaving the search brings both back", async () => {
+    const page = await newcomer();
+    await openMore(page);
+    await page.getByRole("checkbox", { name: /^Volunteering/ }).click();
+    await forward(page).click();
+    await finishFromHomeCity(page);
+    await strip(page).locator('[data-notice="no-matches"]').waitFor();
+    await widen(page).waitFor();
+
+    // Into a search that matches nothing.
+    const search = page.getByRole("searchbox", { name: "Search places and events" });
+    const term = "zzqx no such place";
+    const [searched] = await Promise.all([nextPinQuery(page, (q) => q.get("q") === term), search.fill(term)]);
+    assert.equal(searched.get("tags"), "volunteering", "the search keeps the interest filter");
+    assert.equal(searched.get("bbox"), null, "the search covers everywhere, not the map's area");
+    await widen(page).waitFor({ state: "detached" });
+    assert.equal(await strip(page).locator("[data-widening]").count(), 0, "no widening is offered that a search cannot use");
+    assert.equal(await strip(page).locator("[data-notice]").count(), 0, "nothing is said about the area during a search");
+    await page.locator("[data-results-summary]", { hasText: "Nothing matches" }).waitFor();
+    assert.equal(await search.inputValue(), term, "the query is still in the box");
+    assert.equal(await removers(page).count(), 1, "the interest is still an active filter");
+    assert.equal(await pins(page).count(), 0);
+    await snap(page, "search-no-matches");
+    assertClean(await auditMapPage(page), "axe: first map during a text search");
+    // The search's own empty state names the query.
+    await page.getByRole("button", { name: /^List$/ }).click();
+    await page.getByText(`No matches for “${term}”. Try fewer words or another filter.`).waitFor();
+    assert.equal(await strip(page).locator("[data-widening]").count(), 0);
+    await page.getByRole("button", { name: "Show map" }).click();
+
+    // Narrowed to the area on screen, it is still a search: the search's own control goes back.
+    const [inArea] = await Promise.all([nextPinQuery(page, (q) => q.get("q") === term && !!q.get("bbox")), page.getByRole("button", { name: "Search this area", exact: true }).click()]);
+    assert.equal(inArea.get("tags"), "volunteering");
+    await page.getByRole("button", { name: "Search everywhere", exact: true }).waitFor();
+    assert.equal(await strip(page).locator("[data-widening], [data-notice]").count(), 0);
+    assert.equal(await search.inputValue(), term);
+
+    // Out of the search: the area notice and its widening return, and the widening now runs.
+    const sent = page.pinQueries.length;
+    await page.getByRole("button", { name: "Clear search", exact: true }).click();
+    await strip(page).locator('[data-notice="no-matches"]').waitFor();
+    await widen(page).waitFor();
+    assert.equal(await search.inputValue(), "");
+    assert.equal(await removers(page).count(), 1);
+    const before = page.pinQueries.slice(sent).findLast((q) => !q.get("q") && q.get("bbox"));
+    assert.ok(before, "browsing queried the map's area again after the search was cleared");
+    const [wider] = await Promise.all([nextPinQuery(page, (q) => !q.get("q") && bboxArea(q) > bboxArea(before) * 3), widen(page).click()]);
+    assert.equal(wider.get("tags"), "volunteering");
+    await strip(page).locator('[data-notice="no-matches"]', { hasText: "Still nothing for your interests in the wider area." }).waitFor();
+    assert.equal(await widen(page).count(), 0);
+
+    // Typing again after the widening was used: still silent, and still silent once cleared except for what is true.
+    await search.fill("coffee");
+    await strip(page).locator("[data-notice]").first().waitFor({ state: "detached" });
+    assert.equal(await strip(page).locator("[data-widening]").count(), 0);
+  });
+
+  await step("200% text, keyboard: Show everything, Remove and the widening are each reached, seen and used with the results card and navigation on screen", async () => {
+    const page = await newcomer();
+    await page.getByRole("checkbox", { name: /^Coffee/ }).click();
+    await openMore(page);
+    await page.getByRole("checkbox", { name: /^Volunteering/ }).click();
+    await forward(page).click();
+    await finishFromHomeCity(page);
+    await strip(page).locator('[data-notice="no-matches"]').waitFor();
+    await widen(page).waitFor();
+    await textSize(page, 200);
+
+    const layout = await overlayLayout(page);
+    assert.ok(layout.apart, `the strip, results card and navigation overlap at 200% text: ${JSON.stringify(layout)}`);
+    assert.ok(layout.strip.left >= 0 && layout.strip.right <= VIEWPORT.width, `strip spans ${layout.strip.left}–${layout.strip.right}px`);
+    assert.ok(layout.scroll <= VIEWPORT.width, `page is ${layout.scroll}px wide at 200% text`);
+    assert.ok(layout.strip.height >= 120, `the strip keeps only ${layout.strip.height}px at 200% text`);
+    assert.ok(layout.summary.height > 0 && layout.nav.height > 0, "the results card and the navigation are on screen");
+    const fit = await stripFit(page);
+    assert.ok(fit.sideways <= 0 && fit.rowSideways <= 0, `nothing in the strip scrolls sideways at 200% text: ${JSON.stringify(fit)}`);
+    assert.ok(fit.scrollsDown, "the strip is taller than its box here, so this case does exercise scrolling inside it");
+    await snap(page, "large-text-strip-top");
+
+    // Tab from the top of the page. Every stop inside the strip must be visible and unobscured where focus lands.
+    const seen = [];
+    const focusName = () => page.evaluate(() => {
+      const el = document.activeElement;
+      return { inStrip: !!el?.closest(".explore-map [data-first-arrival]"), name: el?.getAttribute("aria-label") ?? el?.textContent?.trim() ?? "", outline: el ? getComputedStyle(el).outlineStyle : "none" };
+    });
+    await page.locator("body").press("Tab");
+    let entered = false;
+    for (let i = 0; i < 60; i++) {
+      const f = await focusName();
+      if (f.inStrip) {
+        entered = true;
+        await assertUsable(page.locator(":focus"), `focused "${f.name}"`);
+        assert.notEqual(f.outline, "none", `"${f.name}" shows no focus ring`);
+        seen.push(f.name);
+        if (f.name === "Search a wider area") break;
+      } else if (entered) break;
+      await page.keyboard.press("Tab");
+    }
+    assert.deepEqual(seen, ["Got it", "Show everything", "Remove Coffee", "Remove Volunteering", "Search a wider area"], "focus order through the strip");
+    await snap(page, "large-text-keyboard-widening-focused");
+
+    // Enter on the widening, still at 200%.
+    const before = page.pinQueries.at(-1);
+    const [wider] = await Promise.all([nextPinQuery(page, (q) => bboxArea(q) > bboxArea(before) * 3), page.keyboard.press("Enter")]);
+    assert.deepEqual(wider.get("tags").split(",").sort(), ["coffee", "volunteering"], "both filters are kept");
+    await strip(page).locator('[data-notice="no-matches"]', { hasText: "Still nothing for Volunteering in the wider area." }).waitFor();
+    assert.equal(await widen(page).count(), 0);
+
+    // Shift+Tab back to a Remove chip and press it.
+    for (let i = 0; i < 8 && (await focusName()).name !== "Remove Volunteering"; i++) await page.keyboard.press("Shift+Tab");
+    await assertUsable(page.locator(":focus"), "focused Remove Volunteering");
+    const [afterRemove] = await Promise.all([nextPinQuery(page, (q) => q.get("tags") === "coffee"), page.keyboard.press("Enter")]);
+    assert.equal(afterRemove.get("tags"), "coffee");
+    assert.equal(await removers(page).count(), 1);
+
+    // And Show everything.
+    const everything = strip(page).getByRole("button", { name: "Show everything", exact: true });
+    await everything.focus();
+    await assertUsable(everything, "focused Show everything");
+    await Promise.all([nextPinQuery(page, (q) => !q.get("tags")), page.keyboard.press("Enter")]);
+    assert.equal(await removers(page).count(), 0);
+    assert.ok((await overlayLayout(page)).apart, "overlays still apart after the filters were cleared");
+    assertClean(await auditMapPage(page), "axe: first map at 200% text");
+  });
+
+  await step("200% text, touch: the same three controls are scrolled to and tapped inside the strip, and the results card still opens the list", async () => {
+    const page = await newcomer();
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Browser.setPermission", { permission: { name: "geolocation" }, setting: "denied", origin: server.base });
+    await page.getByRole("checkbox", { name: /^Coffee/ }).click();
+    await openMore(page);
+    await page.getByRole("checkbox", { name: /^Volunteering/ }).click();
+    await forward(page).click();
+    await page.getByRole("heading", { name: "Where's home?" }).waitFor();
+    await page.getByRole("button", { name: "Skip", exact: true }).click();
+    await page.getByRole("button", { name: /Use my location/ }).click();
+    await page.getByText("No problem. You can turn it on later from the map.").waitFor();
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await page.getByRole("button", { name: "Go to the map", exact: true }).click();
+    await page.waitForURL((u) => u.pathname === "/" && u.searchParams.get("welcome") === "1");
+    // The tallest strip there is: two interests, a no-matches line, the location line and the widening.
+    await strip(page).locator('[data-notice="no-matches"]').waitFor();
+    await strip(page).locator('[data-notice="location-off"]').waitFor();
+    await widen(page).waitFor();
+    await textSize(page, 200);
+    const layout = await overlayLayout(page);
+    assert.ok(layout.apart, `the strip, results card and navigation overlap at 200% text: ${JSON.stringify(layout)}`);
+    assert.ok(layout.scroll <= VIEWPORT.width, `page is ${layout.scroll}px wide at 200% text`);
+    await snap(page, "large-text-location-denied");
+
+    // A finger: bring the control into the strip's own scroll area, check nothing is over it, tap its centre.
+    const tapInStrip = async (locator, label) => {
+      await locator.scrollIntoViewIfNeeded();
+      await assertUsable(locator, label);
+      const box = await locator.boundingBox();
+      await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    };
+    const before = page.pinQueries.at(-1);
+    const [wider] = await Promise.all([nextPinQuery(page, (q) => bboxArea(q) > bboxArea(before) * 3), tapInStrip(widen(page), "Search a wider area")]);
+    assert.deepEqual(wider.get("tags").split(",").sort(), ["coffee", "volunteering"]);
+    await widen(page).waitFor({ state: "detached" });
+    await snap(page, "large-text-after-widening");
+
+    const remove = strip(page).getByRole("button", { name: "Remove Volunteering", exact: true });
+    const [afterRemove] = await Promise.all([nextPinQuery(page, (q) => q.get("tags") === "coffee"), tapInStrip(remove, "Remove Volunteering")]);
+    assert.equal(afterRemove.get("tags"), "coffee");
+    assert.equal(await removers(page).count(), 1);
+
+    const everything = strip(page).getByRole("button", { name: "Show everything", exact: true });
+    await Promise.all([nextPinQuery(page, (q) => !q.get("tags")), tapInStrip(everything, "Show everything")]);
+    assert.equal(await removers(page).count(), 0);
+    assert.ok((await overlayLayout(page)).apart);
+
+    // The results card is still a working control at this size.
+    const list = page.locator("[data-results-summary]").getByRole("button", { name: /^List$/ });
+    await assertUsable(list, "List");
+    const box = await list.boundingBox();
+    await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    await page.getByRole("button", { name: "Show map" }).waitFor();
+    await strip(page).waitFor();
+    await snap(page, "large-text-list-mode");
   });
 
   await step("desktop width: the strip is on the map with the same controls", async () => {

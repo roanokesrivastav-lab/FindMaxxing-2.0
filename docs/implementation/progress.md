@@ -108,3 +108,13 @@ This file lets another founder’s agent resume without chat history. Baseline l
 - 1.2 is ready for product review on mobile web. 1.3 requires a working text-search state and usable first-map controls at 200% text before independent sign-off.
 - 4.0 A1 and 5.0 A1 are approved with required changes. Revise the briefs and return them for preflight before starting dependent schema work.
 - Review findings, handoff contracts and independent checks are in [batch-01-codex-review.md](../features/batch-01-codex-review.md).
+
+
+### 2026-11-12 — 1.3 review fixes
+
+- Both 1.3 findings from the Codex review are fixed: a text search no longer shows the area notice or
+  a widening, and the strip, results card and navigation no longer overlap at 200% text. Evidence in
+  [features/1.3.md](../features/1.3.md#review-fixes-2026-11-12).
+- `npm run check` exit 0 (1,216 tests, 0 skipped); `npm run e2e:onboarding` 13/13; `npm run e2e` 21/21;
+  `npm run a11y` clean. The new checks fail with the fixes removed.
+- Awaiting Codex re-verification of 1.3. Still no Safari, device or hosted run.

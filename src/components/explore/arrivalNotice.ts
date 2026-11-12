@@ -32,6 +32,12 @@ export interface ArrivalInput {
   locationDenied: boolean;
   /** The viewer already used the widening. */
   widened: boolean;
+  /**
+   * A text search is running. Its results are for the query (everywhere, or the area the viewer
+   * chose with "Search this area"), not for the map's own area, so nothing here applies: the
+   * search has its own empty state and its own scope controls.
+   */
+  textSearch: boolean;
 }
 
 export interface ArrivalNotice {
@@ -53,6 +59,9 @@ export function interestsWithoutMatches(interests: readonly string[], loadedTags
 }
 
 export function arrivalNotice(input: ArrivalInput): ArrivalNotice {
+  // During a text search the strip says nothing about the area and offers no widening: "this
+  // area" is not what was searched, and a wider map would not change an everywhere search.
+  if (input.textSearch) return { emptyInterests: [], nothingMatches: false, stillEmptyAfterWidening: false, locationDenied: false, widening: null };
   const quiet: ArrivalNotice = { emptyInterests: [], nothingMatches: false, stillEmptyAfterWidening: false, locationDenied: input.locationDenied, widening: null };
   // While loading, after a failure, or with no interest filter, there is nothing truthful to say about interests.
   const known = input.settled && !input.failed && input.interests.length > 0;

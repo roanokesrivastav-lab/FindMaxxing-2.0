@@ -224,17 +224,20 @@ export function ExploreClient({
     interests,
     // Not until the map has reported its own area: before that the results are for a guessed
     // area, and the widening has nothing real to widen.
-    settled: discovery.status === "idle" && !discovery.stale && !wideningPending && (searching || viewport !== null),
+    settled: discovery.status === "idle" && !discovery.stale && !wideningPending && viewport !== null,
     failed: discovery.status === "error",
     total: totalResults,
     loadedTags: [...places.map((p) => p.tags), ...events.map((e) => e.tags)],
     complete: onlyInterests && !truncated && !results.places.nextCursor && !results.events.nextCursor,
     locationDenied,
     widened,
+    // The query is the deferred one the results belong to; the typed one turns the notice off
+    // at the first keystroke, before a search result could be mistaken for the area's.
+    textSearch: searching || query.trim().length > 0,
   });
   const widenArea = () => {
-    // Only an area the map itself has reported can be widened. Before that (map still loading),
-    // or during an everywhere search, leave everything as it is rather than pretend.
+    // Only an area the map itself has reported can be widened. The strip never offers this
+    // during a text search or before the map loads; refuse here as well rather than pretend.
     const current = searching ? null : viewport;
     if (!mapRef.current || !current) return;
     const box = widerBounds(current);
@@ -370,16 +373,20 @@ export function ExploreClient({
         </div>
 
         {/* Query status: loading, errors, dense areas, search scope */}
+        {/* One column from under the top bar to above the bottom navigation. The first-arrival strip,
+            the status chips and the phone's results card share it, so none can sit on another: when
+            text is large or the screen short, the strip gives way and scrolls inside its own box. */}
         <div
+          data-map-overlay=""
           className={cn(
-            "absolute inset-x-0 top-[10.25rem] md:top-[9rem] z-20 flex flex-col items-center gap-2 px-4 pointer-events-none",
+            "absolute inset-x-0 top-[10.25rem] md:top-[9rem] bottom-[calc(var(--nav-height)+var(--safe-bottom)+0.75rem)] md:bottom-4 z-20 flex flex-col items-center gap-2 px-4 pointer-events-none",
             // Center over the visible map, not behind the desktop list panel.
             panelOpen && "md:left-[400px]",
           )}
         >
           {/* First arrival sits on the map itself, so it is seen in map mode at every width. */}
-          {arrival ? <div className="pointer-events-auto w-full max-w-md">{arrival}</div> : null}
-          <div className="pointer-events-auto flex flex-wrap justify-center gap-2" aria-live="polite">
+          {arrival ? <div className="pointer-events-auto w-full max-w-md min-h-0 flex flex-col">{arrival}</div> : null}
+          <div className="pointer-events-auto shrink-0 flex flex-wrap justify-center gap-2" aria-live="polite">
             {discovery.status === "loading" ? (
               <span className="chip bg-surface shadow-card">
                 <Loader2 size={14} className="animate-spin" /> Updating
@@ -404,6 +411,10 @@ export function ExploreClient({
               <span className="chip bg-surface shadow-card">Showing the top {placeCount + eventCount} here. Zoom in for more</span>
             ) : null}
           </div>
+          {/* Map-mode bottom summary (mobile), held at the foot of the column. */}
+          <div className="md:hidden pointer-events-auto shrink-0 mt-auto w-full max-w-md" data-results-summary="">
+            <ResultsSummary total={totalResults} truncated={truncated} scope={scope} places={placeCount} events={eventCount} onList={() => setMode("list")} activeFilters={activeFilterCount} onClear={clearFilters} />
+          </div>
         </div>
 
         {/* Selected pin preview */}
@@ -417,12 +428,6 @@ export function ExploreClient({
           </div>
         ) : null}
 
-        {/* Map-mode bottom summary (mobile) */}
-        <div className="md:hidden absolute inset-x-0 z-20 px-4" style={{ bottom: "calc(var(--nav-height) + var(--safe-bottom) + 0.75rem)" }}>
-          <div className="mx-auto max-w-md">
-            <ResultsSummary total={totalResults} truncated={truncated} scope={scope} places={placeCount} events={eventCount} onList={() => setMode("list")} activeFilters={activeFilterCount} onClear={clearFilters} />
-          </div>
-        </div>
       </div>
 
       {/* List panel: full-screen on mobile (list mode), side drawer on desktop */}
