@@ -2,9 +2,9 @@
 
 This file lets another founder’s agent resume without chat history. Baseline labels are dated review evidence only. Do not mark a spec or local implementation as independently verified merely because it is Must.
 
-| Ticket | Priority | Starting state | Implementation commit | Evidence / blocker |
+| Ticket | Priority | Current state | Implementation commit | Evidence / blocker |
 | --- | --- | --- | --- | --- |
-| [1.1](tickets/1-1-design-tokens-and-primitives.md) | Must | EXISTS — REVERIFY | — | See batch 00 |
+| [1.1](tickets/1-1-design-tokens-and-primitives.md) | Must | IMPLEMENTED-LOCAL (reverified 2026-11-11) | earlier work | [00-baseline](../features/00-baseline.md) §3; not independently verified |
 | [1.2](tickets/1-2-six-interest-thumbnail-picker.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 01 |
 | [1.3](tickets/1-3-first-map-arrival.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 01 |
 | [1.5](tickets/1-5-quiet-events-tab.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 02 |
@@ -17,24 +17,24 @@ This file lets another founder’s agent resume without chat history. Baseline l
 | [4.7](tickets/4-7-intent-aware-pins-and-venue-sessions.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 05 |
 | [3.1](tickets/3-1-richer-saves.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 03 |
 | [3.2](tickets/3-2-library-tools.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 03 |
-| [3.3](tickets/3-3-matching-provider-specification.md) | Must | SPEC EXISTS — RECONCILE | — | See batch 00 |
+| [3.3](tickets/3-3-matching-provider-specification.md) | Must | SPEC RECONCILED (document only) | `99f8023` | [3.3 validation note](../features/3.3.md); B1/B2 deferred with the Later importers |
 | [3.6](tickets/3-6-pick-from-my-saves.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 03 |
-| [4.0](tickets/4-0-event-foundation-specification.md) | Must | SPEC EXISTS — RECONCILE | — | See batch 00 |
+| [4.0](tickets/4-0-event-foundation-specification.md) | Must | BLOCKED — amendment awaiting Codex preflight | `c06f1ad` | [4.0 Amendment A1](../features/4.0.md); blocks 4.5a, 4.5b, 4.6, 8.1b, 5.5 |
 | [4.1](tickets/4-1-editorial-event-detail.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 02 |
-| [4.2](tickets/4-2-structured-activity-details.md) | Must | EXISTS — REVERIFY | — | See batch 00 |
-| [4.3](tickets/4-3-attendance-and-readiness.md) | Must | EXISTS — REVERIFY | — | See batch 00 |
+| [4.2](tickets/4-2-structured-activity-details.md) | Must | IMPLEMENTED-LOCAL (reverified 2026-11-11) | `15f5561` | [00-baseline](../features/00-baseline.md) §3; hosted NOT VERIFIED |
+| [4.3](tickets/4-3-attendance-and-readiness.md) | Must | IMPLEMENTED-LOCAL (reverified 2026-11-11) | `f2eb957` | [00-baseline](../features/00-baseline.md) §3; cron, push and the decide-vs-join race NOT VERIFIED |
 | [4.5a](tickets/4-5a-recurring-series-and-host-tools.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 02 |
 | [4.5b](tickets/4-5b-permanent-series-page.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 02 |
 | [4.6](tickets/4-6-material-change-notifications.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 02 |
 | [4.8](tickets/4-8-optional-party-poster.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 02 |
-| [4.pre](tickets/4-pre-real-postgres-concurrency-harness.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 00 |
-| [5.0](tickets/5-0-outings-specification.md) | Must | SPEC EXISTS — RECONCILE | — | See batch 00 |
+| [4.pre](tickets/4-pre-real-postgres-concurrency-harness.md) | Must | IMPLEMENTED-LOCAL (harness reverified) | earlier work | [00-baseline](../features/00-baseline.md) §3; event race suites arrive with 4.5a (4.0 A1.6) |
+| [5.0](tickets/5-0-outings-specification.md) | Must | BLOCKED — amendment awaiting Codex preflight | `9c515b9` | [5.0 Amendment A1](../features/5.0.md); blocks 5.1–5.5 |
 | [5.1](tickets/5-1-outing-core-and-invites.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 06 |
 | [5.2](tickets/5-2-private-save-shortlist.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 06 |
 | [5.3](tickets/5-3-yes-fine-cannot-lock.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 06 |
 | [5.4](tickets/5-4-browser-invite-and-sign-in-return.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 06 |
 | [5.5](tickets/5-5-start-outing-from-an-event.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 06 |
-| [6.0](tickets/6-0-routing-and-feasibility-spec.md) | Must | SPEC EXISTS — RECONCILE | — | See batch 00 |
+| [6.0](tickets/6-0-routing-and-feasibility-spec.md) | Must | SPEC RECONCILED (document only) | `fbd995b` | [6.0 validation note](../features/6.0.md); provider terms unconfirmed |
 | [6.1](tickets/6-1-real-walking-routes.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 04 |
 | [6.2](tickets/6-2-deterministic-feasibility-checks.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 04 |
 | [6.3](tickets/6-3-shared-versioned-itinerary.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 07 |
@@ -42,7 +42,7 @@ This file lets another founder’s agent resume without chat history. Baseline l
 | [7.1](tickets/7-1-flash-maps.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 08 |
 | [7.2](tickets/7-2-live-reports-pilot.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 08 |
 | [7.4](tickets/7-4-contributor-feedback.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 08 |
-| [0.1 / 0.3](tickets/0-1-0-3-security-flags-and-pilot-seed.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 00 |
+| [0.1 / 0.3](tickets/0-1-0-3-security-flags-and-pilot-seed.md) | Must | 0.3 and 0.1a IMPLEMENTED-LOCAL (reverified); **0.1b NOT STARTED** | earlier work | [00-baseline](../features/00-baseline.md) §3; 0.1b needs a brief and preflight |
 | [8.1a](tickets/8-1a-native-explore-parity.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 09 |
 | [8.1b](tickets/8-1b-native-event-rpc-and-offer-ui.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 09 |
 | [8.1c–e](tickets/8-1c-e-native-outing-invite-and-itinerary.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 09 |
@@ -58,3 +58,17 @@ This file lets another founder’s agent resume without chat history. Baseline l
 - Deferred snapshot is quarantined on its own branch; do not treat it as a dependency.
 - For each session record last completed ticket, actual checks, current blockers/reviews, next ready ticket and worktree/branch. Update evidence links and commit hashes as work actually lands.
 - Use IMPLEMENTED-LOCAL, NOT VERIFIED, BLOCKED, INDEPENDENTLY VERIFIED and release statuses precisely; all priorities remain separate.
+
+## Session log
+
+### 2026-11-11 — batch 00 (baseline and spec amendments)
+
+- Branch `codex/founder-implementation-handoff-2026-11-11`, started at `4eea5e5`, clean. Evidence:
+  [features/00-baseline.md](../features/00-baseline.md).
+- Checks on unchanged source: `npm run check` exit 0 with a local PostgreSQL URL (70 files, 1,172
+  tests, 0 skipped, build OK); mobile typecheck exit 0; `npm run e2e` 19/19; `npm run a11y` 0 issues.
+- Blocked on independent review: 4.0 Amendment A1 and 5.0 Amendment A1 (Codex preflight). Later
+  preflights needed for 2.7, R4 and 0.1b when their contracts are written.
+- Owner actions open: push the two `codex/` branches (neither is on origin); confirm whether 0052 was
+  ever applied to a hosted database before any hosted rollout.
+- Next ready: batch 01, tickets 1.2 then 1.3.

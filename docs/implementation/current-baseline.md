@@ -18,3 +18,10 @@ Historical broad `docs/briefs/4.0-build-prompt.md` is archived with a warning. I
 - Hosted migrations, cron/push/provider calls and actual phone runtime were not verified by packaging this handoff.
 
 Inspect the actual branch/HEAD/status and migration list before work. Do not reset local work to match a prose baseline. On an unexpected branch or dirty tree, select an appropriate isolated worktree and coordinate file ownership.
+
+## Fresh result on the clean branch (2026-11-11, batch 00)
+
+Run on `4eea5e5` with no source changes: `npm run check` exit 0 (70 test files, 1,172 tests, none
+skipped, with a local PostgreSQL URL), mobile typecheck exit 0, e2e 19/19, a11y 0 issues. The two
+WIP failures above do not occur here. Details, environment notes and the integration recommendation:
+[features/00-baseline.md](../features/00-baseline.md).
