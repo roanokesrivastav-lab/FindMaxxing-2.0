@@ -152,22 +152,27 @@ await step("onboarding: interests, home city, location, people, then the filtere
   await page.waitForURL((u) => u.pathname === "/" && u.searchParams.get("welcome") === "1", { timeout: 30_000 });
   const tags = new URL(page.url()).searchParams.get("tags") ?? "";
   check("onboarding: interests, home city, location, people, then the filtered map", tags.includes("coffee") && tags.includes("hiking"), tags);
+  // Roadmap 1.3: the first map shows the chosen interests as removable filters, with Show everything beside them.
+  const strip = page.getByRole("region", { name: "Your first map" });
+  await strip.waitFor({ timeout: 15_000 });
+  const removable = await strip.getByRole("button", { name: /^Remove (Coffee|Hiking)$/ }).count();
+  const showAll = await strip.getByRole("button", { name: "Show everything", exact: true }).count();
+  check("first map: chosen interests are removable filters beside Show everything", removable === 2 && showAll === 1, `${removable} removable, ${showAll} show-everything`);
   await snap(page, "map-after-onboarding");
-  await page.goto(`${BASE}/welcome`);
-  check("onboarding never shows again", new URL(page.url()).pathname === "/");
 });
 
-// 3. Open a place and save it to a new list.
+// 3. First useful save, straight from the first map: its filtered list, a place, a new list.
 let placeUrl = "";
-await step("open a place from the list", async () => {
-  await page.goto(`${BASE}/?tags=`, { waitUntil: "domcontentloaded" });
+await step("open a place from the first map's list", async () => {
   const listToggle = page.getByRole("button", { name: /^List$/ });
-  if (await listToggle.isVisible().catch(() => false)) await listToggle.click();
+  await listToggle.click();
+  // The strip follows into list mode, and the list is still filtered to the chosen interests.
+  await page.getByRole("region", { name: "Your first map" }).waitFor({ timeout: 15_000 });
   const link = page.locator('a[href^="/places/"]').first();
   await link.waitFor({ timeout: 30_000 });
   placeUrl = await link.getAttribute("href");
   await page.goto(`${BASE}${placeUrl}`, { waitUntil: "domcontentloaded" });
-  check("open a place from the list", /\/places\/[0-9a-f-]{36}/.test(placeUrl ?? ""), placeUrl);
+  check("open a place from the first map's list", /\/places\/[0-9a-f-]{36}/.test(placeUrl ?? ""), placeUrl);
   await snap(page, "place");
 });
 await step("save it to a new list", async () => {
@@ -189,6 +194,13 @@ await step("save it to a new list", async () => {
   await page.locator(`a[href="${placeUrl}"]`).first().waitFor({ timeout: 15_000 });
   check("save it to a new list", true);
   await snap(page, "list");
+});
+await step("onboarding never shows again, and a later map visit is not a first arrival", async () => {
+  await page.goto(`${BASE}/welcome`);
+  const onMap = new URL(page.url()).pathname === "/";
+  await page.locator(".maplibregl-map, .mapboxgl-map").first().waitFor({ timeout: 30_000 });
+  const strips = await page.getByRole("region", { name: "Your first map" }).count();
+  check("onboarding never shows again, and a later map visit is not a first arrival", onMap && strips === 0, `${new URL(page.url()).pathname}, ${strips} strip(s)`);
 });
 
 // 4. Add a place with a photo.

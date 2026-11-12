@@ -17,6 +17,7 @@ import { useViewerTime } from "@/components/time/ViewerTime";
 import { InterestIcon } from "@/components/ui/TaxonomyIcon";
 import { cn } from "@/lib/utils/cn";
 import { InterestThumb } from "./InterestThumb";
+import { LOCATION_DENIED_KEY } from "@/components/explore/arrivalNotice";
 
 interface Person {
   id: string;
@@ -96,15 +97,32 @@ export function WelcomeFlow({
       router.replace(firstMapHref(res.data.interests, toMap));
     });
 
+  // The first map reads this, so it can say that it starts in a default area (roadmap 1.3).
+  // Only the fact that the prompt was refused is kept, for this tab; never a position.
+  const rememberDenied = (denied: boolean) => {
+    try {
+      if (denied) window.sessionStorage.setItem(LOCATION_DENIED_KEY, "1");
+      else window.sessionStorage.removeItem(LOCATION_DENIED_KEY);
+    } catch {
+      // Storage can be blocked; the map then relies on the browser's permission state.
+    }
+  };
   const askLocation = () => {
     if (!("geolocation" in navigator)) {
       setLocation("denied");
+      rememberDenied(true);
       return;
     }
     setLocation("asking");
     navigator.geolocation.getCurrentPosition(
-      () => setLocation("granted"),
-      () => setLocation("denied"),
+      () => {
+        setLocation("granted");
+        rememberDenied(false);
+      },
+      () => {
+        setLocation("denied");
+        rememberDenied(true);
+      },
       { timeout: 10_000 },
     );
   };

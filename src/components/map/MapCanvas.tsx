@@ -121,6 +121,21 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
       onMoveEnd={(e) => {
         onMoveEnd?.({ latitude: e.viewState.latitude, longitude: e.viewState.longitude, zoom: e.viewState.zoom });
         reportBounds(e.target);
+        // The map is controlled: a move is only applied once the parent re-renders with the new
+        // view state. An instant jump (reduced motion has duration 0) ends before that, so the
+        // bounds read above are still the old area and nothing would report the new one. Read
+        // again after the new view has rendered. A repeat of the same bounds is harmless.
+        const map = e.target;
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            if (!mapRef.current) return;
+            try {
+              reportBounds(map);
+            } catch {
+              // The map was removed in between.
+            }
+          }),
+        );
       }}
       onClick={(e) => onMapClick?.({ lng: e.lngLat.lng, lat: e.lngLat.lat })}
       onLoad={(e) => {

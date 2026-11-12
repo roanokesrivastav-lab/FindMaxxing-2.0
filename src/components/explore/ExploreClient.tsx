@@ -1,5 +1,5 @@
 "use client";
-import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { ChevronDown, List, Loader2, LocateFixed, Map as MapIcon, PanelLeftClose, PanelLeftOpen, RotateCw, Search, SlidersHorizontal, X, Compass, Sparkles, CalendarDays, MapPin } from "lucide-react";
 import type { Event, GeoBounds, Place } from "@/lib/data/types";
@@ -23,6 +23,8 @@ import { boundsFromPoints, distanceMeters } from "@/lib/utils/geo";
 import { sameBounds } from "@/lib/map/bounds";
 import { useDiscovery } from "./useDiscovery";
 import type { DiscoveryRequest, DiscoveryResults } from "./discoveryRequest";
+import { FirstArrival } from "./FirstArrival";
+import { LOCATION_DENIED_KEY, arrivalNotice, widerBounds } from "./arrivalNotice";
 import { cn } from "@/lib/utils/cn";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Logo } from "@/components/layout/Logo";
@@ -33,6 +35,16 @@ import { CategoryIcon, InterestIcon } from "@/components/ui/TaxonomyIcon";
 
 const FOLD_STORAGE_KEY = "findmaxxing:explore-folds";
 const DEFAULT_FOLDS = { events: true, places: true, panel: true };
+
+const subscribeNever = () => () => {};
+function readLocationDenied(): boolean {
+  try {
+    return window.sessionStorage.getItem(LOCATION_DENIED_KEY) === "1";
+  } catch {
+    // Storage blocked: the browser's permission state still applies.
+    return false;
+  }
+}
 
 type Kind = DiscoveryRequest["kind"];
 /** Events shown in the mixed list before handing off to /events. */
@@ -58,7 +70,7 @@ export function ExploreClient({
   initial: DiscoveryResults;
   initialRequest: DiscoveryRequest;
   viewer: ExploreViewer | null;
-  /** Just finished onboarding: nudge toward a first save. */
+  /** Just finished onboarding: show the interests the map is filtered to, and nudge toward a first save. */
   welcome?: boolean;
   /** Server-rendered "For you" rail, shown while browsing (not during a search). */
   forYou?: React.ReactNode;
@@ -196,6 +208,51 @@ export function ExploreClient({
     setInterestLimitHit(result.refused);
   };
 
+  // First arrival (roadmap 1.3). The strip reports what the filters found and offers changes;
+  // every change to a filter or to the area is a tap by the viewer.
+  // The area the viewer widened from. Until the map reports a different one, the wider results
+  // are not in yet, so nothing is said about them.
+  const [widenedFrom, setWidenedFrom] = useState<GeoBounds | "world" | null>(null);
+  const widened = widenedFrom !== null;
+  const wideningPending = widenedFrom !== null && widenedFrom !== "world" && sameBounds(widenedFrom, request.bounds);
+  // Onboarding notes a refused location prompt for this tab. Read through useSyncExternalStore
+  // (as usePersistentJson does) so the server render and the first client render agree.
+  const deniedInOnboarding = useSyncExternalStore(subscribeNever, readLocationDenied, () => false) && welcome;
+  const locationDenied = !geo.location && (geo.status === "denied" || deniedInOnboarding);
+  const onlyInterests = !searching && !category && kind === "all";
+  const notice = arrivalNotice({
+    interests,
+    // Not until the map has reported its own area: before that the results are for a guessed
+    // area, and the widening has nothing real to widen.
+    settled: discovery.status === "idle" && !discovery.stale && !wideningPending && (searching || viewport !== null),
+    failed: discovery.status === "error",
+    total: totalResults,
+    loadedTags: [...places.map((p) => p.tags), ...events.map((e) => e.tags)],
+    complete: onlyInterests && !truncated && !results.places.nextCursor && !results.events.nextCursor,
+    locationDenied,
+    widened,
+  });
+  const widenArea = () => {
+    // Only an area the map itself has reported can be widened. Before that (map still loading),
+    // or during an everywhere search, leave everything as it is rather than pretend.
+    const current = searching ? null : viewport;
+    if (!mapRef.current || !current) return;
+    const box = widerBounds(current);
+    const alreadyWorld = current.east - current.west >= 360;
+    setWidenedFrom(alreadyWorld ? "world" : current);
+    if (!alreadyWorld) mapRef.current.fitBounds([[box.west, box.south], [box.east, box.north]], 0, 22);
+  };
+  const arrival = showWelcome ? (
+    <FirstArrival
+      interests={interests}
+      notice={notice}
+      onRemove={toggleInterest}
+      onShowEverything={clearFilters}
+      onWiden={widenArea}
+      onDismiss={() => setShowWelcome(false)}
+    />
+  ) : null;
+
   const suggestedInterests = viewer?.interests.length ? viewer.interests.slice(0, 5) : ["pickup-sports", "cheap-eats", "studying", "hiking", "new-in-town"];
 
   return (
@@ -208,7 +265,10 @@ export function ExploreClient({
             <Logo size={26} />
             <div className="flex-1" />
             {viewer ? (
-              <Link href="/profile" aria-label="Your profile" className="rounded-full">
+              // Named by its content ("Your profile" plus the avatar's own label) rather than an aria-label
+              // that disagrees with the initials on screen (WCAG 2.5.3).
+              <Link href="/profile" className="rounded-full">
+                <span className="sr-only">Your profile, </span>
                 <Avatar name={viewer.displayName} src={viewer.avatarUrl} size={34} />
               </Link>
             ) : (
@@ -218,7 +278,7 @@ export function ExploreClient({
             )}
           </div>
           <div className="flex items-center gap-2">
-            <label className="flex-1 flex items-center gap-2 h-12 rounded-full bg-surface border border-line shadow-card px-4 focus-within:border-ink focus-within:ring-[3px] focus-within:ring-ink/10">
+            <label className="flex-1 min-w-0 flex items-center gap-2 h-12 rounded-full bg-surface border border-line shadow-card px-4 focus-within:border-ink focus-within:ring-[3px] focus-within:ring-ink/10">
               <Search size={18} className="text-muted shrink-0" />
               <input
                 type="search"
@@ -252,11 +312,11 @@ export function ExploreClient({
                 "h-12 w-12 rounded-full border shadow-card inline-flex items-center justify-center relative shrink-0",
                 activeFilterCount ? "bg-ink text-white border-ink" : "bg-surface border-line",
               )}
-              aria-label="Filters"
+              aria-label={activeFilterCount ? `Filters, ${activeFilterCount} active` : "Filters"}
             >
               <SlidersHorizontal size={18} />
               {activeFilterCount ? (
-                <span className="absolute -top-1 -right-1 h-5 min-w-5 px-1 rounded-full bg-flare-ink text-white text-[11px] font-bold inline-flex items-center justify-center">
+                <span aria-hidden className="absolute -top-1 -right-1 h-5 min-w-5 px-1 rounded-full bg-flare-ink text-white text-[11px] font-bold inline-flex items-center justify-center">
                   {activeFilterCount}
                 </span>
               ) : null}
@@ -312,11 +372,13 @@ export function ExploreClient({
         {/* Query status: loading, errors, dense areas, search scope */}
         <div
           className={cn(
-            "absolute inset-x-0 top-[10.25rem] md:top-[9rem] z-20 flex justify-center px-4 pointer-events-none",
+            "absolute inset-x-0 top-[10.25rem] md:top-[9rem] z-20 flex flex-col items-center gap-2 px-4 pointer-events-none",
             // Center over the visible map, not behind the desktop list panel.
             panelOpen && "md:left-[400px]",
           )}
         >
+          {/* First arrival sits on the map itself, so it is seen in map mode at every width. */}
+          {arrival ? <div className="pointer-events-auto w-full max-w-md">{arrival}</div> : null}
           <div className="pointer-events-auto flex flex-wrap justify-center gap-2" aria-live="polite">
             {discovery.status === "loading" ? (
               <span className="chip bg-surface shadow-card">
@@ -400,16 +462,8 @@ export function ExploreClient({
             </div>
           </div>
           <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-3 pb-nav md:pb-4">
-            {showWelcome ? (
-              <div className="rounded-2xl bg-moss-100 border border-moss/30 px-4 py-3 text-sm flex items-start gap-3" role="status">
-                <span className="flex-1">
-                  <b>You&apos;re in.</b> {interests.length ? "The map is showing your interests. " : ""}Find a place you love and tap the bookmark to save it: that&apos;s your first list started.
-                </span>
-                <button type="button" onClick={() => setShowWelcome(false)} className="font-semibold text-moss shrink-0" aria-label="Dismiss">
-                  Got it
-                </button>
-              </div>
-            ) : null}
+            {/* The same strip in the phone's list mode, where the map (and the strip on it) is hidden. */}
+            {arrival ? <div className="md:hidden">{arrival}</div> : null}
             {!searching ? forYou : null}
             {totalResults === 0 && discovery.status === "loading" ? (
               <p className="text-sm text-muted text-center py-6">Searching…</p>

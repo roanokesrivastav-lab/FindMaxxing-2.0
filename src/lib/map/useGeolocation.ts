@@ -42,6 +42,8 @@ export function useGeolocation(auto = false) {
         ?.query({ name: "geolocation" as PermissionName })
         .then((p) => {
           if (p.state === "granted") request();
+          // Already refused: say so without prompting, so the map can be honest that "nearby" is a default area.
+          else if (p.state === "denied") setStatus("denied");
         })
         .catch(() => {});
     }
