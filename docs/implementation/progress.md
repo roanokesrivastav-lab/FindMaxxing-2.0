@@ -93,3 +93,12 @@ This file lets another founder’s agent resume without chat history. Baseline l
 - Blocked on Codex preflight: 4.0 A1, 5.0 A1. Awaiting Codex verification: 1.2, 1.3.
 - Next ready: 4.1 and 1.5 (batch 02, the parts that need no series schema), or 6.1/6.2 (batch 04).
 - Branch `codex/founder-implementation-handoff-2026-11-11`, main checkout, nothing pushed.
+
+### 2026-11-11 — branches pushed (owner's instruction)
+
+- `codex/founder-implementation-handoff-2026-11-11` is on origin at `b5d01f3` (batches 00 and 01), and
+  `codex/deferred-waitlist-snapshot-2026-11-11` at `7aa6c48`. Earlier notes in this ledger and in the
+  evidence files saying nothing was pushed describe the state before this. The
+  `git switch --track origin/...` step in `IMPLEMENTATION_START_HERE.md` now works.
+- The snapshot branch is pushed for safekeeping only. It is still not a base and must not be merged.
+- No pull request was opened, and nothing was merged or deployed.

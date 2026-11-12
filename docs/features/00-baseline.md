@@ -32,6 +32,9 @@ is on origin**, so the `git switch --track origin/...` step in `IMPLEMENTATION_S
 for anyone else, and the snapshot exists on one machine only. Nothing was pushed in this run; pushing
 is the owner's call.
 
+**Update, later on 2026-11-11:** the owner asked for both branches to be pushed. They are on origin
+(`b5d01f3` and `7aa6c48`), so this blocker is closed.
+
 ## 2. Baseline checks (unchanged source)
 
 | Check | Command | Result |
