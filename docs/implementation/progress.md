@@ -6,7 +6,7 @@ This file lets another founder’s agent resume without chat history. Baseline l
 | --- | --- | --- | --- | --- |
 | [1.1](tickets/1-1-design-tokens-and-primitives.md) | Must | IMPLEMENTED-LOCAL (reverified 2026-11-11) | earlier work | [00-baseline](../features/00-baseline.md) §3; not independently verified |
 | [1.2](tickets/1-2-six-interest-thumbnail-picker.md) | Must | IMPLEMENTED-LOCAL | `78b0b34` | [features/1.2.md](../features/1.2.md); no real thumbnail photos, no device run |
-| [1.3](tickets/1-3-first-map-arrival.md) | Must | IMPLEMENTED-LOCAL; review fixes awaiting Codex re-check | `29cc1ce`, fixes `d8dc696` | [features/1.3.md](../features/1.3.md); Chrome only, no device run |
+| [1.3](tickets/1-3-first-map-arrival.md) | Must | INDEPENDENTLY VERIFIED in Chrome | `29cc1ce`, fixes `d8dc696` | [features/1.3.md](../features/1.3.md); Chrome only, no device run |
 | [1.5](tickets/1-5-quiet-events-tab.md) | Must | BLOCKED — needs followed-series data (4.5a) | — | See batch 02; waits for the 4.0 A1 second preflight |
 | [2.1](tickets/2-1-map-clustering.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 05 |
 | [2.4a](tickets/2-4a-time-and-travel-filters.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 05 |
@@ -19,7 +19,7 @@ This file lets another founder’s agent resume without chat history. Baseline l
 | [3.2](tickets/3-2-library-tools.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 03 |
 | [3.3](tickets/3-3-matching-provider-specification.md) | Must | SPEC RECONCILED (document only) | `99f8023` | [3.3 validation note](../features/3.3.md); B1/B2 deferred with the Later importers |
 | [3.6](tickets/3-6-pick-from-my-saves.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 03 |
-| [4.0](tickets/4-0-event-foundation-specification.md) | Must | BLOCKED — amendment revision 2 awaiting second Codex preflight | `c06f1ad`, r2 `3bd83e0` | [4.0 Amendment A1](../features/4.0.md); blocks 4.5a, 4.5b, 4.6, 4.8, 1.5, 8.1b, 5.5 and the 4.1 newcomer block |
+| [4.0](tickets/4-0-event-foundation-specification.md) | Must | BLOCKED — revision 2 reviewed, required changes remain | `c06f1ad`, r2 `3bd83e0` | [4.0 Amendment A1](../features/4.0.md); blocks 4.5a, 4.5b, 4.6, 4.8, 1.5, 8.1b, 5.5 and the 4.1 newcomer block |
 | [4.1](tickets/4-1-editorial-event-detail.md) | Must | PARTLY IMPLEMENTED-LOCAL (existing-contract part) | `094be4e` | [features/4.1.md](../features/4.1.md); newcomer block not built (needs a column); Chrome only |
 | [4.2](tickets/4-2-structured-activity-details.md) | Must | IMPLEMENTED-LOCAL (reverified 2026-11-11) | `15f5561` | [00-baseline](../features/00-baseline.md) §3; hosted NOT VERIFIED |
 | [4.3](tickets/4-3-attendance-and-readiness.md) | Must | IMPLEMENTED-LOCAL (reverified 2026-11-11) | `f2eb957` | [00-baseline](../features/00-baseline.md) §3; cron, push and the decide-vs-join race NOT VERIFIED |
@@ -133,3 +133,9 @@ This file lets another founder’s agent resume without chat history. Baseline l
   It is the next ready ticket.
 - Stopped at the batch 02 boundary. Nothing merged or deployed; no hosted database touched.
 
+### 2026-11-12 — independent review of 1.3, 4.1, and amendment revision 2
+
+- The two 1.3 fixes are independently verified in Chrome (13/13 onboarding browser checks).
+- The editorial event page passed 9/9 browser checks. Fix the reproduced note that incorrectly says a host is on the list after leaving. The newcomer block still needs its write contract.
+- Events and Outings A1 revision 2 are approved with required changes. Keep affected schema work gated and return the targeted revisions for preflight.
+- Ready now: 6.2 pure feasibility checks and the 4.1 attendance copy fix. See [the independent review](../features/batch-02-codex-review.md) for evidence and the two amendment contracts.
