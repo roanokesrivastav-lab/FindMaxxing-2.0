@@ -3,7 +3,7 @@ import { forYouPlaces } from "@/server/recommendations";
 import { ForYouRail } from "@/components/recommendations/ForYouRail";
 import { getRepository } from "@/lib/data";
 import { getViewer } from "@/lib/auth/server";
-import { INTEREST_MAP } from "@/lib/data/taxonomy";
+import { parseInterestTags } from "@/lib/data/taxonomy";
 import { DEFAULT_CENTER, featureEnabled } from "@/lib/config";
 import { ExploreClient } from "@/components/explore/ExploreClient";
 import { EVENT_PAGE, PLACE_PAGE, type DiscoveryRequest } from "@/components/explore/discoveryRequest";
@@ -26,7 +26,8 @@ export default async function ExplorePage({ searchParams }: PageProps<"/">) {
   if (viewer && !viewer.profile.onboardedAt) redirect("/welcome");
   const viewerId = viewer?.id ?? null;
   // Onboarding lands here with the chosen interests as the starting filter.
-  const tags = typeof sp.tags === "string" ? sp.tags.split(",").filter((t) => t in INTEREST_MAP).slice(0, 8) : [];
+  // All of them: the same limit the picker and the profile use (roadmap 1.2).
+  const tags = typeof sp.tags === "string" ? parseInterestTags(sp.tags) : [];
   const request: DiscoveryRequest = { ...INITIAL_REQUEST, tags };
   const filters = { bounds: request.bounds, tags, viewerId };
   const [placeMarkers, eventMarkers, places, events, forYou] = await Promise.all([

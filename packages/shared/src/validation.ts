@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { isValidTimestamp } from "./timestamps";
-import { CATEGORY_MAP, EVENT_CATEGORIES, INTEREST_MAP, PLACE_CATEGORIES } from "./taxonomy";
+import { CATEGORY_MAP, EVENT_CATEGORIES, INTEREST_MAP, MAX_INTERESTS, PLACE_CATEGORIES, parseInterestTags } from "./taxonomy";
 
 const placeCategorySlugs = PLACE_CATEGORIES.map((c) => c.slug) as [string, ...string[]];
 const eventCategorySlugs = EVENT_CATEGORIES.map((c) => c.slug) as [string, ...string[]];
@@ -152,7 +152,7 @@ export const profileSchema = z.object({
   homeCity: optionalText(80),
   interests: z
     .array(z.string())
-    .max(12, "Pick up to 12 interests")
+    .max(MAX_INTERESTS, `Pick up to ${MAX_INTERESTS} interests`)
     .default([])
     .transform((v) => Array.from(new Set(v.filter((i) => i in INTEREST_MAP)))),
 });
@@ -273,7 +273,9 @@ export const discoveryQuerySchema = z.object({
   tags: z
     .string()
     .optional()
-    .transform((v) => Array.from(new Set((v ?? "").split(",").map((t) => t.trim().toLowerCase()).filter((t) => t in INTEREST_MAP))).slice(0, 8)),
+    // Up to MAX_INTERESTS, the same limit the profile accepts, so a first map filtered to
+    // every onboarding interest is not cut short here (roadmap 1.2).
+    .transform((v) => parseInterestTags(v)),
   neighborhood: z.string().trim().max(80).optional().transform((v) => v || null),
   createdAfter: timestampParam("createdAfter"),
   startsBefore: timestampParam("startsBefore"),

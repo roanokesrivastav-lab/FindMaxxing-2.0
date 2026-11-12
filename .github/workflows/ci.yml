@@ -60,6 +60,11 @@ jobs:
       - name: Accessibility (axe-core)
         run: npm run a11y
 
+      - name: Onboarding and first-map flows
+        env:
+          ONBOARDING_E2E_OUT: artifacts/e2e-onboarding
+        run: npm run e2e:onboarding
+
       - name: Build feature-enabled demo for release smoke tests
         env:
           NEXT_PUBLIC_FEATURES: messaging,notifications,payments,ads,admin,reputation,recommendations,pwa

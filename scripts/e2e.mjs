@@ -139,9 +139,12 @@ await step(preconfirmed ? "sign in lands on onboarding" : "sign up lands on onbo
 });
 await step("onboarding: interests, home city, location, people, then the filtered map", async () => {
   await hydrated(page, "button");
-  await page.getByRole("button", { name: /Coffee/ }).first().click();
-  await page.getByRole("button", { name: /Hiking/ }).first().click();
-  await page.getByRole("button", { name: /^Next$/ }).click();
+  // Roadmap 1.2: six thumbnail rows, the rest under "More interests", and a forward button that says where it goes.
+  await page.getByRole("checkbox", { name: /^Coffee/ }).click();
+  await page.getByRole("button", { name: /^More interests/ }).click();
+  await page.getByRole("checkbox", { name: /^Hiking/ }).click();
+  check("onboarding: picked rows show as checked", (await page.getByRole("checkbox", { checked: true }).count()) === 2);
+  await page.getByRole("button", { name: /^Continue to home city$/ }).click();
   await page.getByLabel("Home city").fill("Columbus");
   await page.getByRole("button", { name: /^Next$/ }).click();
   await page.getByRole("button", { name: /^Not now$/ }).click();

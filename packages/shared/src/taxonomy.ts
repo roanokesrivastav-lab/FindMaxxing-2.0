@@ -109,6 +109,26 @@ export const INTEREST_MAP: Record<string, Interest> = Object.fromEntries(
   INTERESTS.map((i) => [i.slug, i]),
 );
 
+/**
+ * The most interests a profile keeps and the most the map filters by at once.
+ * One number on purpose (roadmap 1.2): whatever onboarding accepts, the first
+ * map applies, with nothing dropped in between.
+ */
+export const MAX_INTERESTS = 12;
+
+/** The six interests onboarding shows first; the rest sit under "More interests". */
+export const FEATURED_INTEREST_SLUGS = ["pickup-sports", "coffee", "cheap-eats", "outdoors", "nightlife", "studying"] as const;
+
+/**
+ * Known interest slugs from a comma-separated string or a list: trimmed,
+ * lower-cased, de-duplicated, in the order given, at most MAX_INTERESTS.
+ */
+export function parseInterestTags(raw: string | readonly string[] | null | undefined): string[] {
+  const parts = typeof raw === "string" ? raw.split(",") : (raw ?? []);
+  const known = parts.map((t) => t.trim().toLowerCase()).filter((t) => t in INTEREST_MAP);
+  return Array.from(new Set(known)).slice(0, MAX_INTERESTS);
+}
+
 export function getInterest(slug: string): Interest {
   return INTEREST_MAP[slug] ?? { slug, label: slug, emoji: "•", icon: "tag" };
 }

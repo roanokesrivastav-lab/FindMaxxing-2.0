@@ -5,7 +5,8 @@ import { ChevronDown, List, Loader2, LocateFixed, Map as MapIcon, PanelLeftClose
 import type { Event, GeoBounds, Place } from "@/lib/data/types";
 import type { MapCanvasHandle } from "@/components/map/MapCanvas";
 import { MapView } from "@/components/map/MapView";
-import { CATEGORIES, INTERESTS, getInterest } from "@/lib/data/taxonomy";
+import { CATEGORIES, INTERESTS, MAX_INTERESTS, getInterest } from "@/lib/data/taxonomy";
+import { toggleInterest as toggleWithLimit } from "@/lib/onboarding/interests";
 import { eventMarker, placeMarker } from "@/lib/map/markers";
 import { useViewerTime } from "@/components/time/ViewerTime";
 import type { MapMarker, ViewState } from "@/lib/map/types";
@@ -182,10 +183,18 @@ export function ExploreClient({
   const clearFilters = () => {
     setCategory(null);
     setInterests([]);
+    setInterestLimitHit(false);
     setKind("all");
   };
 
-  const toggleInterest = (slug: string) => setInterests((s) => (s.includes(slug) ? s.filter((x) => x !== slug) : [...s, slug]));
+  // The discovery query filters by at most MAX_INTERESTS, so the sheet stops there and says so
+  // rather than sending more and having some ignored.
+  const [interestLimitHit, setInterestLimitHit] = useState(false);
+  const toggleInterest = (slug: string) => {
+    const result = toggleWithLimit(interests, slug);
+    setInterests(result.selected);
+    setInterestLimitHit(result.refused);
+  };
 
   const suggestedInterests = viewer?.interests.length ? viewer.interests.slice(0, 5) : ["pickup-sports", "cheap-eats", "studying", "hiking", "new-in-town"];
 
@@ -545,6 +554,11 @@ export function ExploreClient({
                 );
               })}
             </div>
+            {interestLimitHit ? (
+              <p className="mt-2 text-xs font-semibold text-ink" role="status">
+                Up to {MAX_INTERESTS} interests at a time. Remove one to add another.
+              </p>
+            ) : null}
           </div>
           <div className="flex gap-2 pt-1">
             <button type="button" onClick={clearFilters} className="chip flex-1 justify-center">
