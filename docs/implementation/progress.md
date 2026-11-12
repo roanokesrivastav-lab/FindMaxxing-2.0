@@ -20,7 +20,7 @@ This file lets another founder’s agent resume without chat history. Baseline l
 | [3.3](tickets/3-3-matching-provider-specification.md) | Must | SPEC RECONCILED (document only) | `99f8023` | [3.3 validation note](../features/3.3.md); B1/B2 deferred with the Later importers |
 | [3.6](tickets/3-6-pick-from-my-saves.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 03 |
 | [4.0](tickets/4-0-event-foundation-specification.md) | Must | BLOCKED — amendment revision 2 awaiting second Codex preflight | `c06f1ad`, r2 `3bd83e0` | [4.0 Amendment A1](../features/4.0.md); blocks 4.5a, 4.5b, 4.6, 4.8, 1.5, 8.1b, 5.5 and the 4.1 newcomer block |
-| [4.1](tickets/4-1-editorial-event-detail.md) | Must | PARTLY IMPLEMENTED-LOCAL (existing-contract part) | see session log 2026-11-12 | [features/4.1.md](../features/4.1.md); newcomer block not built (needs a column); Chrome only |
+| [4.1](tickets/4-1-editorial-event-detail.md) | Must | PARTLY IMPLEMENTED-LOCAL (existing-contract part) | `094be4e` | [features/4.1.md](../features/4.1.md); newcomer block not built (needs a column); Chrome only |
 | [4.2](tickets/4-2-structured-activity-details.md) | Must | IMPLEMENTED-LOCAL (reverified 2026-11-11) | `15f5561` | [00-baseline](../features/00-baseline.md) §3; hosted NOT VERIFIED |
 | [4.3](tickets/4-3-attendance-and-readiness.md) | Must | IMPLEMENTED-LOCAL (reverified 2026-11-11) | `f2eb957` | [00-baseline](../features/00-baseline.md) §3; cron, push and the decide-vs-join race NOT VERIFIED |
 | [4.5a](tickets/4-5a-recurring-series-and-host-tools.md) | Must | BLOCKED — 4.0 A1 second preflight | — | See batch 02 |
