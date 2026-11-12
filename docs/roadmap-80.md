@@ -1,5 +1,7 @@
 # Roadmap to the 80% beta — vibecoding plan
 
+> **Latest priorities, 2026-11-11:** the shared founder feature pass supersedes the historical sequence below. Use [the proposed founder roadmap](proposed-roadmap-2026-11-11.md) and [confirmed priority snapshot](founder-priorities-2026-11-11.json). In particular 1.4, 2.2, 2.6, 3.4a/b, 3.5, 4.4, 7.3, R2/R3 and X1–X4 are Later; all other rows of today’s questionnaire are Must. Do not execute old dependent tickets by silently building Later prerequisites.
+
 > **Founder decisions override this file wherever the two disagree:** see [founder-decisions.md](founder-decisions.md).
 > The tickets below were rewritten on 2026-11-04 to match the decisions recorded on 2026-11-02 (mapping in
 > [Founder decisions applied](#founder-decisions-applied)).
@@ -282,8 +284,9 @@ slot for activity-specific filter tabs ("Has room" arrives in 2.4b), but ship no
 
 **2.4b Data-backed activity filters** · S · Lane Map · Needs: 2.4a, 4.2, 4.3
 ```
-Add filter tabs "Beginner-friendly" (from 4.2 structured details) and "Has room" / "Needs players" (from 4.3
-capacity and minimum). Show them only for activity kinds where the data exists. Tests: events without structured
+Add filter tabs "Beginner-friendly" (from 4.2 structured details) and "Has room" (from 4.3 capacity).
+Default to "Has room" as the availability filter, not "Needs players" (owner decision 2026-11-11).
+Show them only for activity kinds where the data exists. Tests: events without structured
 details are neither matched nor silently excluded without saying so.
 ```
 

@@ -1,3 +1,7 @@
+## Active founder handoff — 2026-11-11
+
+For app implementation, read `IMPLEMENTATION_START_HERE.md` and `docs/implementation/claude-runner-prompt.md` first. The shared Must/Later decisions override the old roadmap order; do not execute the superseded 4.0 build prompt or implement deferred waitlists. Existing workflow instructions below still apply.
+
 ## vexp - Context-Aware AI Coding <!-- vexp v3.3.4 -->
 
 ### Context strategy: call run_pipeline ONCE at task start

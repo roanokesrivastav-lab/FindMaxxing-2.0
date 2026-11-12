@@ -1,3 +1,7 @@
+## Active founder implementation plan — 2026-11-11
+
+Read `IMPLEMENTATION_START_HERE.md` for the confirmed team priorities, current handoff branch, batch prompts and evidence requirements. This pointer does not replace the preflight/verification protocol below. Do not implement Later features simply because an older spec lists them as dependencies.
+
 ## vexp - Context-Aware AI Coding <!-- vexp v3.3.4 -->
 
 ### Context strategy: call run_pipeline ONCE at task start

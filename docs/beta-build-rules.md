@@ -2,6 +2,8 @@
 
 Rules for building the roadmap toward the 80% beta (owner instruction, 2026-11-05).
 
+**2026-11-11 priority update:** use `docs/founder-priorities-2026-11-11.json` and `docs/proposed-roadmap-2026-11-11.md` for Must/Later scope and the proposed revised order. Existing safety/verification rules below still apply. Before coding, use a clean current integration checkpoint containing verified prerequisites; do not discard in-flight work or blindly use a stale historical base. Do not implement Later dependencies to satisfy the old sequence.
+
 - Base is tier1-owner-controls. Own branch, one commit per ticket, push after each. Never merge or deploy.
 - Follow the preamble in docs/roadmap-80.md section 2. docs/founder-decisions.md overrides the roadmap.
 - The owner has green-lit building in roadmap order and cannot be asked questions during a run. Take a spec's recommended option and record it. Add a dependency only if there is no reasonable alternative, pinned exactly and noted in the ticket doc.

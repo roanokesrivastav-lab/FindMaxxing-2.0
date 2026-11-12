@@ -1,5 +1,7 @@
 # FindMaxxing
 
+> **Founders / Claude implementation:** start with [IMPLEMENTATION_START_HERE.md](IMPLEMENTATION_START_HERE.md). It contains the one-prompt handoff, confirmed Must/Later decisions, individual ticket cards, numbered build prompts and current branch instructions. Use the clean handoff branch, not the deferred waitlist snapshot.
+
 **Local knowledge, mapped.** FindMaxxing is a mobile-first discovery and social app: an interactive map of the places and activities locals actually use, contributed by the community. Think "Beli, but for every activity": the sports bar that reliably shows the game, the field where pickup actually happens, the study spot nobody posts about.
 
 The core loop: **discover → view → save → contribute → create event → join event → connect**.

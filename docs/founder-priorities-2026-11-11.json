@@ -1,0 +1,434 @@
+{
+  "recorded_date": "2026-11-11",
+  "decision_authority": "One shared founder decision, supplied directly by Ronak for all three founders. No separate ballots required.",
+  "rule": "Must for every row of today’s 57-row questionnaire except the 11 Later rows listed below. No Cut selections.",
+  "later_ids": [
+    "1.4",
+    "2.2",
+    "2.6",
+    "3.4a",
+    "3.4b",
+    "3.5",
+    "4.4",
+    "7.3",
+    "R2",
+    "R3",
+    "X1–X4"
+  ],
+  "cut_ids": [],
+  "behavioral_decisions": {
+    "2.4b": "Has room is the default availability filter, not Needs players."
+  },
+  "scope_overrides": {
+    "2.2": "Selection/camera/filter/scroll persistence is Later; the existing no-list-on-map design constraint remains Must.",
+    "2.7": "Implement independent contributor occasion notes with authorship/moderation; do not require 2.6 confirmation/freshness infrastructure.",
+    "4.5a/4.5b/4.6": "Must event series and relevant change notifications must be specified without depending on 4.4 waitlist/offer states. Revised high-risk contracts require preflight before implementation.",
+    "8.1a": "Native event pins, preview-only map and parity are Must; deferred camera/selection persistence is excluded.",
+    "8.1b": "Native safe join/leave and compatible RPC integration are Must; waitlist/offer UI and background offer-expiry behavior are Later with 4.4.",
+    "8.1c–e": "All three native outing/invite/itinerary tickets are Must.",
+    "7.4": "Use explicit helpful feedback on attributed contributions; do not implement 2.6 freshness or 7.3 post-visit prompting as prerequisites.",
+    "R4": "Weekly outing memories is Must under the everything-else rule; it still needs a spec, privacy tests and an opt-in shared-content contract.",
+    "X1–X4": "All four deferred-20 categories remain Later; no new paid curator, broad media import, multi-city/non-walking or richer taste-progression work."
+  },
+  "features": [
+    {
+      "id": "1.1",
+      "title": "Design tokens and primitives",
+      "area": "Design and onboarding",
+      "priority": "Must",
+      "reviewed_implementation_status": "Built locally"
+    },
+    {
+      "id": "1.2",
+      "title": "Six-interest thumbnail picker",
+      "area": "Design and onboarding",
+      "priority": "Must",
+      "reviewed_implementation_status": "Partial"
+    },
+    {
+      "id": "1.3",
+      "title": "First-map arrival",
+      "area": "Design and onboarding",
+      "priority": "Must",
+      "reviewed_implementation_status": "Partial"
+    },
+    {
+      "id": "1.4",
+      "title": "Social context line",
+      "area": "Design and onboarding",
+      "priority": "Later",
+      "reviewed_implementation_status": "On hold"
+    },
+    {
+      "id": "1.5",
+      "title": "Quiet Events tab",
+      "area": "Design and onboarding",
+      "priority": "Must",
+      "reviewed_implementation_status": "Partial"
+    },
+    {
+      "id": "2.1",
+      "title": "Map clustering",
+      "area": "Explore and place decisions",
+      "priority": "Must",
+      "reviewed_implementation_status": "Planned"
+    },
+    {
+      "id": "2.2",
+      "title": "Selection and camera restore",
+      "area": "Explore and place decisions",
+      "priority": "Later",
+      "reviewed_implementation_status": "Partial"
+    },
+    {
+      "id": "2.4a",
+      "title": "Time and travel filters",
+      "area": "Explore and place decisions",
+      "priority": "Must",
+      "reviewed_implementation_status": "Partial"
+    },
+    {
+      "id": "2.4b",
+      "title": "Has room availability filter",
+      "area": "Explore and place decisions",
+      "priority": "Must",
+      "reviewed_implementation_status": "Planned"
+    },
+    {
+      "id": "2.5",
+      "title": "Photo-first place decisions",
+      "area": "Explore and place decisions",
+      "priority": "Must",
+      "reviewed_implementation_status": "Partial"
+    },
+    {
+      "id": "2.6",
+      "title": "Tip provenance and freshness",
+      "area": "Explore and place decisions",
+      "priority": "Later",
+      "reviewed_implementation_status": "Planned"
+    },
+    {
+      "id": "2.7",
+      "title": "Best for / less suited",
+      "area": "Explore and place decisions",
+      "priority": "Must",
+      "reviewed_implementation_status": "Planned"
+    },
+    {
+      "id": "2.8",
+      "title": "Public and personal photos",
+      "area": "Explore and place decisions",
+      "priority": "Must",
+      "reviewed_implementation_status": "Planned"
+    },
+    {
+      "id": "4.7",
+      "title": "Intent-aware pins and venue sessions",
+      "area": "Explore and place decisions",
+      "priority": "Must",
+      "reviewed_implementation_status": "Partial"
+    },
+    {
+      "id": "3.1",
+      "title": "Richer saves",
+      "area": "Personal library and imports",
+      "priority": "Must",
+      "reviewed_implementation_status": "Partial"
+    },
+    {
+      "id": "3.2",
+      "title": "Library tools",
+      "area": "Personal library and imports",
+      "priority": "Must",
+      "reviewed_implementation_status": "Partial"
+    },
+    {
+      "id": "3.3",
+      "title": "Matching/provider specification",
+      "area": "Personal library and imports",
+      "priority": "Must",
+      "reviewed_implementation_status": "Spec only"
+    },
+    {
+      "id": "3.4a",
+      "title": "Parse pasted Notes",
+      "area": "Personal library and imports",
+      "priority": "Later",
+      "reviewed_implementation_status": "Planned"
+    },
+    {
+      "id": "3.4b",
+      "title": "Confirm private imports",
+      "area": "Personal library and imports",
+      "priority": "Later",
+      "reviewed_implementation_status": "Planned"
+    },
+    {
+      "id": "3.5",
+      "title": "Single-link importer",
+      "area": "Personal library and imports",
+      "priority": "Later",
+      "reviewed_implementation_status": "Planned"
+    },
+    {
+      "id": "3.6",
+      "title": "Pick from my saves",
+      "area": "Personal library and imports",
+      "priority": "Must",
+      "reviewed_implementation_status": "Planned"
+    },
+    {
+      "id": "4.0",
+      "title": "Event foundation specification",
+      "area": "Events and recurring groups",
+      "priority": "Must",
+      "reviewed_implementation_status": "Spec only"
+    },
+    {
+      "id": "4.1",
+      "title": "Editorial event detail",
+      "area": "Events and recurring groups",
+      "priority": "Must",
+      "reviewed_implementation_status": "Partial"
+    },
+    {
+      "id": "4.2",
+      "title": "Structured activity details",
+      "area": "Events and recurring groups",
+      "priority": "Must",
+      "reviewed_implementation_status": "Built locally"
+    },
+    {
+      "id": "4.3",
+      "title": "Attendance and readiness",
+      "area": "Events and recurring groups",
+      "priority": "Must",
+      "reviewed_implementation_status": "Built locally"
+    },
+    {
+      "id": "4.4",
+      "title": "Waitlist and expiring offers",
+      "area": "Events and recurring groups",
+      "priority": "Later",
+      "reviewed_implementation_status": "In progress"
+    },
+    {
+      "id": "4.5a",
+      "title": "Recurring series and host tools",
+      "area": "Events and recurring groups",
+      "priority": "Must",
+      "reviewed_implementation_status": "Planned"
+    },
+    {
+      "id": "4.5b",
+      "title": "Permanent series page",
+      "area": "Events and recurring groups",
+      "priority": "Must",
+      "reviewed_implementation_status": "Planned"
+    },
+    {
+      "id": "4.6",
+      "title": "Material-change notifications",
+      "area": "Events and recurring groups",
+      "priority": "Must",
+      "reviewed_implementation_status": "Partial"
+    },
+    {
+      "id": "4.8",
+      "title": "Optional Party poster",
+      "area": "Events and recurring groups",
+      "priority": "Must",
+      "reviewed_implementation_status": "Planned"
+    },
+    {
+      "id": "4.pre",
+      "title": "Real-Postgres concurrency harness",
+      "area": "Events and recurring groups",
+      "priority": "Must",
+      "reviewed_implementation_status": "Partial"
+    },
+    {
+      "id": "5.0",
+      "title": "Outings specification",
+      "area": "Shared outings, after Events",
+      "priority": "Must",
+      "reviewed_implementation_status": "Spec only"
+    },
+    {
+      "id": "5.1",
+      "title": "Outing core and invites",
+      "area": "Shared outings, after Events",
+      "priority": "Must",
+      "reviewed_implementation_status": "Planned"
+    },
+    {
+      "id": "5.2",
+      "title": "Private-save shortlist",
+      "area": "Shared outings, after Events",
+      "priority": "Must",
+      "reviewed_implementation_status": "Planned"
+    },
+    {
+      "id": "5.3",
+      "title": "Yes / Fine / Cannot + lock",
+      "area": "Shared outings, after Events",
+      "priority": "Must",
+      "reviewed_implementation_status": "Planned"
+    },
+    {
+      "id": "5.4",
+      "title": "Browser invite and sign-in return",
+      "area": "Shared outings, after Events",
+      "priority": "Must",
+      "reviewed_implementation_status": "Planned"
+    },
+    {
+      "id": "5.5",
+      "title": "Start outing from an event",
+      "area": "Shared outings, after Events",
+      "priority": "Must",
+      "reviewed_implementation_status": "Planned"
+    },
+    {
+      "id": "6.0",
+      "title": "Routing and feasibility spec",
+      "area": "Dependable walking plans",
+      "priority": "Must",
+      "reviewed_implementation_status": "Spec only"
+    },
+    {
+      "id": "6.1",
+      "title": "Real walking routes",
+      "area": "Dependable walking plans",
+      "priority": "Must",
+      "reviewed_implementation_status": "Planned"
+    },
+    {
+      "id": "6.2",
+      "title": "Deterministic feasibility checks",
+      "area": "Dependable walking plans",
+      "priority": "Must",
+      "reviewed_implementation_status": "Planned"
+    },
+    {
+      "id": "6.3",
+      "title": "Shared versioned itinerary",
+      "area": "Dependable walking plans",
+      "priority": "Must",
+      "reviewed_implementation_status": "Planned"
+    },
+    {
+      "id": "6.4",
+      "title": "Itinerary editor",
+      "area": "Dependable walking plans",
+      "priority": "Must",
+      "reviewed_implementation_status": "Planned"
+    },
+    {
+      "id": "7.1",
+      "title": "Flash maps",
+      "area": "Local knowledge and return visits",
+      "priority": "Must",
+      "reviewed_implementation_status": "Planned"
+    },
+    {
+      "id": "7.2",
+      "title": "Live reports pilot",
+      "area": "Local knowledge and return visits",
+      "priority": "Must",
+      "reviewed_implementation_status": "Planned"
+    },
+    {
+      "id": "7.3",
+      "title": "Optional post-visit action",
+      "area": "Local knowledge and return visits",
+      "priority": "Later",
+      "reviewed_implementation_status": "Partial"
+    },
+    {
+      "id": "7.4",
+      "title": "Contributor feedback",
+      "area": "Local knowledge and return visits",
+      "priority": "Must",
+      "reviewed_implementation_status": "Planned"
+    },
+    {
+      "id": "0.1 / 0.3",
+      "title": "Security, flags and pilot seed",
+      "area": "Native and release",
+      "priority": "Must",
+      "reviewed_implementation_status": "Partial"
+    },
+    {
+      "id": "8.1a",
+      "title": "Native Explore parity",
+      "area": "Native and release",
+      "priority": "Must",
+      "reviewed_implementation_status": "Planned"
+    },
+    {
+      "id": "8.1b",
+      "title": "Native event RPC and offer UI",
+      "area": "Native and release",
+      "priority": "Must",
+      "reviewed_implementation_status": "Planned"
+    },
+    {
+      "id": "8.1c–e",
+      "title": "Native outing, invite and itinerary",
+      "area": "Native and release",
+      "priority": "Must",
+      "reviewed_implementation_status": "Planned"
+    },
+    {
+      "id": "8.2",
+      "title": "Full golden-journey e2e",
+      "area": "Native and release",
+      "priority": "Must",
+      "reviewed_implementation_status": "Partial"
+    },
+    {
+      "id": "8.3",
+      "title": "Pilot metrics",
+      "area": "Native and release",
+      "priority": "Must",
+      "reviewed_implementation_status": "Partial"
+    },
+    {
+      "id": "8.4a/b",
+      "title": "Candidate release gate",
+      "area": "Native and release",
+      "priority": "Must",
+      "reviewed_implementation_status": "Not approved"
+    },
+    {
+      "id": "R2",
+      "title": "Opt-in need-players alerts",
+      "area": "Research extras and deferred work",
+      "priority": "Later",
+      "reviewed_implementation_status": "Stub"
+    },
+    {
+      "id": "R3",
+      "title": "Lightweight clubs",
+      "area": "Research extras and deferred work",
+      "priority": "Later",
+      "reviewed_implementation_status": "Stub"
+    },
+    {
+      "id": "R4",
+      "title": "Weekly outing memories",
+      "area": "Research extras and deferred work",
+      "priority": "Must",
+      "reviewed_implementation_status": "Stub"
+    },
+    {
+      "id": "X1–X4",
+      "title": "Deferred 20 points",
+      "area": "Research extras and deferred work",
+      "priority": "Later",
+      "reviewed_implementation_status": "Deferred"
+    }
+  ]
+}

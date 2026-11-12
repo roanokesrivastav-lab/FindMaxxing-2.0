@@ -52,10 +52,35 @@ were rewritten to match on 2026-11-04 and unblocked on 2026-11-05.
 - Naming note: "private place photos" already exists in the code with a different meaning (uploads
   whose visibility follows the place; see `docs/feature-status.md`). Ticket 2.8 must not reuse that name.
 
+## Activity filter default (decided 2026-11-11)
+
+- Ticket **2.4b** defaults to **Has room** as its availability filter, not **Needs players**.
+
+## Shared founder feature priorities (decided 2026-11-11)
+
+The founders answered today’s questionnaire together. Ronak’s supplied choices represent all three founders; do not require separate ballots. **Must for everything except these Later items:**
+
+| Ticket | Later feature |
+| --- | --- |
+| 1.4 | Social context line |
+| 2.2 | Selection and camera restore |
+| 2.6 | Tip provenance and freshness |
+| 3.4a | Parse pasted Notes |
+| 3.4b | Confirm private imports |
+| 3.5 | Single-link importer |
+| 4.4 | Waitlist and expiring offers |
+| 7.3 | Optional post-visit action |
+| R2 | Opt-in need-players alerts |
+| R3 | Lightweight clubs |
+| X1–X4 | All deferred 20-point categories |
+
+No Cut choices were supplied. All other rows of today’s 57-row questionnaire are Must, including **R4 weekly outing memories**, existing foundations/specs, native parity and release work. Priority does not mean implemented or verified. Earlier rejected directions (such as 2.3’s map-plus-list panel) remain rejected; they were not questionnaire rows.
+
+Full decisions: [founder-priorities-2026-11-11.json](founder-priorities-2026-11-11.json). Proposed implementation sequence, dependency reductions and Fable prompts: [proposed-roadmap-2026-11-11.md](proposed-roadmap-2026-11-11.md). Keep Must work independent of Later features; revised high-risk contracts still need Codex preflight. Native 8.1b is Must for safe admission/RPC compatibility, while its waitlist/offer UI follows deferred 4.4.
+
 ## Still open
 
 - **Beli reference:** the owner still has to check Beli's place page. Building proceeds on "friends'
   actual reviews first, then others".
 - **Public photo provider:** decided after the 3.3 spec.
-- **Feature pass:** the "For us" answer covers the competitor references. A separate full feature
-  pass was not addressed in the 2026-11-05 answers.
+- **Feature pass:** completed as the shared 2026-11-11 questionnaire decision above; no longer an open question.
