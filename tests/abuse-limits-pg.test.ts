@@ -46,6 +46,24 @@ describe.skipIf(!url)("two PostgreSQL connections racing the 0040 limiter", () =
     expect(nb).toBeGreaterThan(0);
   });
 
+  it("route validations (0095): two connections racing for a user's last one admit exactly one, and users do not share a budget", async () => {
+    const k = keys(["route_validation", "user-one"]);
+    for (let i = 0; i < 59; i++) expect(await consume(t.a, k)).toBe(0);
+    // Twenty rounds of both connections asking at the same moment for the one that is left.
+    const rounds = await Promise.all(Array.from({ length: 20 }, () => Promise.all([consume(t.a, k), consume(t.b, k)])));
+    const admitted = rounds.flat().filter((r) => r === 0).length;
+    const stored = (await t.a.query<{ count: number }>("select count from public.server_abuse_counters where action = 'route_validation'")).rows[0].count;
+    console.log(`[race] route_validation cap 60: 59 used, 40 racing calls admitted ${admitted}; stored count ${stored}`);
+    expect(admitted).toBe(1);
+    expect(stored).toBe(60);
+    // A second user races through their own 60 while the first is blocked.
+    const other = keys(["route_validation", "user-two"]);
+    const run = async (c: Client) => { let n = 0; for (let i = 0; i < 50; i++) if ((await consume(c, other)) === 0) n++; return n; };
+    const [na, nb] = await Promise.all([run(t.a), run(t.b)]);
+    expect(na + nb).toBe(60);
+    expect(await consume(t.b, k)).toBeGreaterThan(0);
+  });
+
   it("multi-key (IP + email) races keep both budgets exact and never overshoot", async () => {
     const run = async (c: Client, tag: string) => {
       let n = 0;

@@ -35,7 +35,7 @@ This file lets another founder’s agent resume without chat history. Baseline l
 | [5.4](tickets/5-4-browser-invite-and-sign-in-return.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 06 |
 | [5.5](tickets/5-5-start-outing-from-an-event.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 06 |
 | [6.0](tickets/6-0-routing-and-feasibility-spec.md) | Must | SPEC RECONCILED (document only) | `fbd995b` | [6.0 validation note](../features/6.0.md); provider terms unconfirmed |
-| [6.1](tickets/6-1-real-walking-routes.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 04 |
+| [6.1](tickets/6-1-real-walking-routes.md) | Must | IMPLEMENTED-LOCAL (not live; nothing calls it yet) | COMMIT61 | [features/6.1.md](../features/6.1.md); migration 0095; Mapbox exercised on stubs only; hosted NOT VERIFIED |
 | [6.2](tickets/6-2-deterministic-feasibility-checks.md) | Must | IMPLEMENTED-LOCAL (pure module; nothing calls it yet) | `78cc608` | [features/6.2.md](../features/6.2.md); three reading choices for the reviewer; 6.1 not started |
 | [6.3](tickets/6-3-shared-versioned-itinerary.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 07 |
 | [6.4](tickets/6-4-itinerary-editor.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 07 |
@@ -161,4 +161,16 @@ This file lets another founder’s agent resume without chat history. Baseline l
   child trigger, with a fail-closed write guard instead.
 - Still gated until the targeted preflight clears: 4.5a, 4.5b, 4.6, 4.8, 1.5, the 4.1 newcomer block,
   and all 5.x and 6.3 schema work. Not gated: 6.1.
+
+### 2026-11-12 — 6.1 walking router and route-validation limit
+
+- Done: the router interface, deterministic fake, Mapbox client (stub-tested, not live), GraphHopper
+  stub, request memo, and the 60-per-user-per-hour limit in migration 0095
+  ([features/6.1.md](../features/6.1.md)). Batch 04 is complete locally.
+- `npm run check` exit 0 (1,333 tests, 0 skipped, with the uncommitted event-page fix in the tree);
+  mobile typecheck exit 0; `npm run e2e` 21/21; the two-connection limiter race passes on local
+  PostgreSQL.
+- Not done from the revision 3 preflight: the targeted changes to 0054, Outings and the 6.3 read
+  contract; the 0053 admission slice (cleared to start, not started).
+- Not pushed (owner's instruction).
 

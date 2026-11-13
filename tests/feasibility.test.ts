@@ -70,6 +70,12 @@ describe("a plan that fits", () => {
     expect(feasible(validate(plan([], []))).endsLocal).toBe("2026-11-14T16:00");
   });
 
+  it("a stop at the start point is a zero-minute walk, written as 0", () => {
+    const r = feasible(validate(plan([stop("here", 10)], [{ status: "ok", seconds: 0, meters: 0 }])));
+    expect(Object.is(r.stops[0].walkMin, 0)).toBe(true);
+    expect(Object.is(r.totalWalkMin, 0)).toBe(true);
+  });
+
   it("walking time rounds up to whole minutes", () => {
     const r = feasible(validate(plan([stop("a", 10)], [{ status: "ok", seconds: 61, meters: 80 }])));
     expect(r.stops[0].walkMin).toBe(2);

@@ -21,7 +21,7 @@ export function abuseSecret(): string {
   throw new DataError(UNAVAILABLE, "unavailable");
 }
 /** Keyed hash: the tables only ever hold this 64-hex digest, never a raw IP or email. */
-export function abuseHash(kind: "ip" | "email", value: string): string {
+export function abuseHash(kind: "ip" | "email" | "user", value: string): string {
   return createHmac("sha256", abuseSecret()).update(`${kind}:${value}`).digest("hex");
 }
 export function normalizeEmail(email: string): string {
@@ -109,3 +109,15 @@ export async function claimGeocodeProvider(): Promise<boolean> {
   if (result.error || typeof result.data !== "boolean") throw new DataError("Geocoding is unavailable.", "unavailable");
   return result.data;
 }
+
+/**
+ * 60 walking-route validations per signed-in user per hour (6.0 decision R-3, 0095). The key is an
+ * HMAC of the user id the SERVER authenticated; never pass an id taken from a request body. Call it
+ * before any routing work: 0 means one validation is now reserved, anything else is seconds to wait,
+ * and a limiter that cannot be reached throws DataError("unavailable") so the caller routes nothing.
+ */
+export async function limitRouteValidation(userId: string): Promise<number> {
+  if (!userId) throw new DataError(UNAVAILABLE, "unavailable");
+  return consumeAbuse([{ action: "route_validation", key: abuseHash("user", userId) }]);
+}
+

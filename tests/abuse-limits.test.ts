@@ -31,12 +31,27 @@ async function consume(keys: AbuseKey[], at: number): Promise<number> {
 }
 
 describe("policy table", () => {
-  it("SQL and ABUSE_LIMITS hold the same caps and windows (no beacon until 0.1b)", () => {
-    const sql = readFileSync(path.join(__dirname, "../supabase/migrations/0040_durable_abuse_limits.sql"), "utf8");
-    const rows = Object.fromEntries([...sql.matchAll(/\('([a-z_]+)', (\d+), (\d+)\)/g)].map((m) => [m[1], { max: Number(m[2]), seconds: Number(m[3]) }]));
-    expect(rows).toEqual(ABUSE_LIMITS);
-    const code = sql.replace(/--.*$/gm, "");
-    expect(code).not.toMatch(/beacon|ad_client_daily|record_ad_impression|serve_ad|ad_impressions/);
+  const policyRows = (file: string) => {
+    const sql = readFileSync(path.join(__dirname, "../supabase/migrations", file), "utf8");
+    return { sql, rows: Object.fromEntries([...sql.matchAll(/\('([a-z_]+)', (\d+), (\d+)\)/g)].map((m) => [m[1], { max: Number(m[2]), seconds: Number(m[3]) }])) };
+  };
+
+  it("SQL and ABUSE_LIMITS hold the same caps and windows (no beacon until 0.1b)", async () => {
+    // The policy function is defined in 0040 and replaced in 0095 (6.1), which adds route_validation.
+    const first = policyRows("0040_durable_abuse_limits.sql");
+    const latest = policyRows("0095_route_validation_limit.sql");
+    expect(latest.rows).toEqual(ABUSE_LIMITS);
+    // 0095 keeps every earlier budget exactly as it was and adds one action.
+    const { route_validation, ...earlier } = latest.rows;
+    expect(earlier).toEqual(first.rows);
+    expect(route_validation).toEqual({ max: 60, seconds: 3600 });
+    // The effective policy, asked of the database itself once every migration has run.
+    const keys = (Object.keys(ABUSE_LIMITS) as AbuseAction[]).map((action) => ({ action, key: key(1) }));
+    const effective = await db.query<{ action: string; cap: number; seconds: number }>("select action, cap, seconds from public.server_abuse_budgets($1::jsonb, now())", [JSON.stringify(keys)]);
+    expect(Object.fromEntries(effective.rows.map((r) => [r.action, { max: r.cap, seconds: r.seconds }]))).toEqual(ABUSE_LIMITS);
+    for (const { sql } of [first, latest]) expect(sql.replace(/--.*$/gm, "")).not.toMatch(/beacon|ad_client_daily|record_ad_impression|serve_ad|ad_impressions/);
+    // 0095 touches the policy function only: no table, grant or other function.
+    expect(latest.sql.replace(/--.*$/gm, "")).not.toMatch(/create table|alter table|grant |drop |consume_server_abuse|security definer/i);
   });
 
   it("rejects unknown actions, malformed keys and oversized batches", async () => {

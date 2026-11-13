@@ -136,7 +136,8 @@ const MIN = 60_000;
 const LOCAL = /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d)$/;
 const CLOCK = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const pad = (n: number) => String(n).padStart(2, "0");
-const ceilMin = (ms: number) => Math.ceil(ms / MIN - 1e-9);
+// max(0, …) also turns the -0 that Math.ceil gives for an exact zero into 0.
+const ceilMin = (ms: number) => Math.max(0, Math.ceil(ms / MIN - 1e-9));
 
 function splitLocal(local: string, what: string): { date: string; time: string } {
   const m = LOCAL.exec(local);
@@ -257,7 +258,7 @@ function walk(n: Normalized): Walk {
     if (!usable) {
       return { status: "uncertain", index: i, reason: { kind: "leg_unknown", leg: leg.status === "unknown" ? leg.reason : "provider_error" }, times };
     }
-    const walkMin = Math.ceil(leg.seconds / 60 - 1e-9);
+    const walkMin = Math.max(0, Math.ceil(leg.seconds / 60 - 1e-9));
     if (walkMin > n.perLeg) return fail({ kind: "leg_over_max", stopId: stop.id, legMin: walkMin, maxMin: n.perLeg }, null);
     totalWalkMin += walkMin;
     if (totalWalkMin > n.total) return fail({ kind: "total_walk_over_max", stopId: stop.id, totalMin: totalWalkMin, maxMin: n.total }, null);
