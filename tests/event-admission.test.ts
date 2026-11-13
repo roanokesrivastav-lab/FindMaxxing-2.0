@@ -306,6 +306,26 @@ describe("one capacity rule on every way in (SQL and the demo twin, step for ste
 });
 
 describe("0053 in the database", () => {
+  it("rolls back fulfillment on a transient SQL error so the same payment can be retried", async () => {
+    const event = await sqlEvent(2, true);
+    expect(await event.reserve("x")).toBe("held");
+    await db.exec(`
+      create function public.test_admission_retry() returns trigger language plpgsql as $$
+      begin raise exception 'test serialization failure' using errcode = '40001'; end $$;
+      create trigger zz_test_admission_retry before insert on public.event_attendees
+        for each row execute function public.test_admission_retry();
+    `);
+    try {
+      await expect(service("select public.confirm_ticket($1, $2, $3)", [`cs_${event.id}_x`, `pi_${event.id}_x`, PRICE]))
+        .rejects.toMatchObject({ code: "40001" });
+      expect(await event.state()).toEqual({ going: ["host"], tickets: { x: "pending" }, intents: { x: null } });
+    } finally {
+      await db.exec("drop trigger zz_test_admission_retry on public.event_attendees; drop function public.test_admission_retry();");
+    }
+    expect(await event.confirm("x")).toBe("confirmed");
+    expect(await event.confirm("x")).toBe("duplicate");
+  });
+
   it("a deleted event, an anonymized buyer and a closing account are each refunded, never seated", async () => {
     // The event is deleted after the hold was made: the ticket keeps no event.
     const gone = await sqlEvent(3, true);

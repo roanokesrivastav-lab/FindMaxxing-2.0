@@ -191,3 +191,11 @@ Not run: `a11y`, `e2e:onboarding` (no page code changed); anything against a hos
 
 - Commit: the commit that adds this evidence; hash in [progress.md](../implementation/progress.md).
 - Ready for independent review: yes. Stopped here as asked: 0054 not started, nothing pushed.
+
+## Independent Codex verification
+
+0053 is verified locally and is ready as the base for the 0054 contract. The admission migration, legacy roles, demo parity and buyer-closure and last-seat race outcomes were independently checked. Hosted Supabase and the hosted 0052 history remain open. The 4.3 `decide_sessions` race remains outside this slice.
+
+- Approved the retryable SQL error handling. A transient failure should leave the delivery pending so it can retry. The added PGlite test injects `40001` during attendee insertion and proves rollback, followed by one confirmation and a duplicate result. The webhook regression proves it releases the claim and does not issue a refund on the failed attempt. A retry confirms once. The route's existing error response requests redelivery.
+- Confirmed the corrected mutation target. The locked ticket re-read protects simultaneous duplicate delivery. Cancellation and competing reservations also have other guards. Updated the amendment's proof table to match the actual evidence.
+- Independent runs passed the 28 PostgreSQL race and mutation checks, 16 SQL/demo admission checks, 25 payment-event processing checks, mobile typecheck, the 11-check feature browser suite and the 9-check event detail browser suite. See the progress ledger for the full run and golden-journey result.

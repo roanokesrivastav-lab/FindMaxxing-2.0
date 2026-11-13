@@ -125,6 +125,23 @@ async function heldTicket() {
   return { ev, hold, session: { id: "cs_ticket", mode: "payment", payment_status: "paid", currency: "usd", amount_total: 1500, payment_intent: "pi_ticket", metadata: { ticket_id: hold.ticketId } } };
 }
 describe("settled checkout fulfillment", () => {
+  it("retries a transient ticket confirmation failure without completing the delivery or refunding", async () => {
+    const { ev, session } = await heldTicket();
+    const r = remote();
+    const delivery = event("evt_ticket_retry", "checkout.session.completed", session);
+    const retryable = Object.assign(new Error("serialization failure"), { code: "40001" });
+    vi.spyOn(repo.payments, "confirmTicket").mockRejectedValueOnce(retryable);
+
+    await expect(handleStripeEvent(delivery, repo, r.stripe)).rejects.toBe(retryable);
+    expect(h.state.stripeEvents.find((row) => row.id === delivery.id)?.state).toBe("pending");
+    expect((await repo.payments.myTickets(buyer))[0].status).toBe("pending");
+    expect(r.refund).not.toHaveBeenCalled();
+
+    expect(await handleStripeEvent(delivery, repo, r.stripe)).toBe("confirmed");
+    expect(await handleStripeEvent(delivery, repo, r.stripe)).toBe("duplicate:confirmed");
+    expect(h.state.eventAttendees.filter((a) => a.eventId === ev.id && a.userId === buyer)).toHaveLength(1);
+  });
+
   it.each(["unpaid", "no_payment_required", undefined])("does not admit a ticket on completed/%s", async (payment_status) => {
     const { ev, session } = await heldTicket(); const r = remote();
     expect(await handleStripeEvent(event("evt_unpaid", "checkout.session.completed", { ...session, payment_status }), repo, r.stripe)).toBe("unpaid");
