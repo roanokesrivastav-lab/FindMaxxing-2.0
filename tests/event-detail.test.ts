@@ -238,6 +238,26 @@ describe("the page, through the real page function and the demo repository", () 
     expect(widget(hosting, "owner")).not.toBeNull();
   });
 
+  it("a host who leaves can rejoin if there is room and sees why they cannot if the event fills", async () => {
+    const event = await ctx.repo.events.create(input({ capacity: 1 }), host);
+    expect(text(await render(event.id, host))).toContain("You're on the list as the host.");
+
+    await ctx.repo.events.leave(host, event.id);
+    const left = await render(event.id, host);
+    expect(text(left)).toContain("You're hosting");
+    expect(text(left)).toContain("0 going");
+    expect(text(left)).toContain("Join to add yourself to the attendee list.");
+    expect(text(left)).not.toContain("You're on the list as the host.");
+    expect(widget(left, "join")).toMatchObject({ joined: false, full: false });
+
+    await ctx.repo.events.join(guest, event.id);
+    const full = await render(event.id, host);
+    expect(text(full)).toContain("You're hosting");
+    expect(text(full)).toContain("1 going · Full");
+    expect(text(full)).toContain("Every spot is taken. One opens if someone leaves.");
+    expect(widget(full, "join")).toMatchObject({ joined: false, full: true });
+  });
+
   it("a cancelled event says so at the top and at the action; only people who were going can still open it", async () => {
     const event = await ctx.repo.events.create(input(), host);
     await ctx.repo.events.join(guest, event.id);

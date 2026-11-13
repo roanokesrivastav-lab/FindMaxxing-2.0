@@ -82,14 +82,14 @@ export function eventDetailFacts({ event, joined, viewerId, ended, ticketsOnSale
       : "This event is no longer taking people."
     : ended
       ? "This event is over."
-      : isHost
-        ? "You're on the list as the host."
-        : joined
-          ? "You're on the list."
-          : full
-            ? priced
-              ? "Every spot is taken or being paid for."
-              : "Every spot is taken. One opens if someone leaves."
+      : joined
+        ? isHost ? "You're on the list as the host." : "You're on the list."
+        : full
+          ? priced
+            ? "Every spot is taken or being paid for."
+            : "Every spot is taken. One opens if someone leaves."
+          : isHost
+            ? "Join to add yourself to the attendee list."
             : priced
               ? ticketsOnSale
                 ? "Buying a ticket holds your spot for 30 minutes while you pay."
