@@ -23,7 +23,7 @@ This file lets another founder’s agent resume without chat history. Baseline l
 | [4.1](tickets/4-1-editorial-event-detail.md) | Must | PARTLY IMPLEMENTED-LOCAL (existing-contract part) | `094be4e` | [features/4.1.md](../features/4.1.md); newcomer block not built (needs a column); Chrome only |
 | [4.2](tickets/4-2-structured-activity-details.md) | Must | IMPLEMENTED-LOCAL (reverified 2026-11-11) | `15f5561` | [00-baseline](../features/00-baseline.md) §3; hosted NOT VERIFIED |
 | [4.3](tickets/4-3-attendance-and-readiness.md) | Must | IMPLEMENTED-LOCAL (reverified 2026-11-11) | `f2eb957` | [00-baseline](../features/00-baseline.md) §3; cron, push and the decide-vs-join race NOT VERIFIED |
-| 4.5a slice: [0053 admission](../features/0053-admission.md) | Must | IMPLEMENTED-LOCAL, awaiting Codex review | COMMIT0053 | [features/0053-admission.md](../features/0053-admission.md); migration 0053; local PostgreSQL and PGlite only, hosted NOT VERIFIED |
+| 4.5a slice: [0053 admission](../features/0053-admission.md) | Must | IMPLEMENTED-LOCAL, awaiting Codex review | `431f8d3` | [features/0053-admission.md](../features/0053-admission.md); migration 0053; local PostgreSQL and PGlite only, hosted NOT VERIFIED |
 | [4.5a](tickets/4-5a-recurring-series-and-host-tools.md) | Must | BLOCKED — 4.0 A1 second preflight | — | See batch 02 |
 | [4.5b](tickets/4-5b-permanent-series-page.md) | Must | BLOCKED — needs 4.5a | — | See batch 02 |
 | [4.6](tickets/4-6-material-change-notifications.md) | Must | BLOCKED — 4.0 A1 second preflight | — | See batch 02 |
