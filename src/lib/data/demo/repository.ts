@@ -34,7 +34,7 @@ import { createDemoInteractions, forgetItemInteractions, recordOwnInteraction } 
 import { createDemoPayments, isPlusIn, needsTicket, refundOnCancel } from "./payments";
 import { PLUS_LIST_CAP, paymentsError } from "../payments";
 import { eventsError } from "../events";
-import { checkSessionRules, decideDemoSessions, readinessOf } from "./sessions";
+import { checkSessionRules, decideDemoSessions, readinessOf, seatsTaken } from "./sessions";
 import { activityDetailsSchema, type ActivityDetails } from "@/lib/activity";
 import { DEFAULT_TIME_ZONE, eventTimeZone } from "@/lib/utils/timezone";
 import { LIST_LIMIT_ERROR, MAX_SAVED_LISTS, duplicateListName, listNameKey, normalizeListName } from "../savedLists";
@@ -889,8 +889,10 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         if (ev.creatorId !== creatorId) throw new DataError("You don't have permission to edit this event", "forbidden");
         if (ev.status !== "published" || eventEndOrStart(ev) <= Date.now()) throw new DataError("Only future published events can be edited", "invalid");
         if (input.placeId && !state.places.some((p) => p.id === input.placeId && canViewPlace(state, p, creatorId))) throw new DataError("Linked place not found", "not_found");
-        const attendeeCount = state.eventAttendees.filter((a) => a.eventId === id).length;
-        if (input.capacity !== null && input.capacity !== undefined && input.capacity < attendeeCount) {
+        // Mirrors guard_event_capacity_floor() (0053): capacity cannot be LOWERED below seats taken
+        // (going plus live paid holds). Raising it, or leaving it alone, is never refused.
+        const lowering = input.capacity !== null && input.capacity !== undefined && (ev.capacity === null || input.capacity < ev.capacity);
+        if (lowering && input.capacity! < seatsTaken(state, id)) {
           throw new DataError("capacity cannot be below the existing attendee count", "invalid");
         }
         // Mirrors the trigger's "when or where changed" test (instants, not their spelling).
@@ -971,8 +973,9 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
         if (eventEndOrStart(ev) < Date.now()) throw new DataError("This event has already ended", "invalid");
         if (needsTicket(state, ev, userId) && !state.eventAttendees.some((a) => a.eventId === eventId && a.userId === userId)) throw paymentsError("ticket_required");
         if (state.eventAttendees.some((a) => a.eventId === eventId && a.userId === userId)) return;
-        const count = state.eventAttendees.filter((a) => a.eventId === eventId).length;
-        if (ev.capacity !== null && count >= ev.capacity) throw new DataError("This event is full", "full");
+        // Mirrors check_event_join() (0053): seats taken are the people going plus live paid holds,
+        // and a paid ticket is no exemption.
+        if (ev.capacity !== null && seatsTaken(state, eventId) >= ev.capacity) throw new DataError("This event is full", "full");
         state.eventAttendees.push({ eventId, userId, createdAt: new Date().toISOString() });
         joinEventChat(state, eventId, userId);
         notifyOn.join(state, eventId, userId);

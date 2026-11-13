@@ -1,7 +1,9 @@
 /**
- * Demo-mode payments. Mirrors 0022_payments.sql: holds that count against
- * capacity, idempotent confirmation, refunds on cancellation, Plus. No money
- * moves: the demo checkout (src/app/checkout/demo) calls the service methods.
+ * Demo-mode payments. Mirrors 0022_payments.sql and the admission rules of
+ * 0053_event_admission.sql: holds that count against capacity, one seat count
+ * for reservations and confirmations, idempotent confirmation, refunds on
+ * cancellation, Plus. No money moves: the demo checkout (src/app/checkout/demo)
+ * calls the service methods.
  */
 import type { DataRepository } from "../repository";
 import { DataError, type Entitlement, type Ticket } from "../types";
@@ -9,6 +11,7 @@ import { HOLD_MINUTES, MAX_PRICE_CENTS, MIN_PRICE_CENTS, paymentsError } from ".
 import type { RateLimitAction } from "@/lib/rateLimits";
 import { newId } from "@/lib/utils/ids";
 import { leaveEventChat, joinEventChat } from "./messaging";
+import { seatsTaken } from "./sessions";
 import type { DemoState, EventRow, TicketRow } from "./store";
 
 const LIVE = new Set(["pending", "paid", "refund_pending"]);
@@ -84,15 +87,19 @@ export function createDemoPayments(state: DemoState, h: {
       if (e.priceCents == null) throw paymentsError("free_event");
       if (e.creatorId === userId || state.eventAttendees.some((a) => a.eventId === eventId && a.userId === userId)) throw paymentsError("already_going");
       const now = Date.now();
-      for (const t of state.tickets) if (t.eventId === eventId && t.status === "pending" && Date.parse(t.expiresAt) <= now) t.status = "expired";
-      let t = state.tickets.find((x) => x.eventId === eventId && x.userId === userId && LIVE.has(x.status));
+      // Holds that ran out stop holding. As in SQL, where a refusal rolls the sweep back, a lapsed
+      // hold is treated as gone here and only marked expired once the reservation goes through.
+      const lapsed = (x: TicketRow) => x.eventId === eventId && x.status === "pending" && Date.parse(x.expiresAt) <= now;
+      const sweep = () => { for (const x of state.tickets) if (lapsed(x)) x.status = "expired"; };
+      let t = state.tickets.find((x) => x.eventId === eventId && x.userId === userId && LIVE.has(x.status) && !lapsed(x));
       if (t && t.status !== "pending") throw paymentsError("already_going");
-      if (!t) {
-        if (e.capacity !== null) {
-          const taken = state.eventAttendees.filter((a) => a.eventId === eventId).length + state.tickets.filter((x) => x.eventId === eventId && x.status === "pending").length;
-          if (taken >= e.capacity) throw new DataError("This event is full", "full");
-        }
+      if (t) {
+        sweep();
+        h.persist();
+      } else {
+        if (e.capacity !== null && seatsTaken(state, eventId, now) >= e.capacity) throw new DataError("This event is full", "full");
         const counted = h.rateLimit(userId, "tickets");
+        sweep();
         t = {
           id: newId(), eventId, userId, status: "pending", amountCents: e.priceCents, currency: "usd", checkoutSessionId: null, paymentIntentId: null,
           expiresAt: new Date(now + HOLD_MINUTES * 60_000).toISOString(), createdAt: new Date(now).toISOString(), paidAt: null, refundedAt: null,
@@ -140,17 +147,22 @@ export function createDemoPayments(state: DemoState, h: {
         h.persist();
         return "refund" as const;
       };
-      if (t.status === "expired" || Date.parse(t.expiresAt) <= Date.now()) return refund();
+      const now = Date.now();
+      if (t.status === "expired" || Date.parse(t.expiresAt) <= now) return refund();
       if (amountCents !== t.amountCents) return refund();
       const e = state.events.find((x) => x.id === t.eventId);
-      const going = state.eventAttendees.filter((a) => a.eventId === t.eventId);
+      // A deleted event, an anonymized buyer, a closed event: the payment cannot become a seat.
       if (!e || e.status !== "published" || ended(e) || !t.userId) return refund();
-      if (!going.some((a) => a.userId === t.userId)) {
-        if (e.capacity !== null && going.length >= e.capacity) return refund();
-        state.eventAttendees.push({ eventId: e.id, userId: t.userId, createdAt: new Date().toISOString() });
+      if (!state.eventAttendees.some((a) => a.eventId === e.id && a.userId === t.userId)) {
+        // As in 0053: once this hold is paid it is no longer a live hold, so the count is the OTHER
+        // people going and the OTHER live holds.
+        const others = state.eventAttendees.filter((a) => a.eventId === e.id).length
+          + state.tickets.filter((x) => x !== t && x.eventId === e.id && x.status === "pending" && Date.parse(x.expiresAt) > now).length;
+        if (e.capacity !== null && others >= e.capacity) return refund();
+        state.eventAttendees.push({ eventId: e.id, userId: t.userId, createdAt: new Date(now).toISOString() });
         joinEventChat(state, e.id, t.userId);
       }
-      Object.assign(t, { status: "paid", paymentIntentId, paidAt: new Date().toISOString() });
+      Object.assign(t, { status: "paid", paymentIntentId, paidAt: new Date(now).toISOString() });
       h.persist();
       return "confirmed";
     },

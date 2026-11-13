@@ -23,6 +23,7 @@ This file lets another founder’s agent resume without chat history. Baseline l
 | [4.1](tickets/4-1-editorial-event-detail.md) | Must | PARTLY IMPLEMENTED-LOCAL (existing-contract part) | `094be4e` | [features/4.1.md](../features/4.1.md); newcomer block not built (needs a column); Chrome only |
 | [4.2](tickets/4-2-structured-activity-details.md) | Must | IMPLEMENTED-LOCAL (reverified 2026-11-11) | `15f5561` | [00-baseline](../features/00-baseline.md) §3; hosted NOT VERIFIED |
 | [4.3](tickets/4-3-attendance-and-readiness.md) | Must | IMPLEMENTED-LOCAL (reverified 2026-11-11) | `f2eb957` | [00-baseline](../features/00-baseline.md) §3; cron, push and the decide-vs-join race NOT VERIFIED |
+| 4.5a slice: [0053 admission](../features/0053-admission.md) | Must | IMPLEMENTED-LOCAL, awaiting Codex review | COMMIT0053 | [features/0053-admission.md](../features/0053-admission.md); migration 0053; local PostgreSQL and PGlite only, hosted NOT VERIFIED |
 | [4.5a](tickets/4-5a-recurring-series-and-host-tools.md) | Must | BLOCKED — 4.0 A1 second preflight | — | See batch 02 |
 | [4.5b](tickets/4-5b-permanent-series-page.md) | Must | BLOCKED — needs 4.5a | — | See batch 02 |
 | [4.6](tickets/4-6-material-change-notifications.md) | Must | BLOCKED — 4.0 A1 second preflight | — | See batch 02 |
@@ -173,4 +174,17 @@ This file lets another founder’s agent resume without chat history. Baseline l
 - Not done from the revision 3 preflight: the targeted changes to 0054, Outings and the 6.3 read
   contract; the 0053 admission slice (cleared to start, not started).
 - Not pushed (owner's instruction).
+
+### 2026-11-13 — 0053 event admission
+
+- Done: migration 0053 (one capacity rule on joins, reservations, confirmations and capacity edits;
+  account, event, ticket lock order; post-lock clock), its demo twin, and tests
+  ([features/0053-admission.md](../features/0053-admission.md)).
+- `npm run check` exit 0 (1,376 tests, 0 skipped); mobile typecheck exit 0; 28/28 two-connection
+  cases on local PostgreSQL including nine guard-removal proofs; `e2e` 21/21, `e2e:features` 11/11,
+  `e2e:event-detail` 9/9.
+- For the reviewer: one narrowing in `confirm_ticket`'s refund handler, and a one-row correction to
+  the amendment's mutation table. Both are in the evidence note.
+- Stopped for Codex review. 0054 not started. The event-page host-leave fix is still uncommitted and
+  separate. Nothing pushed.
 
