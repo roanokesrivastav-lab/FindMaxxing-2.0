@@ -1,6 +1,10 @@
 ## Active founder implementation plan — 2026-11-11
 
-Read `IMPLEMENTATION_START_HERE.md` for the confirmed team priorities, current handoff branch, batch prompts and evidence requirements. This pointer does not replace the preflight/verification protocol below. Do not implement Later features simply because an older spec lists them as dependencies.
+Read `IMPLEMENTATION_START_HERE.md` for the confirmed team priorities, current handoff branch, batch prompts and evidence requirements. Do not implement Later features simply because an older spec lists them as dependencies.
+
+## Temporary founder handoff
+
+During the founders' Fable implementation run, the owner has paused independent Codex preflight and post-implementation checkpoints until they resume them. Follow `docs/implementation/founder-fable-handoff.md`. Fable writes the scoped contracts, resolves the recorded technical findings, runs the required tests and performs a separate adversarial self-review. Record self-review evidence as such. Actual dependencies, local verification gates and release authorization still apply. The protocol below resumes when the owner takes review back over.
 
 ## vexp - Context-Aware AI Coding <!-- vexp v3.3.4 -->
 

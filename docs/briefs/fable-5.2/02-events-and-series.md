@@ -10,7 +10,7 @@ Deliver recurring sessions and clear participant/host experiences without implem
 
 Tickets: `4.1`, `4.5a`, `4.5b`, `4.6`, `4.8`, `1.5`.
 
-Prerequisites: 00 event-contract amendment independently preflighted; existing 4.2/4.3 and race harness verified.
+Resume at 0054 under the [current founder handoff](../../implementation/founder-fable-handoff.md). The 0053 admission slice and existing 4.2/4.3 code are on the branch. Prove the remaining 4.3 deadline race before closing the Must Events gate.
 
 ## Allowed scope
 

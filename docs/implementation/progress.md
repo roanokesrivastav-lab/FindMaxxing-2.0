@@ -7,7 +7,7 @@ This file lets another founder’s agent resume without chat history. Baseline l
 | [1.1](tickets/1-1-design-tokens-and-primitives.md) | Must | IMPLEMENTED-LOCAL (reverified 2026-11-11) | earlier work | [00-baseline](../features/00-baseline.md) §3; not independently verified |
 | [1.2](tickets/1-2-six-interest-thumbnail-picker.md) | Must | IMPLEMENTED-LOCAL | `78b0b34` | [features/1.2.md](../features/1.2.md); no real thumbnail photos, no device run |
 | [1.3](tickets/1-3-first-map-arrival.md) | Must | INDEPENDENTLY VERIFIED in Chrome | `29cc1ce`, fixes `d8dc696` | [features/1.3.md](../features/1.3.md); Chrome only, no device run |
-| [1.5](tickets/1-5-quiet-events-tab.md) | Must | BLOCKED — needs followed-series data (4.5a) | — | See batch 02; waits for the 4.0 A1 second preflight |
+| [1.5](tickets/1-5-quiet-events-tab.md) | Must | BLOCKED — needs followed-series data (4.5a) | — | See batch 02 |
 | [2.1](tickets/2-1-map-clustering.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 05 |
 | [2.4a](tickets/2-4a-time-and-travel-filters.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 05 |
 | [2.4b](tickets/2-4b-has-room-availability-filter.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 05 |
@@ -19,17 +19,17 @@ This file lets another founder’s agent resume without chat history. Baseline l
 | [3.2](tickets/3-2-library-tools.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 03 |
 | [3.3](tickets/3-3-matching-provider-specification.md) | Must | SPEC RECONCILED (document only) | `99f8023` | [3.3 validation note](../features/3.3.md); B1/B2 deferred with the Later importers |
 | [3.6](tickets/3-6-pick-from-my-saves.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 03 |
-| [4.0](tickets/4-0-event-foundation-specification.md) | Must | BLOCKED — amendment revision 3 awaiting a targeted Codex preflight | `c06f1ad`, r2 `3bd83e0`, r3 `d342838` | [4.0 Amendment A1](../features/4.0.md); blocks 4.5a, 4.5b, 4.6, 4.8, 1.5, 8.1b, 5.5 and the 4.1 newcomer block |
-| [4.1](tickets/4-1-editorial-event-detail.md) | Must | PARTLY IMPLEMENTED-LOCAL (existing-contract part) | `094be4e` | [features/4.1.md](../features/4.1.md); newcomer block not built (needs a column); Chrome only |
+| [4.0](tickets/4-0-event-foundation-specification.md) | Must | 0053 verified locally; 0054 contract requirements open | `c06f1ad`, r2 `3bd83e0`, r3 `d342838` | [Revision 3 findings](../features/amendments-r3-codex-review.md); [current handoff](founder-fable-handoff.md) |
+| [4.1](tickets/4-1-editorial-event-detail.md) | Must | PARTLY IMPLEMENTED-LOCAL (existing-contract part) | `094be4e`, host-leave fix `7084dbf` | [features/4.1.md](../features/4.1.md); host attendance copy verified locally; newcomer block needs its write contract |
 | [4.2](tickets/4-2-structured-activity-details.md) | Must | IMPLEMENTED-LOCAL (reverified 2026-11-11) | `15f5561` | [00-baseline](../features/00-baseline.md) §3; hosted NOT VERIFIED |
 | [4.3](tickets/4-3-attendance-and-readiness.md) | Must | IMPLEMENTED-LOCAL (reverified 2026-11-11) | `f2eb957` | [00-baseline](../features/00-baseline.md) §3; cron, push and the decide-vs-join race NOT VERIFIED |
-| 4.5a slice: [0053 admission](../features/0053-admission.md) | Must | IMPLEMENTED-LOCAL, awaiting Codex review | `431f8d3` | [features/0053-admission.md](../features/0053-admission.md); migration 0053; local PostgreSQL and PGlite only, hosted NOT VERIFIED |
-| [4.5a](tickets/4-5a-recurring-series-and-host-tools.md) | Must | BLOCKED — 4.0 A1 second preflight | — | See batch 02 |
+| 4.5a slice: [0053 admission](../features/0053-admission.md) | Must | INDEPENDENTLY VERIFIED locally | `431f8d3`, retry proof `8b053f3` | [Review and tests](../features/0053-admission.md#independent-codex-verification); hosted NOT VERIFIED |
+| [4.5a](tickets/4-5a-recurring-series-and-host-tools.md) | Must | READY — start with the 0054 lock and permission contract | — | [Exact next task and tests](founder-fable-handoff.md#next-task-45a-recurring-series-migration-0054) |
 | [4.5b](tickets/4-5b-permanent-series-page.md) | Must | BLOCKED — needs 4.5a | — | See batch 02 |
-| [4.6](tickets/4-6-material-change-notifications.md) | Must | BLOCKED — 4.0 A1 second preflight | — | See batch 02 |
-| [4.8](tickets/4-8-optional-party-poster.md) | Must | BLOCKED — needs an event column; event schema held for the second preflight | — | See batch 02 |
+| [4.6](tickets/4-6-material-change-notifications.md) | Must | BLOCKED — needs verified series contract (4.5a) | — | See batch 02 |
+| [4.8](tickets/4-8-optional-party-poster.md) | Must | BLOCKED — needs a scoped write contract | — | See batch 02 |
 | [4.pre](tickets/4-pre-real-postgres-concurrency-harness.md) | Must | IMPLEMENTED-LOCAL (harness reverified) | earlier work | [00-baseline](../features/00-baseline.md) §3; event race suites arrive with 4.5a (4.0 A1.6) |
-| [5.0](tickets/5-0-outings-specification.md) | Must | BLOCKED — amendment awaiting Codex preflight | `9c515b9` | [5.0 Amendment A1](../features/5.0.md); blocks 5.1–5.5 |
+| [5.0](tickets/5-0-outings-specification.md) | Must | APPROVED WITH REQUIRED CHANGES — Must Events gate and outing fixes remain | `9c515b9`, r3 `d342838` | [Revision 3 preflight](../features/amendments-r3-codex-review.md#50-outings-and-the-63-itinerary-read-contract); blocks 5.1–5.5 |
 | [5.1](tickets/5-1-outing-core-and-invites.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 06 |
 | [5.2](tickets/5-2-private-save-shortlist.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 06 |
 | [5.3](tickets/5-3-yes-fine-cannot-lock.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 06 |
@@ -37,7 +37,7 @@ This file lets another founder’s agent resume without chat history. Baseline l
 | [5.5](tickets/5-5-start-outing-from-an-event.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 06 |
 | [6.0](tickets/6-0-routing-and-feasibility-spec.md) | Must | SPEC RECONCILED (document only) | `fbd995b` | [6.0 validation note](../features/6.0.md); provider terms unconfirmed |
 | [6.1](tickets/6-1-real-walking-routes.md) | Must | IMPLEMENTED-LOCAL (not live; nothing calls it yet) | `062511c` | [features/6.1.md](../features/6.1.md); migration 0095; Mapbox exercised on stubs only; hosted NOT VERIFIED |
-| [6.2](tickets/6-2-deterministic-feasibility-checks.md) | Must | IMPLEMENTED-LOCAL (pure module; nothing calls it yet) | `78cc608` | [features/6.2.md](../features/6.2.md); three reading choices for the reviewer; 6.1 not started |
+| [6.2](tickets/6-2-deterministic-feasibility-checks.md) | Must | IMPLEMENTED-LOCAL (pure module; nothing calls it yet) | `78cc608` | [features/6.2.md](../features/6.2.md); 6.1 is also implemented locally |
 | [6.3](tickets/6-3-shared-versioned-itinerary.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 07 |
 | [6.4](tickets/6-4-itinerary-editor.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 07 |
 | [7.1](tickets/7-1-flash-maps.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 08 |
@@ -54,6 +54,7 @@ This file lets another founder’s agent resume without chat history. Baseline l
 
 ## Current handoff
 
+- **Next task is 0054 recurring series for 4.5a.** The [founder handoff](founder-fable-handoff.md) gives the required contract and tests. Independent Codex checkpoints are paused during the founders' Fable run. Keep technical prerequisites and local verification gates.
 - Priority snapshot is confirmed; delivery order and narrowed technical contracts are proposed.
 - Start at batch 00 and inspect the actual clean branch. Existing 1.1/4.2/4.3 should be reused and reverified.
 - Deferred snapshot is quarantined on its own branch; do not treat it as a dependency.
@@ -145,9 +146,13 @@ This file lets another founder’s agent resume without chat history. Baseline l
 
 - Done: the pure validator, the stored-verdict rules and 51 tests ([features/6.2.md](../features/6.2.md)).
   `npm run check` exit 0 (1,285 tests, 0 skipped); mobile typecheck exit 0; `npm run e2e` 21/21.
-- Open from the Codex review of the same day, not yet acted on: the 4.1 host-leave wording fix, and a
-  third targeted revision of 4.0 A1 and 5.0 A1.
+- Open from the Codex review of the same day: a third targeted revision of 4.0 A1 and 5.0 A1.
 - Next ready: 6.1. The commits since `e5acdd4` are local and not pushed (owner's instruction: push later).
+
+### 2026-11-12 — 4.1 host attendance copy
+
+- The event page keeps “You're hosting” after the host leaves. The note explains how to rejoin when there is room or why the action is disabled when the event is full.
+- Verified locally on a demo build. Event detail tests passed 19/19, and Chrome passed the 9 existing event-page checks plus a one-off scripted leave-and-rejoin check. The newcomer block still needs its write contract.
 
 ### 2026-11-12 — amendments, revision 3
 
@@ -162,6 +167,12 @@ This file lets another founder’s agent resume without chat history. Baseline l
   child trigger, with a fail-closed write guard instead.
 - Still gated until the targeted preflight clears: 4.5a, 4.5b, 4.6, 4.8, 1.5, the 4.1 newcomer block,
   and all 5.x and 6.3 schema work. Not gated: 6.1.
+
+### 2026-11-12 — revision 3 preflight
+
+- Start 6.1 with migration 0095 for the limiter. The Events 0053 admission slice can proceed under its reviewed contract. Series 0054 still needs the legacy-write lock and backup-host write contracts.
+- Outings and 6.3 keep their dependency gates. Shared authored plan data stays visible to members, and the event-dependent schedule is restricted by live event access. Account closure needs a complete profile-FK and guarded-cascade plan.
+- The [preflight](../features/amendments-r3-codex-review.md) has the scope, acceptance criteria and tests for each decision.
 
 ### 2026-11-12 — 6.1 walking router and route-validation limit
 
@@ -187,4 +198,10 @@ This file lets another founder’s agent resume without chat history. Baseline l
   the amendment's mutation table. Both are in the evidence note.
 - Stopped for Codex review. 0054 not started. The event-page host-leave fix is still uncommitted and
   separate. Nothing pushed.
+
+### Founder continuation checkpoint
+
+- 0053 independently verified locally. The 28 controlled PostgreSQL cases, 16 admission checks and 25 payment-event checks passed. The retry handler is approved and the ticket re-read mutation target is corrected. [Verification](../features/0053-admission.md#independent-codex-verification)
+- `npm run check` passed with disposable localhost PostgreSQL and a demo build (77 files, 1,378 tests, zero skipped). Mobile typecheck passed. Demo Chrome passed features 11/11 and event detail 9/9. The first golden run timed out in the Explore/save flow. A fresh run passed 21/21. Hosted Supabase and the 4.3 deadline race remain unverified.
+- The handoff includes the 4.1 host-leave fix. Start 0054 by writing the series lock and backup-host permission contract. The [founder handoff](founder-fable-handoff.md) records the sequence, tests and temporary pause on independent Codex review.
 

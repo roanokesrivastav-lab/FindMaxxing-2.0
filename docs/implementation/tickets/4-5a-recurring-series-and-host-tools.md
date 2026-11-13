@@ -10,7 +10,7 @@ Reviewed baseline: **Planned**. Inspect existing code and finish only the missin
 
 ## Prerequisites and scope
 
-00 event-contract amendment independently preflighted; existing 4.2/4.3 and race harness verified.
+Resume from the verified local 0053 admission slice. The [current founder handoff](../founder-fable-handoff.md) defines the 0054 contract work, proof and review workflow.
 
 Must event series and relevant change notifications must be specified without depending on 4.4 waitlist/offer states. Revised high-risk contracts require preflight before implementation.
 
