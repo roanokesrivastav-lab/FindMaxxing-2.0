@@ -19,7 +19,7 @@ This file lets another founder’s agent resume without chat history. Baseline l
 | [3.2](tickets/3-2-library-tools.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 03 |
 | [3.3](tickets/3-3-matching-provider-specification.md) | Must | SPEC RECONCILED (document only) | `99f8023` | [3.3 validation note](../features/3.3.md); B1/B2 deferred with the Later importers |
 | [3.6](tickets/3-6-pick-from-my-saves.md) | Must | NOT VERIFIED / REMAINING WORK | — | See batch 03 |
-| [4.0](tickets/4-0-event-foundation-specification.md) | Must | BLOCKED — revision 2 reviewed, required changes remain | `c06f1ad`, r2 `3bd83e0` | [4.0 Amendment A1](../features/4.0.md); blocks 4.5a, 4.5b, 4.6, 4.8, 1.5, 8.1b, 5.5 and the 4.1 newcomer block |
+| [4.0](tickets/4-0-event-foundation-specification.md) | Must | BLOCKED — amendment revision 3 awaiting a targeted Codex preflight | `c06f1ad`, r2 `3bd83e0`, r3 see session log | [4.0 Amendment A1](../features/4.0.md); blocks 4.5a, 4.5b, 4.6, 4.8, 1.5, 8.1b, 5.5 and the 4.1 newcomer block |
 | [4.1](tickets/4-1-editorial-event-detail.md) | Must | PARTLY IMPLEMENTED-LOCAL (existing-contract part) | `094be4e` | [features/4.1.md](../features/4.1.md); newcomer block not built (needs a column); Chrome only |
 | [4.2](tickets/4-2-structured-activity-details.md) | Must | IMPLEMENTED-LOCAL (reverified 2026-11-11) | `15f5561` | [00-baseline](../features/00-baseline.md) §3; hosted NOT VERIFIED |
 | [4.3](tickets/4-3-attendance-and-readiness.md) | Must | IMPLEMENTED-LOCAL (reverified 2026-11-11) | `f2eb957` | [00-baseline](../features/00-baseline.md) §3; cron, push and the decide-vs-join race NOT VERIFIED |
@@ -147,4 +147,18 @@ This file lets another founder’s agent resume without chat history. Baseline l
 - Open from the Codex review of the same day, not yet acted on: the 4.1 host-leave wording fix, and a
   third targeted revision of 4.0 A1 and 5.0 A1.
 - Next ready: 6.1. The commits since `e5acdd4` are local and not pushed (owner's instruction: push later).
+
+### 2026-11-12 — amendments, revision 3
+
+- 4.0 A1 and 5.0 A1 are at revision 3, with a matching note in 6.0 §5. Each makes the targeted
+  changes from the second Codex review and records its decisions on the open points; the last
+  section of each amendment maps every change to where it is made.
+- Events: buyer account lock first in `confirm_ticket`, account lock first in `reserve_ticket` and
+  the series paths; series moves planned before any write; the empty-chat check serialized against
+  new messages; guard-by-guard mutation proof; post-lock expiry for new holds.
+- Outings: the anchor in its own table with no direct read, event-derived fields returned only to a
+  member who can read the event; no event reference on itinerary versions; no parent lock from a
+  child trigger, with a fail-closed write guard instead.
+- Still gated until the targeted preflight clears: 4.5a, 4.5b, 4.6, 4.8, 1.5, the 4.1 newcomer block,
+  and all 5.x and 6.3 schema work. Not gated: 6.1.
 
