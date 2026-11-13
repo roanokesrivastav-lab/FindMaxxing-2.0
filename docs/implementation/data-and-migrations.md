@@ -11,7 +11,7 @@ Read the actual migration directory and existing specs before selecting numbers.
 | Local | 0075–0079 |
 | Imports | 0080–0084; implementation Later |
 | Outings | 0085–0094 |
-| Trips | 0095–0099 |
+| Trips | 0095–0099; 0095 allocated to the 6.1 route-validation limiter |
 
 Use the integration owner’s latest ledger rather than assuming a number is free. If tooling forbids allocation gaps, stop the affected schema work and report it; do not pull in deferred 0052 to fill a gap.
 
