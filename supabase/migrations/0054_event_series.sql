@@ -1109,7 +1109,8 @@ grant execute on function public.record_attendance(uuid, uuid, boolean) to authe
 --    those back. As in 0020, plus the series target.
 -- ----------------------------------------------------------------------------
 alter table public.moderation_actions drop constraint moderation_actions_target_type_check;
-alter table public.moderation_actions add constraint moderation_actions_target_type_check check (target_type in ('place', 'event', 'profile', 'message', 'series'));
+-- Every type already allowed (0023 has the latest list) plus 'series'.
+alter table public.moderation_actions add constraint moderation_actions_target_type_check check (target_type in ('place', 'event', 'profile', 'message', 'category', 'interest', 'campaign', 'series'));
 
 create or replace function public.moderate_target(
   p_target_type text, p_target_id uuid, p_action text, p_reason text default null

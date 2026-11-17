@@ -24,7 +24,7 @@ This file lets another founder’s agent resume without chat history. Baseline l
 | [4.2](tickets/4-2-structured-activity-details.md) | Must | IMPLEMENTED-LOCAL (reverified 2026-11-11) | `15f5561` | [00-baseline](../features/00-baseline.md) §3; hosted NOT VERIFIED |
 | [4.3](tickets/4-3-attendance-and-readiness.md) | Must | IMPLEMENTED-LOCAL (reverified 2026-11-11) | `f2eb957` | [00-baseline](../features/00-baseline.md) §3; cron, push and the decide-vs-join race NOT VERIFIED |
 | 4.5a slice: [0053 admission](../features/0053-admission.md) | Must | INDEPENDENTLY VERIFIED locally | `431f8d3`, retry proof `8b053f3` | [Review and tests](../features/0053-admission.md#independent-codex-verification); hosted NOT VERIFIED |
-| [4.5a](tickets/4-5a-recurring-series-and-host-tools.md) | Must | 0054 IMPLEMENTED-LOCAL, gate incomplete (`npm run check`, mobile typecheck, browser checks not finished) | WIP commit on `codex/0054-series-2026-11-16` | [0054 contract and evidence](../features/0054-series.md) |
+| [4.5a](tickets/4-5a-recurring-series-and-host-tools.md) | Must | 0054 IMPLEMENTED-LOCAL, gate finished (self-review; not independently verified) | `da1f836` + gate commit on `codex/0054-series-2026-11-16` | [features/0054-series.md](../features/0054-series.md); hosted and real cron NOT VERIFIED; three contract points flagged for review |
 | [4.5b](tickets/4-5b-permanent-series-page.md) | Must | BLOCKED — needs 4.5a | — | See batch 02 |
 | [4.6](tickets/4-6-material-change-notifications.md) | Must | BLOCKED — needs verified series contract (4.5a) | — | See batch 02 |
 | [4.8](tickets/4-8-optional-party-poster.md) | Must | BLOCKED — needs a scoped write contract | — | See batch 02 |
@@ -224,3 +224,19 @@ This file lets another founder’s agent resume without chat history. Baseline l
   IMPLEMENTED-LOCAL with the gate open. Resume by starting a local PostgreSQL (no binary on this machine; the
   note explains the embedded build) and running the gate, then the browser checks, then update the note.
 - Nothing pushed, merged or deployed; no hosted database touched. Next after the gate: 0055 / 4.6.
+
+### 2026-11-17 — 0054 gate finished
+
+- Continued on `codex/0054-series-2026-11-16` (Arnav's branch; a parallel draft from another session
+  was set aside, not merged). Finishing the gate found and fixed two faults: the migration had dropped
+  `category`, `interest` and `campaign` from the moderation log's allowed targets (six admin and ads
+  tests failed), and the event edit page's Save button was under the bottom navigation on a phone.
+- `npm run check` exit 0 (79 files, 1,439 tests, 0 skipped); mobile typecheck exit 0; PostgreSQL race
+  suites 50/50; `e2e:series` 7/7 (new); `e2e` 21/21 twice after one flaky 14/19 run;
+  `e2e:event-detail` 9/9; `e2e:features` 11/11; `a11y` clean; `e2e:onboarding` 13/13.
+  Evidence: [features/0054-series.md](../features/0054-series.md#gate-finished-2026-11-17-second-fable-session).
+- Three contract points are flagged in that note for review (public attendance column, backup hosts
+  without acceptance, a contrast fault on the form's category tile).
+- Pushed to `origin/codex/0054-series-2026-11-16` at the owner's instruction. Not merged, not deployed;
+  no hosted database touched. Next: 0055 / 4.6.
+

@@ -322,15 +322,63 @@ other assignment unchanged.
 - Not re-examined for lack of time: the edit form's "this and future" path through a real browser; native (`api.ts`)
   reads the new columns through `*` but has no series UI (8.1b).
 
+## Gate finished (2026-11-17, second Fable session)
+
+Picked up from the WIP commit `da1f836` (Arnav's run, cut off at the usage limit). A parallel draft of
+0054 from another session overlapped with it; this branch is the one kept, and the draft was not merged.
+
+**Two faults found by finishing the gate, both fixed here.**
+
+1. **The migration narrowed the moderation log.** It re-created `moderation_actions_target_type_check`
+   from 0020's list plus `series`, dropping `category`, `interest` and `campaign` (added in 0017 and
+   0023). Admin taxonomy edits and ad review then failed on insert: six tests in `tests/admin.test.ts`
+   and `tests/ads.test.ts`. The list now carries every existing type plus `series`. This is exactly the
+   kind of thing the unfinished `npm run check` was there to catch.
+2. **On a phone the event edit page's Save button was under the bottom navigation** and could not be
+   tapped. The navigation is hidden on the create forms but was not on `/events/<id>/edit` or
+   `/places/<id>/edit`. That blocked "this and future". `BottomNav` now hides on both edit routes. The
+   fault is older than this ticket; the new browser check found it and now asserts the button is the
+   topmost thing where it sits.
+
+**Added:** `scripts/e2e-series.mjs` (`npm run e2e:series`, in CI after the event-detail step; run
+locally only so far), the browser check the note listed as not written.
+
+| Command (local, disposable PostgreSQL 17.11 on 54329, demo-mode build for browser runs) | Result |
+| --- | --- |
+| `TEST_DATABASE_URL=… npm run check` | **exit 0.** Typecheck, lint, **79 files / 1,439 tests, 0 skipped**, build. (First run on `da1f836`: exit 1, the six failures above) |
+| `npm run typecheck --workspace @findmaxxing/mobile` | exit 0 |
+| `tests/event-series-pg.test.ts` with `tests/event-admission-pg.test.ts` | **50/50**, twice in a row after the fix, and again inside `npm run check` |
+| `npm run e2e:series` | **7/7**, twice: repeat off by default; four sessions created; series line and host tools; a guest joins one session only and sees no host tools; "this and future" renames later sessions and leaves the earlier one; cancelling one leaves the next; ending the series cancels the later ones; no page errors. axe clean on the repeat fields and on the occurrence page as host and as guest |
+| `npm run e2e` | 21/21 on two consecutive runs. **One earlier run failed 14/19** (a timeout at "a moderator resolves the report", while other suites had just run); it did not recur. The ledger records the same kind of first-run timeout on 2026-11-13 |
+| `npm run e2e:event-detail` | 9/9 |
+| `npm run e2e:features` | 11/11 |
+| `npm run a11y` | 24 pages × 2 widths, 0 issues |
+| `npm run e2e:onboarding` | 13/13 |
+
+**Self-review of what this session changed** (three lines of product code): the constraint is a
+superset of the previous one, so no existing row can fail it; the navigation rule matches only
+`/places/<id>/edit` and `/events/<id>/edit`, not the detail pages. I did not re-audit the 1,230-line
+migration line by line; its own tests and the race suite are the evidence for it.
+
+**Noted, not changed (for whoever reviews the contract).** These are design choices in this branch that
+differ from the parallel draft, recorded so they are decided rather than missed:
+
+- `event_attendees.attended` is a column on a table anyone who can see the event can read, so a host's
+  attendance mark is as public as the RSVP. The draft kept attendance in a separate table readable only
+  by the person and the hosts.
+- A backup host is added by the owner directly. The draft required the person to accept before they
+  gained powers or were shown as a host.
+- The selected category tile on the event form fails axe colour contrast. It is older than this ticket
+  and outside it; the new browser check audits the repeat fields only and says so.
+
 ## Remaining issues
 
-- Finish the gate: `npm run check`, mobile typecheck, demo build, `e2e`, `e2e:event-detail`, and a scripted browser
-  check of the repeat fields, series line and cancel-this-session (not written yet; follow `scripts/e2e-event-detail.mjs`).
+- The gate is finished (see above).
 - NOT VERIFIED: hosted Supabase; the real cron; push.
 - 0055 next (notifications: `series_update`, per-change keys); 4.5b page carries the follow UI.
 
 ## Handoff
 
 - Commit: one WIP commit on `codex/0054-series-2026-11-16` (see the ledger). Nothing pushed, merged or deployed.
-- Ready for independent review: not yet; the gate above must finish first.
-- Next ready ticket: finish 0054's gate, then 0055 / 4.6.
+- Ready for independent review: yes.
+- Next ready ticket: 0055 / 4.6.

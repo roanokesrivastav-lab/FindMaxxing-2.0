@@ -13,7 +13,9 @@ export function BottomNav({ viewer, badge = 0 }: { viewer: ShellViewer | null; b
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   // Hide on full-screen forms/auth/onboarding to give them room.
-  const hidden = /^\/(places\/new|events\/new|profile\/edit|auth|welcome)/.test(pathname);
+  // Forms with their own bar at the foot of the screen: the navigation would sit on top of the
+  // Save button (found on the event edit page by scripts/e2e-series.mjs).
+  const hidden = /^\/(places\/new|events\/new|profile\/edit|auth|welcome)/.test(pathname) || /^\/(places|events)\/[^/]+\/edit$/.test(pathname);
   if (hidden) return null;
 
   const items = NAV_ITEMS.filter((i) => i.href !== "/people");
