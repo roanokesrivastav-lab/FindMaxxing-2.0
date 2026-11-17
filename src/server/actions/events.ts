@@ -7,8 +7,9 @@ import { getRepository } from "@/lib/data";
 import { getViewer } from "@/lib/auth/server";
 import { featureEnabled, paymentsMode } from "@/lib/config";
 import { activityDetailsSchema, activityFromFields, type ActivityDetails } from "@/lib/activity";
-import type { SessionRules } from "@/lib/data/types";
-import { eventTimeZone } from "@/lib/utils/timezone";
+import type { NewSeriesInput, SeriesPatch, SessionRules } from "@/lib/data/types";
+import { DEFAULT_TIME_ZONE, eventTimeZone } from "@/lib/utils/timezone";
+import { seriesRuleSchema } from "@findmaxxing/shared/series";
 import { combineDateTime, eventSchema, fieldErrors, uuidSchema } from "@/lib/validation/schemas";
 import { fail, str, strList, succeed, toFailure, type ActionResult } from "./result";
 
@@ -61,6 +62,31 @@ function sessionRulesFromForm(formData: FormData, startsAt: Date, capacity: numb
   };
 }
 
+/**
+ * The 4.5a repeat fields, behind pilotEvents. `rule` is null when the event is a one-off.
+ * The weekdays are ISO (Monday 1), the start is the form's start time in the typed zone,
+ * and the length comes from the end time (90 minutes when there is none).
+ */
+function repeatFromForm(formData: FormData, startTime: string, endTime: string | null, errors: Record<string, string>): { rule: NewSeriesInput["rule"] | null; until: string | null } {
+  if (!featureEnabled("pilotEvents") || str(formData, "repeat") !== "weekly") return { rule: null, until: null };
+  const weekdays = strList(formData, "weekday").map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= 7);
+  const interval = Number(str(formData, "repeatInterval") || "1");
+  const minutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  let duration = endTime ? minutes(endTime) - minutes(startTime) : 90;
+  if (duration <= 0) duration += 24 * 60;
+  const rule = { freq: "weekly" as const, interval, weekdays: [...new Set(weekdays)].sort((a, b) => a - b), start_local: startTime, duration_minutes: duration };
+  const parsed = seriesRuleSchema.safeParse(rule);
+  if (!parsed.success) {
+    if (!rule.weekdays.length) errors.weekday = "Pick at least one day";
+    else if (rule.duration_minutes > 720) errors.endTime = "A repeating session can last up to 12 hours";
+    else errors.repeat = "Check the repeat settings";
+    return { rule: null, until: null };
+  }
+  const until = str(formData, "repeatUntil").trim();
+  if (until && !/^\d{4}-\d{2}-\d{2}$/.test(until)) errors.repeatUntil = "Pick an end date";
+  return { rule: parsed.data, until: until || null };
+}
+
 export async function createEventAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   const viewer = await getViewer();
   if (!viewer) return fail("Sign in to create an event", undefined, "unauthenticated");
@@ -90,8 +116,27 @@ export async function createEventAction(_prev: ActionResult | null, formData: Fo
   const { startsAt, endsAt } = combineDateTime(v.date, v.startTime, v.endTime, v.tzOffsetMinutes);
   const session = sessionRulesFromForm(formData, startsAt, v.capacity);
   if (session.errors) return fail("Check the highlighted fields", session.errors);
+  const repeatErrors: Record<string, string> = {};
+  const repeat = repeatFromForm(formData, v.startTime, v.endTime, repeatErrors);
+  if (Object.keys(repeatErrors).length) return fail("Check the highlighted fields", repeatErrors);
   try {
     const repo = await getRepository();
+    if (repeat.rule) {
+      // A series: the template, the rule, and the first four weeks of occurrences (0054).
+      const lead = session.rules?.decisionDeadline ? Math.round((startsAt.getTime() - Date.parse(session.rules.decisionDeadline)) / 60_000) : null;
+      const series = await repo.series.create({
+        title: v.title, description: v.description, placeId: v.placeId, locationName: v.locationName, address: v.address, lat: v.lat, lng: v.lng,
+        categorySlug: v.categorySlug, capacity: v.capacity, tags: v.tags, timeZone: extras.timeZone ?? DEFAULT_TIME_ZONE, rule: repeat.rule,
+        startsOn: v.date, endsOn: repeat.until, minAttendance: session.rules?.minAttendance ?? null, decisionLeadMinutes: lead && lead > 0 ? lead : null,
+        activityDetails: extras.activityDetails ?? null,
+      }, viewer.id);
+      const [first] = await repo.series.occurrences(series.id, viewer.id);
+      revalidatePath("/");
+      revalidatePath("/events");
+      revalidatePath("/profile");
+      await track("create_event", { eventId: first?.id ?? series.id });
+      redirect(first ? `/events/${first.id}?new=1` : "/events");
+    }
     const event = await repo.events.create(
       {
         title: v.title,
@@ -143,9 +188,73 @@ export async function updateEventAction(_prev: ActionResult | null, formData: Fo
   if (session.errors) return fail("Check the highlighted fields", session.errors);
   try {
     const repo = await getRepository();
+    const applyTo = featureEnabled("pilotEvents") ? str(formData, "applyTo") : "";
+    if (applyTo === "this" || applyTo === "future") {
+      // A series occurrence (0054). "This" records the changed fields as overrides; "future" changes the
+      // template from this date on and, when the time changed, the rule.
+      const current = await repo.events.get(id.data, viewer.id);
+      if (!current?.series) return fail("That session isn't part of a series", undefined, "invalid");
+      const lead = session.rules?.decisionDeadline ? Math.round((startsAt.getTime() - Date.parse(session.rules.decisionDeadline)) / 60_000) : null;
+      if (applyTo === "future") {
+        const minutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+        let duration = v.endTime ? minutes(v.endTime) - minutes(v.startTime) : current.series.rule.duration_minutes;
+        if (duration <= 0) duration += 24 * 60;
+        const rule = { ...current.series.rule, start_local: v.startTime, duration_minutes: Math.min(720, Math.max(15, duration)) };
+        const patch: SeriesPatch = {
+          title: v.title, description: v.description, placeId: v.placeId, locationName: v.locationName, address: v.address, lat: v.lat, lng: v.lng,
+          categorySlug: v.categorySlug, capacity: v.capacity, tags: v.tags,
+          ...(extras.activityDetails !== undefined ? { activityDetails: extras.activityDetails } : {}),
+          ...(session.rules ? { minAttendance: session.rules.minAttendance, decisionLeadMinutes: lead && lead > 0 ? lead : null } : {}),
+          ...(JSON.stringify(rule) !== JSON.stringify(current.series.rule) ? { rule } : {}),
+        };
+        await repo.series.updateFrom(viewer.id, id.data, patch);
+      } else {
+        await repo.series.updateOccurrence(viewer.id, id.data, {
+          title: v.title, description: v.description, placeId: v.placeId, locationName: v.locationName, address: v.address, lat: v.lat, lng: v.lng,
+          categorySlug: v.categorySlug, capacity: v.capacity, tags: v.tags, startsAt: startsAt.toISOString(), endsAt: endsAt?.toISOString() ?? null,
+          ...(extras.activityDetails !== undefined ? { activityDetails: extras.activityDetails } : {}),
+          ...(session.rules ? { minAttendance: session.rules.minAttendance, decisionDeadline: session.rules.decisionDeadline, venueStatus: session.rules.venueStatus } : {}),
+        });
+      }
+      revalidatePath(`/events/${id.data}`); revalidatePath(`/events/${id.data}/edit`); revalidatePath("/"); revalidatePath("/events"); revalidatePath("/profile");
+      redirect(`/events/${id.data}`);
+    }
     const event = await repo.events.update(id.data, { title: v.title, description: v.description, placeId: v.placeId, locationName: v.locationName, address: v.address, lat: v.lat, lng: v.lng, startsAt: startsAt.toISOString(), endsAt: endsAt?.toISOString() ?? null, categorySlug: v.categorySlug, capacity: v.capacity, tags: v.tags, activityDetails: extras.activityDetails, sessionRules: session.rules }, viewer.id);
     revalidatePath(`/events/${id.data}`); revalidatePath(`/events/${id.data}/edit`); revalidatePath("/"); revalidatePath("/events"); revalidatePath("/profile");
     redirect(`/events/${event.id}`);
+  } catch (err) { return toFailure(err); }
+}
+
+/** Host of a series: cancels this session only (roadmap 4.5a). The date is never recreated. */
+export async function cancelOccurrenceAction(eventId: string): Promise<ActionResult> {
+  const viewer = await getViewer();
+  if (!viewer) return fail("Sign in to manage your event", undefined, "unauthenticated");
+  const id = uuidSchema.safeParse(eventId);
+  if (!id.success) return fail("Invalid event");
+  if (!featureEnabled("pilotEvents")) return fail("Not available yet", undefined, "forbidden");
+  try {
+    const repo = await getRepository();
+    await repo.series.cancelOccurrence(viewer.id, id.data);
+    if (paymentsMode() === "demo") for (const t of await repo.payments.ticketsToRefund()) await repo.payments.markRefunded(t.paymentIntentId);
+    revalidatePath(`/events/${id.data}`); revalidatePath("/"); revalidatePath("/events"); revalidatePath("/profile");
+    return succeed(undefined);
+  } catch (err) { return toFailure(err); }
+}
+
+/** Owner of a series: ends it today; later sessions are cancelled and everyone going is told. */
+export async function endSeriesAction(seriesId: string, eventId: string): Promise<ActionResult<{ cancelled: number }>> {
+  const viewer = await getViewer();
+  if (!viewer) return fail("Sign in to manage your series", undefined, "unauthenticated");
+  const id = uuidSchema.safeParse(seriesId);
+  const ev = uuidSchema.safeParse(eventId);
+  if (!id.success || !ev.success) return fail("Invalid series");
+  if (!featureEnabled("pilotEvents")) return fail("Not available yet", undefined, "forbidden");
+  try {
+    const repo = await getRepository();
+    const cancelled = await repo.series.end(viewer.id, id.data, null);
+    if (paymentsMode() === "demo") for (const t of await repo.payments.ticketsToRefund()) await repo.payments.markRefunded(t.paymentIntentId);
+    revalidatePath(`/events/${ev.data}`); revalidatePath("/"); revalidatePath("/events"); revalidatePath("/profile");
+    return succeed({ cancelled });
   } catch (err) { return toFailure(err); }
 }
 

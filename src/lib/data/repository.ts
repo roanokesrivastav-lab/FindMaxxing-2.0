@@ -21,6 +21,11 @@ import type {
   EventCountOptions,
   EventMapRecord,
   EventSearchOptions,
+  EventSeries,
+  NewSeriesInput,
+  OccurrencePatch,
+  SeriesChangeResult,
+  SeriesPatch,
   SessionRules,
   MapQueryOptions,
   MapResult,
@@ -167,6 +172,38 @@ export interface DataRepository {
     /** Service: decides sessions whose deadline has passed (below the minimum: cancelled, attendees told). Returns how many. */
     decideSessions(now: string): Promise<number>;
   };
+  /**
+   * Recurring series (roadmap 4.5a; 0054_event_series.sql). A series is a
+   * template plus a weekly rule; its occurrences are ordinary events with
+   * `seriesId` set, generated four weeks ahead. Hosts act only through these
+   * methods: the owner may do everything, a backup host may edit and cancel
+   * occurrences. Following is updates only and never joins anyone.
+   */
+  series: {
+    /** Creates the series with the caller as owner and generates the first four weeks. */
+    create(input: NewSeriesInput, ownerId: string): Promise<EventSeries>;
+    get(id: string, viewerId?: string | null): Promise<EventSeries | null>;
+    /** The series' occurrences the viewer can see, soonest first (cancelled ones included for people going). */
+    occurrences(id: string, viewerId?: string | null): Promise<Event[]>;
+    /** Host: edit this occurrence only; changed fields are recorded as overrides. */
+    updateOccurrence(userId: string, eventId: string, patch: OccurrencePatch): Promise<void>;
+    /** Host: edit this and future occurrences; a rule change moves committed occurrences in place (A1.4). */
+    updateFrom(userId: string, eventId: string, patch: SeriesPatch): Promise<SeriesChangeResult>;
+    /** Host: cancel this occurrence only. Its date is never recreated. */
+    cancelOccurrence(userId: string, eventId: string): Promise<void>;
+    /** Owner: end the series on a local date (default today); later occurrences are cancelled as series_ended. Returns how many. */
+    end(userId: string, seriesId: string, endsOn?: string | null): Promise<number>;
+    /** Owner: pause or resume generation. */
+    setStatus(userId: string, seriesId: string, status: "active" | "paused"): Promise<void>;
+    addHost(userId: string, seriesId: string, hostId: string): Promise<void>;
+    removeHost(userId: string, seriesId: string, hostId: string): Promise<void>;
+    follow(userId: string, seriesId: string): Promise<void>;
+    unfollow(userId: string, seriesId: string): Promise<void>;
+    /** Host, after the occurrence ends: whether someone who was going came. Never inferred (A1.4). */
+    recordAttendance(userId: string, eventId: string, attendeeId: string, attended: boolean | null): Promise<void>;
+    /** Service (cron): generates the next four weeks for every active series. Returns how many occurrences were created. */
+    generate(now: string): Promise<number>;
+  };
   tags: {
     /** Visible places and upcoming events per interest slug, over the whole data set. */
     counts(opts?: { viewerId?: string | null }): Promise<TagCounts>;
@@ -242,7 +279,7 @@ export interface DataRepository {
      */
     resolve(
       moderatorId: string,
-      input: { targetType: ReportTargetType; targetId: string; action: ModerationAction; reason?: string | null },
+      input: { targetType: ReportTargetType | "series"; targetId: string; action: ModerationAction; reason?: string | null },
     ): Promise<{ statusAfter: string | null; resolvedReports: number }>;
     /** Revokes or restores a user's local status. A reason is required either way. */
     setLocalStatus(moderatorId: string, userId: string, revoked: boolean, reason: string): Promise<void>;

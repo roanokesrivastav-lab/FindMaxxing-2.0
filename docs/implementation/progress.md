@@ -24,7 +24,7 @@ This file lets another founder’s agent resume without chat history. Baseline l
 | [4.2](tickets/4-2-structured-activity-details.md) | Must | IMPLEMENTED-LOCAL (reverified 2026-11-11) | `15f5561` | [00-baseline](../features/00-baseline.md) §3; hosted NOT VERIFIED |
 | [4.3](tickets/4-3-attendance-and-readiness.md) | Must | IMPLEMENTED-LOCAL (reverified 2026-11-11) | `f2eb957` | [00-baseline](../features/00-baseline.md) §3; cron, push and the decide-vs-join race NOT VERIFIED |
 | 4.5a slice: [0053 admission](../features/0053-admission.md) | Must | INDEPENDENTLY VERIFIED locally | `431f8d3`, retry proof `8b053f3` | [Review and tests](../features/0053-admission.md#independent-codex-verification); hosted NOT VERIFIED |
-| [4.5a](tickets/4-5a-recurring-series-and-host-tools.md) | Must | READY — start with the 0054 lock and permission contract | — | [Exact next task and tests](founder-fable-handoff.md#next-task-45a-recurring-series-migration-0054) |
+| [4.5a](tickets/4-5a-recurring-series-and-host-tools.md) | Must | 0054 IMPLEMENTED-LOCAL, gate incomplete (`npm run check`, mobile typecheck, browser checks not finished) | WIP commit on `codex/0054-series-2026-11-16` | [0054 contract and evidence](../features/0054-series.md) |
 | [4.5b](tickets/4-5b-permanent-series-page.md) | Must | BLOCKED — needs 4.5a | — | See batch 02 |
 | [4.6](tickets/4-6-material-change-notifications.md) | Must | BLOCKED — needs verified series contract (4.5a) | — | See batch 02 |
 | [4.8](tickets/4-8-optional-party-poster.md) | Must | BLOCKED — needs a scoped write contract | — | See batch 02 |
@@ -210,3 +210,17 @@ This file lets another founder’s agent resume without chat history. Baseline l
 - Start fresh work from `origin/main` using the short prompt in [IMPLEMENTATION_START_HERE.md](../../IMPLEMENTATION_START_HERE.md).
 - Next is 4.5a. Write the 0054 series lock-order and backup-host permission contract, then implement and verify it under the temporary Fable workflow. The [current handoff](founder-fable-handoff.md) lists the required proofs and downstream gates.
 - Vercel automatic deployments from `main` are disabled in the repository configuration. Release approval and hosted migration checks remain separate.
+
+### 2026-11-16 — 0054 series (Fable run, stopped at the usage limit)
+
+- Branch `codex/0054-series-2026-11-16` from `main` (`debaee4`). Contract written first
+  ([features/0054-series.md](../features/0054-series.md)), then migration 0054, shared helpers, both repositories,
+  host entry points and the cron call.
+- Verified: `tests/event-series.test.ts` 39/39 (PGlite + demo parity); `tests/event-series-pg.test.ts` 22/22 on
+  disposable PostgreSQL 17.11, four runs, including the two preflight deadlock orderings reproduced with the
+  statement-level account lock removed; 0053 suite still 28/28; typecheck exit 0.
+- **Not finished:** `npm run check` was started and cut off; mobile typecheck, demo build, `e2e`,
+  `e2e:event-detail` and a browser check of the repeat/cancel flow were not run. Treat the commit as
+  IMPLEMENTED-LOCAL with the gate open. Resume by starting a local PostgreSQL (no binary on this machine; the
+  note explains the embedded build) and running the gate, then the browser checks, then update the note.
+- Nothing pushed, merged or deployed; no hosted database touched. Next after the gate: 0055 / 4.6.

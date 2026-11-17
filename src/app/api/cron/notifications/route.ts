@@ -31,10 +31,13 @@ export async function GET(req: Request) {
     // Sessions past their decision deadline (roadmap 4.3) are decided first, so
     // the people affected are told in this same run.
     const decided = await repo.events.decideSessions(now.toISOString());
+    // Recurring series are kept four weeks ahead (roadmap 4.5a). The generator never waits on a
+    // busy series; one it skips is caught up on the next run.
+    const generated = await repo.series.generate(now.toISOString());
     const result = await runNotificationJobs(repo, sender, now.toISOString());
     // Retention once a day, on the first run after 04:00 UTC.
     const purged = now.getUTCHours() === 4 && now.getUTCMinutes() < 15 ? await repo.notifications.purge(now.toISOString()) : 0;
-    return NextResponse.json({ ...result, decided, purged });
+    return NextResponse.json({ ...result, decided, generated, purged });
   } catch (err) {
     reportError(err, { where: "cron:notifications" });
     return NextResponse.json({ error: "failed" }, { status: 500 });

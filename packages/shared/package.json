@@ -13,6 +13,7 @@
     "./readiness": "./src/readiness.ts",
     "./timestamps": "./src/timestamps.ts",
     "./timezone": "./src/timezone.ts",
+    "./series": "./src/series.ts",
     "./feasibility": "./src/feasibility.ts"
   },
   "dependencies": {

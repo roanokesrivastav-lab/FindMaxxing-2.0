@@ -158,6 +158,10 @@ export interface Event {
   cancelReason?: CancelReason | null;
   /** The numbers behind the Readiness row; null when they could not be read. */
   readiness?: EventReadiness | null;
+  /** Series occurrence (roadmap 4.5a): the series it belongs to, its local date in the series' zone, and the template fields edited on it alone. */
+  seriesId?: string | null;
+  seriesLocalDate?: string | null;
+  overridden?: string[];
 }
 
 export type VenueStatus = "confirmed" | "unconfirmed";
@@ -191,6 +195,8 @@ export interface SessionRules {
 export interface EventDetail extends Event {
   viewerJoined: boolean;
   attendees: ProfileSummary[];
+  /** The series this occurrence belongs to, as the page needs it; null for a one-off event. */
+  series?: EventSeriesSummary | null;
 }
 
 export type ReportTargetType = "place" | "event" | "profile" | "message";
@@ -917,4 +923,130 @@ export class DataError extends Error {
     super(message);
     this.name = "DataError";
   }
+}
+
+// ----------------------------------------------------------------------------
+// Recurring series (roadmap 4.5a; 0054_event_series.sql)
+// ----------------------------------------------------------------------------
+export type SeriesStatus = "active" | "paused" | "ended" | "removed";
+export type SeriesHostRole = "owner" | "backup";
+
+/** The weekly rule a series repeats on (packages/shared/src/series.ts validates it). */
+export interface SeriesRuleShape {
+  freq: "weekly";
+  interval: number;
+  weekdays: number[];
+  start_local: string;
+  duration_minutes: number;
+}
+
+/** A series: a template plus its rule. Occurrences are ordinary events with `seriesId` set. */
+export interface EventSeries {
+  id: string;
+  ownerId: string;
+  owner: ProfileSummary | null;
+  title: string;
+  description: string;
+  categorySlug: string;
+  placeId: string | null;
+  locationName: string;
+  address: string | null;
+  lat: number;
+  lng: number;
+  timeZone: string;
+  rule: SeriesRuleShape;
+  startsOn: string;
+  endsOn: string | null;
+  capacity: number | null;
+  minAttendance: number | null;
+  decisionLeadMinutes: number | null;
+  activityDetails: ActivityDetails | null;
+  status: SeriesStatus;
+  ruleVersion: number;
+  tags: string[];
+  hosts: { user: ProfileSummary; role: SeriesHostRole }[];
+  createdAt: string;
+}
+
+/** The series as the event page needs it: the hosts, and whether the viewer follows or hosts it. */
+export interface EventSeriesSummary {
+  id: string;
+  status: SeriesStatus;
+  rule: SeriesRuleShape;
+  timeZone: string;
+  hosts: { user: ProfileSummary; role: SeriesHostRole }[];
+  viewerFollows: boolean;
+  viewerIsHost: boolean;
+}
+
+export interface NewSeriesInput {
+  title: string;
+  description: string;
+  categorySlug: string;
+  placeId?: string | null;
+  locationName: string;
+  address?: string | null;
+  lat: number;
+  lng: number;
+  timeZone: string;
+  rule: SeriesRuleShape;
+  /** Local date; omitted means today in the series' zone. */
+  startsOn?: string | null;
+  endsOn?: string | null;
+  capacity?: number | null;
+  minAttendance?: number | null;
+  decisionLeadMinutes?: number | null;
+  activityDetails?: ActivityDetails | null;
+  tags: string[];
+}
+
+/** Fields of one occurrence a host may change on its own (update_occurrence). Only present keys change. */
+export interface OccurrencePatch {
+  title?: string;
+  description?: string;
+  placeId?: string | null;
+  locationName?: string;
+  address?: string | null;
+  lat?: number;
+  lng?: number;
+  categorySlug?: string;
+  capacity?: number | null;
+  minAttendance?: number | null;
+  decisionDeadline?: string | null;
+  venueStatus?: VenueStatus;
+  activityDetails?: ActivityDetails | null;
+  tags?: string[];
+  startsAt?: string;
+  endsAt?: string | null;
+}
+
+/** Template fields for "this and future" (update_series_from). Only present keys change. */
+export interface SeriesPatch {
+  title?: string;
+  description?: string;
+  placeId?: string | null;
+  locationName?: string;
+  address?: string | null;
+  lat?: number;
+  lng?: number;
+  categorySlug?: string;
+  capacity?: number | null;
+  minAttendance?: number | null;
+  decisionLeadMinutes?: number | null;
+  activityDetails?: ActivityDetails | null;
+  tags?: string[];
+  rule?: SeriesRuleShape;
+}
+
+/** What a schedule or template change did, for the host (A1.4). */
+export interface SeriesChangeResult {
+  ruleVersion: number;
+  /** Occurrences moved in place (same id, new date or time). */
+  moved: string[];
+  /** Occurrences kept exactly as they were because no safe date existed; the host can edit or cancel each. */
+  kept: string[];
+  deleted: number;
+  created: number;
+  /** Occurrences whose capacity could not be lowered under the people going or paying now. */
+  capacityKept: string[];
 }

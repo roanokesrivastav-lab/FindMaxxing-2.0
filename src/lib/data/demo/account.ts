@@ -51,7 +51,13 @@ export function deleteDemoAccount(handle: StoreHandle, userId: string): DeletedO
   const now = new Date().toISOString();
   for (const list of state.savedLists) if (listsTouched.has(list.id)) list.updatedAt = now;
 
-  // Events they created; other people's events at their places keep the location.
+  // Events they created (their series' occurrences among them); other people's events at their places keep the location.
+  // Their series go with them; a series they only hosted or followed loses that row alone (0054).
+  const ownSeries = new Set(state.eventSeries.filter((s) => s.ownerId === userId).map((s) => s.id));
+  state.eventSeries = state.eventSeries.filter((s) => !ownSeries.has(s.id));
+  state.eventSeriesTags = state.eventSeriesTags.filter((t) => !ownSeries.has(t.seriesId));
+  state.eventSeriesHosts = state.eventSeriesHosts.filter((h) => h.userId !== userId && !ownSeries.has(h.seriesId));
+  state.eventSeriesFollowers = state.eventSeriesFollowers.filter((f) => f.userId !== userId && !ownSeries.has(f.seriesId));
   state.events = state.events.filter((e) => !ownEvents.has(e.id));
   dropEventChats(state, ownEvents);
   deleteMessagingFor(state, userId);

@@ -88,8 +88,21 @@ const groups = [
   },
   {
     anon: false,
-    reason: "Event host tools: the caller must be the event's creator (can_host_event with auth.uid()), an active account, on a future published event under the event row lock.",
+    reason: "Event host tools: the caller must be the event's creator or a current series host (can_host_event with auth.uid()), an active account, on a future published event under the actor and owner account locks and the event row lock.",
     signatures: ["confirm_session(uuid)", "set_session_rules(uuid,integer,timestamp with time zone,text)"],
+  },
+  {
+    anon: true,
+    reason: "Series visibility (like can_view_event) for the series RLS policies.",
+    signatures: ["can_view_series(uuid)"],
+  },
+  {
+    anon: false,
+    reason: "Series host tools (0054): each rechecks the caller's role under the account, series and event locks, refuses suspended and closing accounts, and marks the transaction so the owner guard accepts a current backup host for that write only. Host names are public, so is_series_host may be read by any signed-in caller.",
+    signatures: [
+      "is_series_host(uuid,uuid)", "create_event_series(jsonb)", "update_occurrence(uuid,jsonb)", "update_series_from(uuid,jsonb)", "cancel_occurrence(uuid)",
+      "end_event_series(uuid,date)", "set_series_status(uuid,text)", "add_series_host(uuid,uuid)", "remove_series_host(uuid,uuid)", "record_attendance(uuid,uuid,boolean)",
+    ],
   },
   {
     anon: false,

@@ -25,7 +25,7 @@ import {
   seedPlaceByName,
   seedUserByName,
 } from "@/lib/seed/seed-data";
-import type { CancelReason, SessionDecision, VenueStatus, UserInteraction, AppNotification, EntitlementStatus, TicketStatus, EventStatus, ModerationLogAction, NotificationSettings, NotificationType, PlaceStatus, ReportReason, ReportStatus, ReportTargetType, ReputationLevel, Visibility } from "../types";
+import type { CancelReason, SessionDecision, VenueStatus, SeriesRuleShape, SeriesStatus, SeriesHostRole, UserInteraction, AppNotification, EntitlementStatus, TicketStatus, EventStatus, ModerationLogAction, NotificationSettings, NotificationType, PlaceStatus, ReportReason, ReportStatus, ReportTargetType, ReputationLevel, Visibility } from "../types";
 import type { ActivityDetails } from "@/lib/activity";
 import { DEFAULT_TIME_ZONE } from "@/lib/utils/timezone";
 import { refreshDemoReputation } from "./reputation";
@@ -127,6 +127,36 @@ export interface EventRow {
   venueStatus?: VenueStatus;
   decision?: SessionDecision;
   cancelReason?: CancelReason | null;
+  /** Mirror the 0054 series columns; absent reads as a one-off event. */
+  seriesId?: string | null;
+  seriesLocalDate?: string | null;
+  overridden?: string[];
+  removedWithSeries?: boolean;
+}
+/** Mirrors event_series (0054): a template plus its weekly rule. */
+export interface EventSeriesRow {
+  id: string;
+  ownerId: string;
+  title: string;
+  description: string;
+  categorySlug: string;
+  placeId: string | null;
+  locationName: string;
+  address: string | null;
+  lat: number;
+  lng: number;
+  timeZone: string;
+  rule: SeriesRuleShape;
+  startsOn: string;
+  endsOn: string | null;
+  capacity: number | null;
+  minAttendance: number | null;
+  decisionLeadMinutes: number | null;
+  activityDetails: ActivityDetails | null;
+  status: SeriesStatus;
+  ruleVersion: number;
+  createdAt: string;
+  updatedAt: string;
 }
 export interface ReportRow {
   id: string;
@@ -145,7 +175,7 @@ export interface ModerationActionRow {
   id: string;
   moderatorId: string | null;
   action: ModerationLogAction;
-  targetType: ReportTargetType | "category" | "interest" | "campaign";
+  targetType: ReportTargetType | "category" | "interest" | "campaign" | "series";
   /** Null for taxonomy entries, which use targetKey (their slug). */
   targetId: string | null;
   targetKey?: string | null;
@@ -178,7 +208,12 @@ export interface DemoState {
   savedListItems: { listId: string; ownerId: string; placeId: string; createdAt: string }[];
   events: EventRow[];
   eventTags: { eventId: string; interestSlug: string }[];
-  eventAttendees: { eventId: string; userId: string; createdAt: string }[];
+  eventAttendees: { eventId: string; userId: string; createdAt: string; attended?: boolean | null }[];
+  /** Mirrors the 0054 series tables (see ./series). */
+  eventSeries: EventSeriesRow[];
+  eventSeriesTags: { seriesId: string; interestSlug: string }[];
+  eventSeriesHosts: { seriesId: string; userId: string; role: SeriesHostRole; addedAt: string }[];
+  eventSeriesFollowers: { seriesId: string; userId: string; createdAt: string }[];
   follows: { followerId: string; followingId: string; createdAt: string }[];
   reports: ReportRow[];
   moderators: { userId: string; grantedAt: string; grantedBy: string | null }[];
@@ -324,7 +359,7 @@ export interface SavedListRow {
   updatedAt: string;
 }
 
-export const STATE_VERSION = 17;
+export const STATE_VERSION = 18;
 const DATA_DIR = path.join(process.cwd(), ".data");
 const STATE_FILE = path.join(DATA_DIR, "demo-store.json");
 
@@ -340,6 +375,7 @@ type LooseState = Record<string, unknown> & { version?: unknown };
 const COLLECTIONS = [
   "authUsers", "profiles", "profileInterests", "places", "placeTags", "placePhotos",
   "placeRatings", "savedPlaces", "savedLists", "savedListItems", "events", "eventTags", "eventAttendees", "follows", "reports",
+  "eventSeries", "eventSeriesTags", "eventSeriesHosts", "eventSeriesFollowers",
   "moderators", "moderationActions", "localRevocations", "rateLimits", "admins", "analyticsEvents", "reputationResets", "suspensions", "taxonomy",
   "conversations", "conversationMembers", "messages", "blocks",
   "notifications", "notificationSettings", "pushSubscriptions", "pushLog",
@@ -483,6 +519,13 @@ const MIGRATIONS: Record<number, (state: LooseState) => void> = {
       if (n.pushTypes?.includes("event_cancelled") && !n.pushTypes.includes("event_not_happening")) n.pushTypes.push("event_not_happening");
     }
   },
+  // v17 → v18: recurring series (0054). Every existing event is a one-off occurrence; no series yet.
+  17(state) {
+    state.eventSeries ??= [];
+    state.eventSeriesTags ??= [];
+    state.eventSeriesHosts ??= [];
+    state.eventSeriesFollowers ??= [];
+  },
 };
 
 export type MigrationResult =
@@ -539,6 +582,10 @@ export function buildSeedState(now = new Date()): DemoState {
     events: [],
     eventTags: [],
     eventAttendees: [],
+    eventSeries: [],
+    eventSeriesTags: [],
+    eventSeriesHosts: [],
+    eventSeriesFollowers: [],
     follows: [],
     reports: [],
     moderators: [],

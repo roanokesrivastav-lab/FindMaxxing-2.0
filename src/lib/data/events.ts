@@ -12,6 +12,11 @@ const ERRORS = {
   bad_session_rules: ["Check the minimum and the decision time", "invalid"],
   min_above_capacity: ["The minimum can't be more than the capacity", "invalid"],
   bad_deadline: ["The decision time must be before the start, and still ahead", "invalid"],
+  bad_series: ["Check the series details", "invalid"],
+  bad_series_rule: ["Check the days, time and length of the repeat", "invalid"],
+  schedule_conflict: ["Two sessions would land on the same day; nothing was changed", "conflict"],
+  not_ended: ["Attendance can be recorded once the session has ended", "invalid"],
+  not_attending: ["That person wasn't going", "invalid"],
 } as const satisfies Record<string, readonly [string, DataError["code"]]>;
 
 export type EventsErrorKey = keyof typeof ERRORS;

@@ -9,6 +9,12 @@ import {
   type Event,
   type EventDetail,
   type EventReadiness,
+  type EventSeries,
+  type EventSeriesSummary,
+  type OccurrencePatch,
+  type SeriesChangeResult,
+  type SeriesPatch,
+  type SeriesRuleShape,
   type SessionRules,
   type NeighborhoodSummary,
   type Place,
@@ -142,12 +148,49 @@ interface EventRow {
   venue_status?: Event["venueStatus"];
   decision?: Event["decision"];
   cancel_reason?: Event["cancelReason"];
+  series_id?: string | null;
+  series_local_date?: string | null;
+  overridden?: string[] | null;
   status: Event["status"];
   created_at: string;
   creator?: ProfileSummaryRow | null;
   place?: { name: string } | null;
   event_tags?: { interest_slug: string }[];
   attendee_count?: { count: number }[];
+}
+interface SeriesRow {
+  id: string; owner_id: string; title: string; description: string; category_slug: string; place_id: string | null; location_name: string; address: string | null;
+  lat: number; lng: number; time_zone: string; rule: SeriesRuleShape; starts_on: string; ends_on: string | null; capacity: number | null; min_attendance: number | null;
+  decision_lead_minutes: number | null; activity_details?: unknown; status: EventSeries["status"]; rule_version: number; created_at: string;
+  owner?: ProfileSummaryRow | null;
+  event_series_tags?: { interest_slug: string }[];
+  event_series_hosts?: { user_id: string; role: EventSeries["hosts"][number]["role"]; added_at: string; profile: ProfileSummaryRow | null }[];
+}
+const SERIES_SELECT = `*, owner:profiles!event_series_owner_id_fkey(${"id, username, display_name, avatar_url"}), event_series_tags(interest_slug), event_series_hosts(user_id, role, added_at, profile:profiles!event_series_hosts_user_id_fkey(${"id, username, display_name, avatar_url"}))`;
+function mapHosts(r: SeriesRow): EventSeries["hosts"] {
+  return [...(r.event_series_hosts ?? [])]
+    .sort((a, b) => (a.role === b.role ? a.added_at.localeCompare(b.added_at) : a.role === "owner" ? -1 : 1))
+    .map((h) => ({ user: mapSummary(h.profile), role: h.role }))
+    .filter((h): h is EventSeries["hosts"][number] => !!h.user);
+}
+function mapSeries(r: SeriesRow): EventSeries {
+  return {
+    id: r.id, ownerId: r.owner_id, owner: mapSummary(r.owner), title: r.title, description: r.description, categorySlug: r.category_slug, placeId: r.place_id,
+    locationName: r.location_name, address: r.address, lat: Number(r.lat), lng: Number(r.lng), timeZone: r.time_zone, rule: r.rule, startsOn: r.starts_on, endsOn: r.ends_on,
+    capacity: r.capacity, minAttendance: r.min_attendance, decisionLeadMinutes: r.decision_lead_minutes, activityDetails: parseActivityDetails(r.activity_details),
+    status: r.status, ruleVersion: r.rule_version, tags: (r.event_series_tags ?? []).map((t) => t.interest_slug), hosts: mapHosts(r), createdAt: r.created_at,
+  };
+}
+/** snake_case patch for the series functions; only the keys given are sent. */
+function seriesPatchArg(p: SeriesPatch | OccurrencePatch): Record<string, unknown> {
+  const map: Record<string, string> = {
+    title: "title", description: "description", placeId: "place_id", locationName: "location_name", address: "address", lat: "lat", lng: "lng", categorySlug: "category_slug",
+    capacity: "capacity", minAttendance: "min_attendance", decisionLeadMinutes: "decision_lead_minutes", decisionDeadline: "decision_deadline", venueStatus: "venue_status",
+    activityDetails: "activity_details", tags: "tags", rule: "rule", startsAt: "starts_at", endsAt: "ends_at",
+  };
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(p)) if (v !== undefined && map[k]) out[map[k]] = v;
+  return out;
 }
 
 const PROFILE_SUMMARY = "id, username, display_name, avatar_url";
@@ -225,6 +268,9 @@ function mapEvent(r: EventRow): Event {
     venueStatus: r.venue_status ?? "confirmed",
     decision: r.decision ?? "open",
     cancelReason: r.cancel_reason ?? null,
+    seriesId: r.series_id ?? null,
+    seriesLocalDate: r.series_local_date ?? null,
+    overridden: r.overridden ?? [],
   };
 }
 
@@ -610,6 +656,14 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
     const rows = unwrap(await supabase.rpc("events_readiness", { p_events: events.map((e) => e.id) })) as ReadinessRow[] | null;
     const byId = new Map((Array.isArray(rows) ? rows : []).map((row) => [row.event_id, mapReadiness(row)]));
     return events.map((e) => ({ ...e, readiness: byId.get(e.id) ?? null }));
+  }
+  /** The series as the event page needs it (RLS decides what the viewer sees; the follow row is the viewer's own). */
+  async function seriesSummary(seriesId: string, viewerId: string | null): Promise<EventSeriesSummary | null> {
+    const row = unwrap(await supabase.from("event_series").select(SERIES_SELECT).eq("id", seriesId).maybeSingle()) as SeriesRow | null;
+    if (!row) return null;
+    const follows = viewerId ? (unwrap(await supabase.from("event_series_followers").select("user_id").eq("series_id", seriesId).eq("user_id", viewerId).maybeSingle()) as { user_id: string } | null) : null;
+    const hosts = mapHosts(row);
+    return { id: row.id, status: row.status, rule: row.rule, timeZone: row.time_zone, hosts, viewerFollows: !!follows, viewerIsHost: !!viewerId && hosts.some((h) => h.user.id === viewerId) };
   }
   const repo: DataRepository = {
     places: {
@@ -1003,6 +1057,7 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
           attendeeCount: row.attendees.length,
           viewerJoined: viewerId ? attendees.some((a) => a.id === viewerId) : false,
           attendees,
+          series: row.series_id ? await seriesSummary(row.series_id, viewerId) : null,
         };
         return (await withReadiness([detail]))[0];
       },
@@ -1118,6 +1173,69 @@ export function createSupabaseRepository(supabase: SupabaseClient): DataReposito
       },
       async decideSessions(now) {
         return Number(unwrap(await supabase.rpc("decide_sessions", { p_now: now })) ?? 0);
+      },
+    },
+
+    // Recurring series (0054). Every write is a database function that rechecks the caller's role
+    // under its locks; the repository passes the session through and maps the result.
+    series: {
+      async create(input, ownerId) {
+        if (input.activityDetails && !activityDetailsSchema.safeParse(input.activityDetails).success) throw eventsError("bad_activity");
+        const id = unwrap(await supabase.rpc("create_event_series", { p_series: {
+          title: input.title, description: input.description, category_slug: input.categorySlug, place_id: input.placeId ?? null, location_name: input.locationName,
+          address: input.address ?? null, lat: input.lat, lng: input.lng, time_zone: input.timeZone, rule: input.rule, starts_on: input.startsOn ?? null, ends_on: input.endsOn ?? null,
+          capacity: input.capacity ?? null, min_attendance: input.minAttendance ?? null, decision_lead_minutes: input.decisionLeadMinutes ?? null,
+          activity_details: input.activityDetails ?? null, tags: input.tags,
+        } })) as string;
+        const created = await repo.series.get(id, ownerId);
+        if (!created) throw new DataError("Series not found after create", "not_found");
+        return created;
+      },
+      async get(id) {
+        const row = unwrap(await supabase.from("event_series").select(SERIES_SELECT).eq("id", id).maybeSingle()) as SeriesRow | null;
+        return row ? mapSeries(row) : null;
+      },
+      async occurrences(id) {
+        const rows = unwrap(await supabase.from("events").select(EVENT_SELECT).eq("series_id", id).order("starts_at", { ascending: true })) as EventRow[];
+        return withReadiness(rows.map(mapEvent));
+      },
+      async updateOccurrence(_userId, eventId, patch) {
+        if (patch.activityDetails && !activityDetailsSchema.safeParse(patch.activityDetails).success) throw eventsError("bad_activity");
+        unwrap(await supabase.rpc("update_occurrence", { p_event: eventId, p_patch: seriesPatchArg(patch) }));
+      },
+      async updateFrom(_userId, eventId, patch) {
+        if (patch.activityDetails && !activityDetailsSchema.safeParse(patch.activityDetails).success) throw eventsError("bad_activity");
+        const r = unwrap(await supabase.rpc("update_series_from", { p_event: eventId, p_patch: seriesPatchArg(patch) })) as { rule_version: number; moved: string[]; kept: string[]; deleted: number; created: number; capacity_kept: string[] };
+        const result: SeriesChangeResult = { ruleVersion: r.rule_version, moved: r.moved ?? [], kept: r.kept ?? [], deleted: r.deleted ?? 0, created: r.created ?? 0, capacityKept: r.capacity_kept ?? [] };
+        return result;
+      },
+      async cancelOccurrence(_userId, eventId) {
+        unwrap(await supabase.rpc("cancel_occurrence", { p_event: eventId }));
+      },
+      async end(_userId, seriesId, endsOn = null) {
+        return Number(unwrap(await supabase.rpc("end_event_series", { p_series: seriesId, p_ends_on: endsOn })) ?? 0);
+      },
+      async setStatus(_userId, seriesId, status) {
+        unwrap(await supabase.rpc("set_series_status", { p_series: seriesId, p_status: status }));
+      },
+      async addHost(_userId, seriesId, hostId) {
+        unwrap(await supabase.rpc("add_series_host", { p_series: seriesId, p_user: hostId }));
+      },
+      async removeHost(_userId, seriesId, hostId) {
+        unwrap(await supabase.rpc("remove_series_host", { p_series: seriesId, p_user: hostId }));
+      },
+      async follow(userId, seriesId) {
+        const res = await supabase.from("event_series_followers").insert({ series_id: seriesId, user_id: userId });
+        if (res.error && res.error.code !== "23505") throw translate(res.error);
+      },
+      async unfollow(userId, seriesId) {
+        unwrap(await supabase.from("event_series_followers").delete().eq("series_id", seriesId).eq("user_id", userId));
+      },
+      async recordAttendance(_userId, eventId, attendeeId, attended) {
+        unwrap(await supabase.rpc("record_attendance", { p_event: eventId, p_user: attendeeId, p_attended: attended }));
+      },
+      async generate(now) {
+        return Number(unwrap(await supabase.rpc("generate_series_occurrences", { p_series: null, p_now: now })) ?? 0);
       },
     },
 

@@ -17,6 +17,8 @@ import type { LngLat } from "@/lib/map/types";
 import { useFormSubmit } from "@/lib/forms/useFormSubmit";
 import { ActivityFields } from "@/components/events/ActivityFields";
 import { SessionRulesFields } from "@/components/events/SessionRulesFields";
+import { ApplyToFields, RepeatFields } from "@/components/events/RepeatFields";
+import { isoWeekday } from "@findmaxxing/shared/series";
 
 export function EventForm({ initialPlace, initial, defaultCity = "", edit = false, pilotEvents = false }: { initialPlace?: PlaceOption | null; initial?: Event; defaultCity?: string; edit?: boolean; /** Resolved pilotEvents flag (roadmap 4.x), from the server page. */ pilotEvents?: boolean }) {
   const [state, action, pending] = useActionState(edit ? updateEventAction : createEventAction, null);
@@ -89,6 +91,9 @@ export function EventForm({ initialPlace, initial, defaultCity = "", edit = fals
         <FormField label="Starts" htmlFor="startTime" error={errors.startTime}><Input id="startTime" name="startTime" type="time" required defaultValue={defaults.time} error={errors.startTime} /></FormField>
         <FormField label="Ends" htmlFor="endTime" hint="optional" error={errors.endTime}><Input id="endTime" name="endTime" type="time" defaultValue={endDefaults?.time} error={errors.endTime} /></FormField>
       </div>
+      {/* Repeating sessions (roadmap 4.5a): chosen at creation; an occurrence's edit asks which sessions it applies to. */}
+      {pilotEvents && !edit ? <RepeatFields errors={errors} defaultWeekday={isoWeekday(defaults.date)} /> : null}
+      {pilotEvents && edit && initial?.seriesId ? <ApplyToFields /> : null}
 
       <FormField label="At a place on the map?" htmlFor="placeId" hint="optional" error={errors.placeId}>
         <PlacePicker id="placeId" name="placeId" value={linked} onChange={selectPlace} />

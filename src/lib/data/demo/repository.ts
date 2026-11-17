@@ -35,6 +35,7 @@ import { createDemoPayments, isPlusIn, needsTicket, refundOnCancel } from "./pay
 import { PLUS_LIST_CAP, paymentsError } from "../payments";
 import { eventsError } from "../events";
 import { checkSessionRules, decideDemoSessions, readinessOf, seatsTaken } from "./sessions";
+import { createDemoSeries, moderateDemoSeries, seriesSummary } from "./series";
 import { activityDetailsSchema, type ActivityDetails } from "@/lib/activity";
 import { DEFAULT_TIME_ZONE, eventTimeZone } from "@/lib/utils/timezone";
 import { LIST_LIMIT_ERROR, MAX_SAVED_LISTS, duplicateListName, listNameKey, normalizeListName } from "../savedLists";
@@ -167,6 +168,9 @@ function toEvent(state: DemoState, row: EventRow): Event {
     decision: row.decision ?? "open",
     cancelReason: row.cancelReason ?? null,
     readiness: readinessOf(state, row),
+    seriesId: row.seriesId ?? null,
+    seriesLocalDate: row.seriesLocalDate ?? null,
+    overridden: row.overridden ?? [],
   };
 }
 
@@ -836,6 +840,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           ...toEvent(state, row),
           viewerJoined: viewerId ? state.eventAttendees.some((a) => a.eventId === id && a.userId === viewerId) : false,
           attendees,
+          series: row.seriesId ? seriesSummary(state, row.seriesId, viewerId, (uid) => profileOf(state, uid)) : null,
         };
         return detail;
       },
@@ -1045,6 +1050,14 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           .map((e) => toEvent(state, e));
       },
     },
+
+    series: createDemoSeries(state, {
+      persist, assertActive, requireProfile, rateLimit,
+      toEvent: (row) => toEvent(state, row),
+      profileOf: (uid) => profileOf(state, uid),
+      canViewEvent: (row, viewerId) => canViewEvent(state, row, viewerId),
+      refundOnCancel: (eventId) => refundOnCancel(state, eventId),
+    }),
 
     tags: {
       async counts(opts = {}) {
@@ -1407,7 +1420,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
       },
       async resolve(moderatorId, { targetType, targetId, action, reason }) {
         if (!isModeratorIn(state, moderatorId)) throw new DataError("Moderators only", "forbidden");
-        if (!REPORT_TARGET_TYPES.includes(targetType)) throw moderationError("invalid_target");
+        if (targetType !== "series" && !REPORT_TARGET_TYPES.includes(targetType)) throw moderationError("invalid_target");
         if (!MODERATION_ACTIONS.includes(action)) throw moderationError("invalid_action");
         const why = normalizeReason(reason);
         if (why && why.length > MAX_MODERATION_REASON) throw moderationError("reason_too_long");
@@ -1415,9 +1428,11 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           ? state.places.find((p) => p.id === targetId)
           : targetType === "event" ? state.events.find((e) => e.id === targetId) : null;
         const message = targetType === "message" ? state.messages.find((m) => m.id === targetId) : null;
-        const found = targetType === "profile" ? state.profiles.some((p) => p.id === targetId) : targetType === "message" ? !!message : !!content;
+        // A series (0054, D-J): removed or published, like an event; its future occurrences follow it.
+        const series = targetType === "series" ? state.eventSeries.find((x) => x.id === targetId) : null;
+        const found = targetType === "profile" ? state.profiles.some((p) => p.id === targetId) : targetType === "message" ? !!message : targetType === "series" ? !!series : !!content;
         if (!found) throw moderationError("not_found");
-        const before: string | null = message ? messageStatus(message.id) : (content?.status ?? null);
+        const before: string | null = message ? messageStatus(message.id) : series ? (series.status === "removed" ? "removed" : "published") : (content?.status ?? null);
         let after = before;
         let reportStatus: ReportRow["status"];
         if (action === "remove") {
@@ -1447,6 +1462,7 @@ export function createDemoRepository(handle: StoreHandle = getDemoStore()): Data
           if (targetType === "event" && before === "published" && after === "removed") refundOnCancel(state, targetId);
         }
         if (message && after !== before) message.removedAt = after === "removed" ? now : null;
+        if (series && after !== before) moderateDemoSeries(state, series.id, action as "remove" | "restore", (eventId) => refundOnCancel(state, eventId));
         state.moderationActions.push({
           id: newId(), moderatorId, action, targetType, targetId, reason: why,
           statusBefore: before, statusAfter: after, resolvedReports: open.length, createdAt: now,

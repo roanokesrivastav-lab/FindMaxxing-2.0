@@ -30,6 +30,8 @@ import { InterestIcon } from "@/components/ui/TaxonomyIcon";
 import { ACTIVITY_KIND_LABELS, describeActivity } from "@/lib/activity";
 import { readinessParts } from "@/lib/readiness";
 import { ConfirmSessionButton } from "@/components/events/ConfirmSessionButton";
+import { SeriesHostTools } from "@/components/events/SeriesHostTools";
+import { describeRepeat } from "@/lib/events/series";
 import { eventDetailFacts, sameZoneAt } from "@/lib/events/detail";
 
 export const dynamic = "force-dynamic";
@@ -81,7 +83,10 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
   const readiness = pilotEvents && event.readiness
     ? readinessParts(event.readiness, { now: time.now, cancelled, ended, viewerTimeZone: time.timeZone }).slice(1).filter((part) => part !== "Full" && !/ spots? open$/.test(part))
     : null;
-  const canConfirm = pilotEvents && isHost && !cancelled && !ended && event.decision === "open" && event.minAttendance != null;
+  const canConfirm = pilotEvents && (isHost || !!event.series?.viewerIsHost) && !cancelled && !ended && event.decision === "open" && event.minAttendance != null;
+  // One session of a series (roadmap 4.5a): named on the page, with the host tools for this session.
+  const series = pilotEvents ? (event.series ?? null) : null;
+  const seriesTools = series?.viewerIsHost && !cancelled && !ended && series.status !== "removed";
   const [ticketSummary, canSell] = payments && isHost && !cancelled && !ended
     ? await Promise.all([repo.payments.ticketSummary(viewer!.id, event.id), repo.payments.canSell(viewer!.id)])
     : [null, false];
@@ -139,6 +144,12 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
             <SectionHeader id="event-when" title="When" />
             <p className="type-item-title text-ink">{formatEventDateLong(event.startsAt, eventZone)}</p>
             <p className="type-body text-ink-2">{formatTimeRange(event.startsAt, event.endsAt, eventZone)}</p>
+            {series ? (
+              <p className="type-body text-ink-2 mt-1" data-series-line="">
+                {series.status === "ended" ? "Was part of a series that has ended" : `Part of a series · ${describeRepeat(series.rule)}`}
+                {event.overridden?.includes("schedule") ? " · this one at a different time" : ""}
+              </p>
+            ) : null}
             {otherClock ? (
               <p className="type-body text-ink-2 mt-1" data-your-time="">
                 Your time: <LocalDate value={event.startsAt} format={{ weekday: "short", month: "short", day: "numeric" }} />, {formatTimeRange(event.startsAt, event.endsAt, time)}
@@ -274,6 +285,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
             <ConfirmSessionButton eventId={event.id} />
           </div>
         ) : null}
+        {seriesTools ? <SeriesHostTools eventId={event.id} seriesId={series!.id} isOwner={isHost} /> : null}
         {payments && isHost && !cancelled && !ended ? (
           <EventPricing eventId={event.id} priceCents={event.priceCents ?? null} summary={ticketSummary} canSell={canSell} locked={event.attendees.some((a) => a.id !== event.creatorId)} demo={payments === "demo"} />
         ) : null}
