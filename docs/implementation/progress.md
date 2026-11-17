@@ -26,7 +26,7 @@ This file lets another founder’s agent resume without chat history. Baseline l
 | 4.5a slice: [0053 admission](../features/0053-admission.md) | Must | INDEPENDENTLY VERIFIED locally | `431f8d3`, retry proof `8b053f3` | [Review and tests](../features/0053-admission.md#independent-codex-verification); hosted NOT VERIFIED |
 | [4.5a](tickets/4-5a-recurring-series-and-host-tools.md) | Must | 0054 IMPLEMENTED-LOCAL, gate finished (self-review; not independently verified) | `da1f836` + gate commit on `codex/0054-series-2026-11-16` | [features/0054-series.md](../features/0054-series.md); hosted and real cron NOT VERIFIED; three contract points flagged for review |
 | [4.5b](tickets/4-5b-permanent-series-page.md) | Must | BLOCKED — needs 4.5a | — | See batch 02 |
-| [4.6](tickets/4-6-material-change-notifications.md) | Must | BLOCKED — needs verified series contract (4.5a) | — | See batch 02 |
+| [4.6](tickets/4-6-material-change-notifications.md) | Must | 0055 IMPLEMENTED-LOCAL (self-review; not independently verified) | see session log 2026-11-17 | [features/0055-notifications.md](../features/0055-notifications.md); hosted, cron and push NOT VERIFIED |
 | [4.8](tickets/4-8-optional-party-poster.md) | Must | BLOCKED — needs a scoped write contract | — | See batch 02 |
 | [4.pre](tickets/4-pre-real-postgres-concurrency-harness.md) | Must | IMPLEMENTED-LOCAL (harness reverified) | earlier work | [00-baseline](../features/00-baseline.md) §3; event race suites arrive with 4.5a (4.0 A1.6) |
 | [5.0](tickets/5-0-outings-specification.md) | Must | APPROVED WITH REQUIRED CHANGES — Must Events gate and outing fixes remain | `9c515b9`, r3 `d342838` | [Revision 3 preflight](../features/amendments-r3-codex-review.md#50-outings-and-the-63-itinerary-read-contract); blocks 5.1–5.5 |
@@ -239,4 +239,16 @@ This file lets another founder’s agent resume without chat history. Baseline l
   without acceptance, a contrast fault on the form's category tile).
 - Pushed to `origin/codex/0054-series-2026-11-16` at the owner's instruction. Not merged, not deployed;
   no hosted database touched. Next: 0055 / 4.6.
+
+### 2026-11-17 — 0055 material-change notifications (4.6)
+
+- Done on `codex/0054-series-2026-11-16`: one notification per material change (per-change keys),
+  `series_update` for followers, one sender per change, service paths (deadline decision, deletion
+  job) no longer silent, recipients checked as themselves (going/following, blocks, visibility).
+  Evidence: [features/0055-notifications.md](../features/0055-notifications.md).
+- `npm run check` exit 0 (1,462 tests, 0 skipped); mobile typecheck exit 0; new tests 21/21 and 2/2
+  on real PostgreSQL; `e2e:series`, `e2e:features`, `e2e:event-detail`, `e2e:onboarding`, `a11y` pass.
+- **Open:** `npm run e2e` fails 14/19 at "open a place from the first map's list", on this commit
+  and on the previous one without 0055. Needs its own diagnosis.
+- Next: 4.5b series page and 1.5 Events tab, both unblocked. Not pushed.
 

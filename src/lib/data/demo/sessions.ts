@@ -6,7 +6,7 @@
 import type { EventReadiness } from "../types";
 import { DEFAULT_TIME_ZONE } from "@/lib/utils/timezone";
 import { eventsError } from "../events";
-import { notifyDemo } from "./notifications";
+import { notifyOn } from "./notifications";
 import type { DemoState, EventRow } from "./store";
 
 /**
@@ -68,9 +68,8 @@ export function decideDemoSessions(state: DemoState, now: string, onCancel: (eve
       e.cancelReason = "below_minimum";
       e.decision = "not_happening";
       onCancel(e.id);
-      for (const a of going) {
-        notifyDemo(state, a.userId, { type: "event_not_happening", actorId: null, subjectType: "event", subjectId: e.id, label: e.title, dedupeKey: `event_not_happening:${e.id}` });
-      }
+      // As in 0055: the shared sender, and the series' followers.
+      notifyOn.eventCancelled(state, e.id, null);
     }
     e.updatedAt = new Date().toISOString();
     decided += 1;

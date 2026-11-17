@@ -164,13 +164,13 @@ export function createDemoSeries(state: DemoState, h: SeriesHelpers): DataReposi
     if (s.status === "removed") throw eventsError("closed");
     return s;
   };
-  const cancelRow = (e: EventRow, reason: "host" | "series_ended", actorId: string) => {
+  const cancelRow = (e: EventRow, reason: "host" | "series_ended", actorId: string, bulk = false) => {
     e.status = "cancelled";
     e.cancelReason = reason;
     e.decision = "not_happening";
     e.updatedAt = new Date().toISOString();
     h.refundOnCancel(e.id);
-    notifyOn.eventCancelled(state, e.id, actorId);
+    notifyOn.eventCancelled(state, e.id, actorId, { bulk });
   };
   const whereWhen = (e: EventRow) => JSON.stringify([Date.parse(e.startsAt), e.endsAt ? Date.parse(e.endsAt) : null, e.locationName, e.address, e.lat, e.lng, e.placeId]);
 
@@ -366,6 +366,8 @@ export function createDemoSeries(state: DemoState, h: SeriesHelpers): DataReposi
         for (const k of kept) { k.overridden = [...(k.overridden ?? []), "schedule"]; result.kept.push(k.id); }
         result.deleted = del.length;
         result.created = generateFor(s, now, from);
+        // As in 0055: one schedule update for followers not going to a session that moved.
+        notifyOn.seriesFollowers(state, s.id, "schedule", null, result.moved, userId);
       } else {
         result.created = generateFor(s, now);
       }
@@ -384,7 +386,8 @@ export function createDemoSeries(state: DemoState, h: SeriesHelpers): DataReposi
       if (on < s.startsOn) on = s.startsOn;
       s.status = "ended"; s.endsOn = on; s.updatedAt = new Date().toISOString();
       const later = occurrenceRows(s.id).filter((o) => o.seriesLocalDate! > on && o.status === "published" && Date.parse(o.startsAt) > Date.now());
-      for (const o of later) cancelRow(o, "series_ended", userId);
+      for (const o of later) cancelRow(o, "series_ended", userId, true);
+      notifyOn.seriesFollowers(state, s.id, "ended", null, later.map((o) => o.id), userId);
       h.persist();
       return later.length;
     },

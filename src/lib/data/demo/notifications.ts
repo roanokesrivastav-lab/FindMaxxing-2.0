@@ -10,7 +10,9 @@ import { clampLimit, compareTimestamps, decodeCursor, toPage } from "../discover
 import { ALL_NOTIFICATION_TYPES, DEFAULT_NOTIFICATION_SETTINGS } from "@/lib/notifications";
 import { newId } from "@/lib/utils/ids";
 import { isWebPushEndpoint } from "@/lib/security/pushEndpoints";
-import { hasBlocked } from "./messaging";
+import { blockedBetween, hasBlocked } from "./messaging";
+import { canViewEvent } from "./repository";
+import { canViewSeries } from "./series";
 import type { DemoState, NotificationRow } from "./store";
 
 const HOUR = 3600_000;
@@ -80,18 +82,50 @@ export const notifyOn = {
     const e = state.events.find((x) => x.id === eventId);
     if (e) notifyDemo(state, e.creatorId, { type: "event_joined", actorId: userId, subjectType: "event", subjectId: e.id, label: e.title, batchKey: `event_joined:${e.id}` });
   },
-  eventChanged(state: DemoState, eventId: string, actorId: string) {
+  /** Mirrors notify_event_audience() (0055): people going, each checked as themselves. */
+  eventAudience(state: DemoState, eventId: string, kind: "changed" | "cancelled" | "not_happening", actorId: string | null) {
     const e = state.events.find((x) => x.id === eventId);
     if (!e) return;
-    for (const a of state.eventAttendees.filter((x) => x.eventId === eventId)) {
-      notifyDemo(state, a.userId, { type: "event_changed", actorId, subjectType: "event", subjectId: e.id, label: e.title, batchKey: `event_changed:${e.id}` });
+    const series = e.seriesId ? state.eventSeries.find((x) => x.id === e.seriesId) : null;
+    const host = series?.ownerId ?? e.creatorId;
+    const type = kind === "changed" ? "event_changed" : kind === "cancelled" ? "event_cancelled" : "event_not_happening";
+    const key = kind === "changed" ? `event_changed:${e.id}:${e.changeSeq ?? 0}` : `${type}:${e.id}`;
+    for (const a of state.eventAttendees.filter((x) => x.eventId === eventId).sort((x, y) => (x.userId < y.userId ? -1 : 1))) {
+      if (a.userId === actorId) continue;
+      if (host && blockedBetween(state, a.userId, host)) continue;
+      if (!canViewEvent(state, e, a.userId)) continue;
+      notifyDemo(state, a.userId, { type, actorId, subjectType: "event", subjectId: e.id, label: e.title, dedupeKey: key });
     }
   },
-  eventCancelled(state: DemoState, eventId: string, actorId: string) {
+  /** A material change to when or where: mirrors the change_seq trigger and the row trigger. */
+  eventChanged(state: DemoState, eventId: string, actorId: string | null) {
     const e = state.events.find((x) => x.id === eventId);
     if (!e) return;
-    for (const a of state.eventAttendees.filter((x) => x.eventId === eventId)) {
-      notifyDemo(state, a.userId, { type: "event_cancelled", actorId, subjectType: "event", subjectId: e.id, label: e.title, dedupeKey: `event_cancelled:${e.id}` });
+    e.changeSeq = (e.changeSeq ?? 0) + 1;
+    notifyOn.eventAudience(state, eventId, "changed", actorId);
+  },
+  /** Cancelled: the people going, and (one session of a series, not a bulk change) its followers. */
+  eventCancelled(state: DemoState, eventId: string, actorId: string | null, opts: { bulk?: boolean } = {}) {
+    const e = state.events.find((x) => x.id === eventId);
+    if (!e) return;
+    e.changeSeq = (e.changeSeq ?? 0) + 1;
+    notifyOn.eventAudience(state, eventId, e.cancelReason === "below_minimum" ? "not_happening" : "cancelled", actorId);
+    if (e.seriesId && !opts.bulk) notifyOn.seriesFollowers(state, e.seriesId, "cancel", e.id, [e.id], actorId);
+  },
+  /** Mirrors notify_series_followers() (0055). */
+  seriesFollowers(state: DemoState, seriesId: string, kind: "schedule" | "cancel" | "ended", eventId: string | null, affected: string[], actorId: string | null) {
+    const s = state.eventSeries.find((x) => x.id === seriesId);
+    if (!s) return;
+    const key = kind === "schedule" ? `series_update:${s.id}:v${s.ruleVersion}` : kind === "cancel" ? `series_update:${s.id}:cancel:${eventId}` : `series_update:${s.id}:ended`;
+    const now = Date.now();
+    const next = state.events.filter((e) => e.seriesId === s.id && e.status === "published" && Date.parse(e.startsAt) > now)
+      .sort((x, y) => Date.parse(x.startsAt) - Date.parse(y.startsAt) || (x.id < y.id ? -1 : 1))[0];
+    for (const f of state.eventSeriesFollowers.filter((x) => x.seriesId === s.id).sort((x, y) => (x.userId < y.userId ? -1 : 1))) {
+      if (f.userId === actorId) continue;
+      if (state.eventAttendees.some((a) => a.userId === f.userId && affected.includes(a.eventId))) continue;
+      if (blockedBetween(state, f.userId, s.ownerId)) continue;
+      if (!canViewSeries(state, s, f.userId)) continue;
+      notifyDemo(state, f.userId, { type: "series_update", actorId, subjectType: "event", subjectId: next?.id ?? null, label: s.title, dedupeKey: key, detail: kind });
     }
   },
   message(state: DemoState, conversationId: string, senderId: string) {

@@ -758,7 +758,8 @@ export type NotificationType =
   | "report_resolved"
   | "content_moderated"
   | "trip_plan_ready"
-  | "event_not_happening";
+  | "event_not_happening"
+  | "series_update";
 
 export interface AppNotification {
   id: string;

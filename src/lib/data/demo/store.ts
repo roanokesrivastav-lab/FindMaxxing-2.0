@@ -127,6 +127,8 @@ export interface EventRow {
   venueStatus?: VenueStatus;
   decision?: SessionDecision;
   cancelReason?: CancelReason | null;
+  /** Mirrors events.change_seq (0055): material changes so far. Absent reads as 0. */
+  changeSeq?: number;
   /** Mirror the 0054 series columns; absent reads as a one-off event. */
   seriesId?: string | null;
   seriesLocalDate?: string | null;
@@ -359,7 +361,7 @@ export interface SavedListRow {
   updatedAt: string;
 }
 
-export const STATE_VERSION = 18;
+export const STATE_VERSION = 19;
 const DATA_DIR = path.join(process.cwd(), ".data");
 const STATE_FILE = path.join(DATA_DIR, "demo-store.json");
 
@@ -525,6 +527,12 @@ const MIGRATIONS: Record<number, (state: LooseState) => void> = {
     state.eventSeriesTags ??= [];
     state.eventSeriesHosts ??= [];
     state.eventSeriesFollowers ??= [];
+  },
+  // v18 → v19: material-change notifications (0055). People who have event changes pushed get series updates pushed too.
+  18(state) {
+    for (const n of (state.notificationSettings ?? []) as { pushTypes?: string[] }[]) {
+      if (n.pushTypes?.includes("event_changed") && !n.pushTypes.includes("series_update")) n.pushTypes.push("series_update");
+    }
   },
 };
 
