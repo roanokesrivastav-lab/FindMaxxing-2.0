@@ -252,3 +252,12 @@ This file lets another founder’s agent resume without chat history. Baseline l
   and on the previous one without 0055. Needs its own diagnosis.
 - Next: 4.5b series page and 1.5 Events tab, both unblocked. Not pushed.
 
+### 2026-11-17 — golden journey fixed
+
+- `npm run e2e` failed 14/19 at "open a place from the first map's list" on `d2b34f5` and `ab32add`.
+  Cause: for a signed-in viewer, sections hidden in list mode also contain place links, and which
+  comes first in the page depends on the day's recommendations; the test took the first link in the
+  page, which was hidden. The visible list itself was correct. The test now takes the first visible
+  place link. `npm run e2e` 21/21, twice.
+- Next: 4.5b series page, 1.5 Events tab.
+

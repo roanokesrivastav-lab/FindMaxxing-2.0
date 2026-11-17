@@ -168,7 +168,9 @@ await step("open a place from the first map's list", async () => {
   await listToggle.click();
   // The strip follows into list mode, and the list is still filtered to the chosen interests.
   await page.getByRole("region", { name: "Your first map" }).waitFor({ timeout: 15_000 });
-  const link = page.locator('a[href^="/places/"]').first();
+  // The first place link a person can see. For a signed-in viewer, sections hidden in list mode also hold place
+  // links, and which come first depends on that day's recommendations, so "the first in the page" was flaky.
+  const link = page.locator('a[href^="/places/"]:visible').first();
   await link.waitFor({ timeout: 30_000 });
   placeUrl = await link.getAttribute("href");
   await page.goto(`${BASE}${placeUrl}`, { waitUntil: "domcontentloaded" });

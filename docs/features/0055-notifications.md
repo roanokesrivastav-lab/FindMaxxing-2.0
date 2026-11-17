@@ -122,9 +122,6 @@ was every cancelled event instead of that series' own.
 
 ## Remaining issues
 
-- **The golden journey fails at "open a place from the first map's list"** (then three later steps
-  that depend on it). It reproduces on `d2b34f5`, before this ticket, and was passing on the same
-  commit earlier on 2026-11-17, so it looks date- or data-dependent. Not diagnosed here; it needs its
-  own look. `e2e:onboarding`, which covers the first map, passes.
+- The golden-journey failure noted here was a test fault and is fixed (see the ledger, 2026-11-17).
 - NOT VERIFIED: hosted Supabase, the real cron, real push delivery, quiet hours end to end.
 - 4.5b (series page and follow button) and 1.5 can now start.
