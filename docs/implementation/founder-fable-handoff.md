@@ -1,6 +1,6 @@
 # Continue from the founder handoff
 
-Base branch `codex/founder-implementation-handoff-2026-11-11` on `origin`. The [progress ledger](progress.md) records the latest completed work. At this checkpoint, 0053 admission and batch 04 routing are implemented locally, and the 4.1 host attendance copy is fixed. Begin with 0054. If a newer ledger entry already completes it, resume from that entry. Preserve local work when fetching. Use one writer per ticket and coordinate with the other founders before sharing branches.
+Shared integration base: `origin/main`. Fetch it and start a `codex/` working branch from it when beginning fresh. The progress ledger and the current working branch govern continuation within a run. The [progress ledger](progress.md) records the latest completed work. At this checkpoint, 0053 admission and batch 04 routing are implemented locally, and the 4.1 host attendance copy is fixed. Begin with 0054. If a newer ledger entry already completes it, resume from that entry. Preserve local work when fetching. Use one writer per ticket and coordinate with the other founders before sharing branches.
 
 ## Next task: 4.5a recurring series, migration 0054
 

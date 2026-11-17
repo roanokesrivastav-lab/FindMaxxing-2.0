@@ -1,6 +1,12 @@
 # Starting code and deferred snapshot
 
-## Intended founder handoff base
+## Current founder handoff base
+
+Use `origin/main` for fresh implementation branches. The published checkpoint includes verified
+0053 admission, the 4.1 host attendance fix, onboarding, and the 6.1/6.2 routing foundation with
+0095. [Start at the current ticket](founder-fable-handoff.md).
+
+## Original handoff checkpoint
 
 The clean handoff branch is `codex/founder-implementation-handoff-2026-11-11`, built from reviewed-source checkpoint `f2eb957` plus the documentation handoff. That checkpoint includes committed 4.2 structured activity/timezone and 4.3 attendance/readiness, and earlier foundation/spec work. A documentation commit is not proof that all existing app behavior is green; rerun starting checks.
 

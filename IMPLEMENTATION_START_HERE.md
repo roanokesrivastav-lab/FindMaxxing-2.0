@@ -7,19 +7,26 @@ This is the starting point for Claude, Fable 5.2 or another coding agent. The re
 ## One prompt to give Claude
 
 ```text
-Continue the founder-approved Must roadmap for FindMaxxing 2.0. Fetch and use the latest origin/codex/founder-implementation-handoff-2026-11-11 as your base, preserving any local work. Read IMPLEMENTATION_START_HERE.md, docs/implementation/founder-fable-handoff.md and docs/implementation/progress.md. At this checkpoint the next task is the 0054 recurring series contract and implementation for 4.5a. Follow the handoff's exact sequence, tests and temporary Fable self-review rules. Reuse completed work, commit each verified ticket separately and continue the next ready Must item from the ledger. Keep Later work out. Do not merge, deploy or change a hosted database.
+Do the next task on the FindMaxxing roadmap.
 ```
+
+Claude's repository instructions expand this short prompt into the full runner. Start with the
+[current checkpoint](docs/implementation/founder-fable-handoff.md) and
+[progress ledger](docs/implementation/progress.md). The current starting task is 0054 for 4.5a.
 
 ## Before using the prompt
 
-Use the clean handoff branch **`codex/founder-implementation-handoff-2026-11-11`**:
+From a clean checkout, update `main`:
 
 ```bash
-git fetch origin
-git switch --track origin/codex/founder-implementation-handoff-2026-11-11
+git switch main
+git pull --ff-only origin main
 ```
 
-If the branch already exists and your checkout is clean, switch to it normally and run `git pull --ff-only`. Preserve any local changes or diverged branch and use a separate branch or worktree from the fetched handoff instead. Coordinate with the other founders before starting the same ticket. [Current continuation checkpoint](docs/implementation/founder-fable-handoff.md)
+Open the repository in Claude Code and select Fable. The runner starts a working branch from
+the updated `origin/main`, completes the next ready Must ticket, and continues through the ledger
+in dependency order. Preserve local changes and resume existing work on its own branch.
+Coordinate with the other founders before starting the same ticket.
 
 Commit `7aa6c48` on **`codex/deferred-waitlist-snapshot-2026-11-11`** preserves unfinished waitlist code with known failures. It is not the implementation base and must not be merged or applied to staging merely to “get everything.” See [current baseline](docs/implementation/current-baseline.md).
 

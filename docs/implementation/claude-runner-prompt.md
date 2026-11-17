@@ -1,7 +1,10 @@
 # Copy-ready Claude / Fable implementation runner
 
 ```text
-Implement the confirmed Must roadmap for FindMaxxing 2.0.
+Implement the confirmed Must roadmap for FindMaxxing 2.0. Treat “do the next task” as a request
+to run this workflow, starting with the next ready ticket and continuing through independent
+ready Must work. For a fresh run, fetch origin and work on a separate codex/ branch from
+origin/main. When resuming an in-progress ticket, preserve its branch and local changes.
 
 Read in order: AGENTS.md; IMPLEMENTATION_START_HERE.md; docs/implementation/decisions.md; docs/founder-priorities-2026-11-11.json; docs/implementation/current-baseline.md; docs/implementation/dependencies.md; docs/briefs/fable-5.2/README.md; docs/implementation/progress.md. Then read the next batch prompt and its existing specs in full.
 

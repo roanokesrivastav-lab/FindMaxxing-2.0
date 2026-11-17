@@ -205,3 +205,8 @@ This file lets another founder’s agent resume without chat history. Baseline l
 - `npm run check` passed with disposable localhost PostgreSQL and a demo build (77 files, 1,378 tests, zero skipped). Mobile typecheck passed. Demo Chrome passed features 11/11 and event detail 9/9. The first golden run timed out in the Explore/save flow. A fresh run passed 21/21. Hosted Supabase and the 4.3 deadline race remain unverified.
 - The handoff includes the 4.1 host-leave fix. Start 0054 by writing the series lock and backup-host permission contract. The [founder handoff](founder-fable-handoff.md) records the sequence, tests and temporary pause on independent Codex review.
 
+### 2026-11-16 — shared continuation from main
+
+- Start fresh work from `origin/main` using the short prompt in [IMPLEMENTATION_START_HERE.md](../../IMPLEMENTATION_START_HERE.md).
+- Next is 4.5a. Write the 0054 series lock-order and backup-host permission contract, then implement and verify it under the temporary Fable workflow. The [current handoff](founder-fable-handoff.md) lists the required proofs and downstream gates.
+- Vercel automatic deployments from `main` are disabled in the repository configuration. Release approval and hosted migration checks remain separate.
